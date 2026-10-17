@@ -94,7 +94,7 @@ namespace Nasledie.Core
                 TreatyState treaty = state.Treaties[i];
                 CivilizationState from = state.Civilization(treaty.FromCivilizationId);
                 CivilizationState to = state.Civilization(treaty.ToCivilizationId);
-                if (from == null || to == null) { treaty.Active = false; treaty.Pending = false; continue; }
+                if (from == null || to == null) { MarkTreatyBroken(state, treaty); treaty.Active = false; treaty.Pending = false; continue; }
                 if (treaty.Pending && !to.IsHuman)
                 {
                     int acceptance = TradeAcceptance(from, to, treaty.Kind);
@@ -107,6 +107,7 @@ namespace Nasledie.Core
                     if (treaty.TurnsRemaining == 0)
                     {
                         treaty.Active = false;
+                        treaty.Fulfilled = true;
                         lines.Add("Истёк срок договора «" + TreatyName(treaty.Kind) + "» между " + from.Name + " и " + to.Name + ".");
                     }
                 }

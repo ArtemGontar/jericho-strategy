@@ -12,6 +12,46 @@
 - `Assets/Game/Runtime/Client/Resources/Audio/Nasledie_Theme.wav` — оригинальная спокойная тема, 26,7 секунды, стерео PCM 22,05 кГц; Unity зацикливает её в меню и кампании.
 - `Tools/GenerateTheme.py` — повторяемый генератор исходного WAV без внешних аудиопакетов.
 
+## Просмотр архитектуры по эпохам
+
+В репозитории лежат отдельные атласы зданий для всех пяти эпох. Каждый атлас содержит 16 именованных спрайтов и импортируется в проект отдельно.
+
+<details><summary>Эпоха общин</summary>
+
+![Здания эпохи общин](../Assets/Game/Runtime/Client/Resources/Art/BuildingAtlas_Communities.png)
+
+</details>
+
+<details><summary>Эпоха городов</summary>
+
+![Здания эпохи городов](../Assets/Game/Runtime/Client/Resources/Art/BuildingAtlas_Cities.png)
+
+</details>
+
+<details><summary>Эпоха связанных земель</summary>
+
+![Здания эпохи связанных земель](../Assets/Game/Runtime/Client/Resources/Art/BuildingAtlas_ConnectedLands.png)
+
+</details>
+
+<details><summary>Эпоха индустрии</summary>
+
+![Здания эпохи индустрии](../Assets/Game/Runtime/Client/Resources/Art/BuildingAtlas_Industry.png)
+
+</details>
+
+<details><summary>Эпоха синтеза</summary>
+
+![Здания эпохи синтеза](../Assets/Game/Runtime/Client/Resources/Art/BuildingAtlas_Synthesis.png)
+
+</details>
+
+<details><summary>Отряды всех эпох</summary>
+
+![Эпохальные отряды](../Assets/Game/Runtime/Client/Resources/Art/UnitEraAtlas.png)
+
+</details>
+
 PNG импортируются как Sprite через `Assets/Game/Editor/ArtAssetImporter.cs`, в том числе нарезаются из атласов по отдельным именованным ячейкам. Местность рисуется на открытых клетках карты; вид городского значка, отрядов и списка строительства зависит от текущей эпохи цивилизации. Музыку можно выключить в меню и менять её громкость в настройках.
 
 Иллюстрации созданы генератором изображений, а музыкальная тема синтезирована локальным генератором из оригинальной последовательности нот и инструментальных слоёв. В проверяемые атласы входят 148 спрайтов, включая 80 эпохальных зданий и 20 эпохальных отрядов, плюс отдельные изображения, эмблема и иконка. В Unity откройте **JERICHO → Проверить игровые материалы**; эта же проверка запускается перед сборкой и сверяет количество спрайтов каждого атласа, эмблему, иконку и аудио.

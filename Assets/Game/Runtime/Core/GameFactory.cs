@@ -172,15 +172,24 @@ namespace Nasledie.Core
                 if (nearestDistance <= 1 && cell.Terrain != TerrainKind.Mountain && cell.Terrain != TerrainKind.Water)
                     cell.OwnerId = nearestCity;
             }
-            int starterFarms = 0;
-            for (int i = 0; i < state.Cells.Length; i++)
+            for (int civilizationId = 0; civilizationId < cities.Length; civilizationId++)
             {
-                HexCell cell = state.Cells[i];
-                if (cell.OwnerId == 0 && cell.Terrain == TerrainKind.Meadow && starterFarms < 2)
+                int starterFarms = 0;
+                for (int terrainPass = 0; terrainPass < 3 && starterFarms < 2; terrainPass++)
                 {
-                    cell.Improvement = ImprovementKind.Farm;
-                    cell.ImprovementLevel = 1;
-                    starterFarms++;
+                    for (int i = 0; i < state.Cells.Length && starterFarms < 2; i++)
+                    {
+                        HexCell cell = state.Cells[i];
+                        int distance = HexGrid.Distance(cell.Q, cell.R, cities[civilizationId].Q, cities[civilizationId].R);
+                        if (distance == 0 || distance > 2 || (cell.OwnerId >= 0 && cell.OwnerId != civilizationId) ||
+                            cell.Improvement != ImprovementKind.None) continue;
+                        bool preferredTerrain = terrainPass == 0 ? cell.Terrain == TerrainKind.Meadow : terrainPass == 1 ? cell.Terrain == TerrainKind.Plains : cell.Terrain == TerrainKind.Arid;
+                        if (!preferredTerrain) continue;
+                        cell.OwnerId = civilizationId;
+                        cell.Improvement = ImprovementKind.Farm;
+                        cell.ImprovementLevel = 1;
+                        starterFarms++;
+                    }
                 }
             }
             return cities;

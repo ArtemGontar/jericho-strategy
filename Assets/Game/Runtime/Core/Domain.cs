@@ -181,6 +181,8 @@ namespace Nasledie.Core
         public int Reputation = 50;
         public int AdministrativeCapacity = 2;
         public int CompletedTechnologies;
+        public int PreviousTurnKnowledgeOutputTenths;
+        public int LastTurnKnowledgeOutputTenths;
         public int StrategyHoldTurns;
         public string StrategicGoal = "quality";
         public string[] KnownTechnologies = Array.Empty<string>();
@@ -248,6 +250,8 @@ namespace Nasledie.Core
         public int TreasuryPerTurnTenths;
         public bool Active;
         public bool Pending;
+        public bool Fulfilled;
+        public bool Broken;
 
         public TreatyState Copy() { return (TreatyState)MemberwiseClone(); }
     }
@@ -337,6 +341,7 @@ namespace Nasledie.Core
         public int ResolvedGlobalCrisisContributorMask;
         public VictoryPath WinningPath;
         public int WinnerCivilizationId = -1;
+        public int[] WinningCivilizationIds = Array.Empty<int>();
         public int SelectedCityId = -1;
         public int SelectedUnitId = -1;
         public int[] SelectedMapOffset = new int[2];
@@ -376,6 +381,7 @@ namespace Nasledie.Core
         {
             var copy = (GameState)MemberwiseClone();
             copy.SelectedMapOffset = (int[])SelectedMapOffset.Clone();
+            copy.WinningCivilizationIds = WinningCivilizationIds == null ? Array.Empty<int>() : (int[])WinningCivilizationIds.Clone();
             copy.Cells = new HexCell[Cells.Length];
             for (int i = 0; i < Cells.Length; i++) copy.Cells[i] = Cells[i].Copy();
             copy.Civilizations = new CivilizationState[Civilizations.Length];

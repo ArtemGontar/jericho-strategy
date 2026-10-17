@@ -3,94 +3,275 @@ using System.Collections.Generic;
 
 namespace Nasledie.Core
 {
+    [Serializable]
+    public sealed class HeritageScoreBreakdown
+    {
+        public int QualityOfLife;
+        public int EducationAndTechnology;
+        public int CulturalContribution;
+        public int Sustainability;
+        public int TrustAndAgreements;
+        public int Total;
+    }
+
     public static class VictoryEvaluator
     {
+        private sealed class WinnerCandidate
+        {
+            public int CivilizationId;
+            public VictoryPath Path;
+            public string Reason;
+        }
+
         public static void Check(GameState state, List<string> lines)
         {
             if (state == null || state.IsFinished) return;
+            var candidates = new List<WinnerCandidate>();
             for (int i = 0; i < state.Civilizations.Length; i++)
             {
                 CivilizationState civ = state.Civilizations[i];
-                if (civ.IsDefeated) continue;
+                if (civ == null || civ.IsDefeated) continue;
 
                 if (QualityReady(state, civ)) civ.QualityVictoryTurns++;
                 else civ.QualityVictoryTurns = 0;
                 if (civ.QualityVictoryTurns >= 5)
                 {
-                    Finish(state, civ.Id, VictoryPath.QualityOfLife, lines, "пять ходов поддерживает высокий уровень жизни во всех крупных городах");
-                    return;
+                    candidates.Add(new WinnerCandidate { CivilizationId = civ.Id, Path = VictoryPath.QualityOfLife, Reason = "пять ходов поддерживает высокий уровень жизни" });
+                    continue;
                 }
 
                 if (civ.CultureFestivalTurns > 0)
                 {
-                    if (CulturalReady(state, civ))
+                    if (!CulturalReady(state, civ))
                     {
-                        Finish(state, civ.Id, VictoryPath.Cultural, lines, "провела культурный фестиваль, объединивший города и соседей");
-                        return;
+                        civ.CultureFestivalTurns = 0;
+                        lines.Add(civ.Name + ": фестиваль обмена остановлен — условия культурной поддержки изменились.");
                     }
-                    civ.CultureFestivalTurns--;
-                    if (civ.CultureFestivalTurns == 0) lines.Add(civ.Name + ": культурная программа завершилась без достаточной поддержки. Её можно подготовить снова.");
+                    else
+                    {
+                        civ.CultureFestivalTurns--;
+                        if (civ.CultureFestivalTurns == 0)
+                        {
+                            candidates.Add(new WinnerCandidate { CivilizationId = civ.Id, Path = VictoryPath.Cultural, Reason = "завершила двухходовый фестиваль общего наследия" });
+                            continue;
+                        }
+                    }
                 }
 
-                if (civ.ScienceProjectTurns >= 4)
+                if (ScienceReady(state, civ))
                 {
-                    Finish(state, civ.Id, VictoryPath.Scientific, lines, "завершила открытую научную программу для всех цивилизаций");
-                    return;
+                    candidates.Add(new WinnerCandidate { CivilizationId = civ.Id, Path = VictoryPath.Scientific, Reason = "завершила международную научную программу" });
+                    continue;
                 }
 
                 if (civ.DiplomaticCoalitionTurns > 0)
                 {
-                    if (DiplomaticReady(state, civ))
+                    if (!DiplomaticReady(state, civ))
                     {
-                        Finish(state, civ.Id, VictoryPath.Diplomatic, lines, "собрала коалицию сотрудничества и получила поддержку мира");
-                        return;
+                        civ.DiplomaticCoalitionTurns = 0;
+                        lines.Add(civ.Name + ": международная коалиция распалась — не выполнены условия голосования или сотрудничества.");
                     }
-                    civ.DiplomaticCoalitionTurns--;
-                    if (civ.DiplomaticCoalitionTurns == 0) lines.Add(civ.Name + ": дипломатическая коалиция распалась до голосования.");
+                    else
+                    {
+                        civ.DiplomaticCoalitionTurns--;
+                        if (civ.DiplomaticCoalitionTurns == 0)
+                            candidates.Add(new WinnerCandidate { CivilizationId = civ.Id, Path = VictoryPath.Diplomatic, Reason = "получила поддержку коалиции на двух последовательных ходах" });
+                    }
                 }
+            }
+
+            if (candidates.Count > 0)
+            {
+                FinishBestCandidates(state, candidates, lines);
+                return;
             }
 
             if (state.Turn >= state.MaximumTurn)
             {
-                int winner = -1;
+                var finalCandidates = new List<WinnerCandidate>();
                 int best = int.MinValue;
                 for (int i = 0; i < state.Civilizations.Length; i++)
                 {
                     CivilizationState civ = state.Civilizations[i];
-                    if (civ.IsDefeated) continue;
+                    if (civ == null || civ.IsDefeated) continue;
                     int score = HeritageScore(state, civ.Id);
-                    if (score > best) { best = score; winner = civ.Id; }
+                    if (score > best) { best = score; finalCandidates.Clear(); }
+                    if (score == best) finalCandidates.Add(new WinnerCandidate { CivilizationId = civ.Id, Path = VictoryPath.HeritageScore, Reason = "закончила кампанию с наибольшим наследием развития" });
                 }
-                if (winner >= 0) Finish(state, winner, VictoryPath.HeritageScore, lines, "закончила кампанию с наибольшим наследием развития");
+                if (finalCandidates.Count > 0) FinishBestCandidates(state, finalCandidates, lines);
             }
+        }
+
+        public static int CityQualityIndex(GameState state, CityState city)
+        {
+            if (state == null || city == null || city.PopulationTenths <= 0) return 0;
+            CivilizationState owner = state.Civilization(city.OwnerId);
+            if (owner == null) return 0;
+            CityYield yield = EconomyCalculator.Calculate(state, city);
+
+            int consumption = Math.Max(1, city.PopulationTenths);
+            int foodScore;
+            if (city.FoodShortageTurns > 0) foodScore = 0;
+            else if (yield.FoodTenths - consumption >= 0 && city.FoodTenths >= consumption) foodScore = 100;
+            else if (city.FoodTenths >= consumption) foodScore = 50;
+            else foodScore = Math.Min(50, city.FoodTenths * 50 / consumption);
+
+            int housingScore = Math.Min(100, city.HousingTenths * 100 / Math.Max(1, city.PopulationTenths));
+            int workers = city.WorkerCount;
+            int assigned = 0;
+            if (city.Workers != null) for (int i = 0; i < city.Workers.Length; i++) assigned += Math.Max(0, city.Workers[i]);
+            int employmentScore = workers <= 0 ? 100 : Math.Min(100, assigned * 100 / workers);
+            if (owner.ConsecutiveDeficitTurns > 0) employmentScore = Math.Max(0, employmentScore - 10);
+
+            int equalityScore = ServiceEqualityScore(state, owner.Id);
+            int weighted = foodScore * 20 + housingScore * 15 + city.Health * 15 + employmentScore * 15 +
+                city.Safety * 15 + city.Education * 10 + city.Environment * 5 + equalityScore * 5;
+            return Clamp(weighted / 100, 0, 100);
+        }
+
+        public static HeritageScoreBreakdown HeritageBreakdown(GameState state, int civilizationId)
+        {
+            var result = new HeritageScoreBreakdown();
+            CivilizationState civ = state == null ? null : state.Civilization(civilizationId);
+            if (civ == null) return result;
+
+            var cities = OwnedCities(state, civilizationId);
+            int totalPopulation = 0;
+            long weightedQuality = 0;
+            int education = 0;
+            int foodStable = 0;
+            int distinctObjects = 0;
+            var objects = new HashSet<string>();
+            for (int i = 0; i < cities.Count; i++)
+            {
+                CityState city = cities[i];
+                int population = Math.Max(0, city.PopulationTenths);
+                totalPopulation += population;
+                weightedQuality += (long)CityQualityIndex(state, city) * population;
+                education += Clamp(city.Education, 0, 100);
+                if (city.FoodShortageTurns == 0) foodStable++;
+                if (city.CompletedCulturalIds != null)
+                    for (int j = 0; j < city.CompletedCulturalIds.Length; j++)
+                        if (objects.Add(city.CompletedCulturalIds[j])) distinctObjects++;
+            }
+
+            int averageQuality = totalPopulation > 0 ? (int)(weightedQuality / totalPopulation) : cities.Count == 0 ? 0 : AverageCityQuality(state, cities);
+            result.QualityOfLife = averageQuality * Math.Min(4, cities.Count) / 4;
+
+            int technologyProgressTotal = 0;
+            int eraTechnologyCount = 0;
+            for (int i = 0; i < RulesCatalog.Technologies.Length; i++)
+            {
+                TechnologyDefinition tech = RulesCatalog.Technologies[i];
+                if (tech.Era != civ.Era) continue;
+                eraTechnologyCount++;
+                if (civ.Knows(tech.Id)) technologyProgressTotal += 100;
+                else if (civ.ActiveResearchIndex == i && i < civ.TechnologyProgressTenths.Length)
+                {
+                    int costTenths = tech.Cost * 10 * (tech.KeyTechnology ? 125 : 100) / 100;
+                    if (costTenths > 0) technologyProgressTotal += Clamp(civ.TechnologyProgressTenths[i] * 100 / costTenths, 0, 100);
+                }
+            }
+            int technologyProgress = eraTechnologyCount == 0 ? 0 : Clamp(technologyProgressTotal / eraTechnologyCount, 0, 100);
+            int averageEducation = cities.Count == 0 ? 0 : education / cities.Count;
+            result.EducationAndTechnology = (technologyProgress * 60 + averageEducation * 40) / 100;
+
+            int prestigeScore = Clamp(civ.CulturePrestige, 0, 100);
+            int objectScore = Clamp(distinctObjects * 20, 0, 100);
+            result.CulturalContribution = (prestigeScore * 70 + objectScore * 30) / 100;
+
+            int stableFoodScore = cities.Count == 0 ? 0 : foodStable * 100 / cities.Count;
+            int creditLimit = Math.Max(1, (20 + cities.Count * 5) * 10);
+            int debt = Math.Max(Math.Max(0, civ.DebtTenths), Math.Max(0, -civ.TreasuryTenths));
+            int treasuryScore = Clamp(100 - debt * 100 / creditLimit, 0, 100);
+            int tradeScore = DistinctTradePartners(state, civilizationId) * 100 / 3;
+            result.Sustainability = (stableFoodScore * 50 + treasuryScore * 25 + Clamp(tradeScore, 0, 100) * 25) / 100;
+
+            int trustTotal = 0;
+            int rivalCount = 0;
+            for (int i = 0; i < state.Civilizations.Length; i++)
+            {
+                CivilizationState rival = state.Civilizations[i];
+                if (rival == null || rival.Id == civilizationId) continue;
+                int trust = civ.Trusts != null && rival.Id >= 0 && rival.Id < civ.Trusts.Length ? civ.Trusts[rival.Id] : 0;
+                trustTotal += Clamp(trust, 0, 100);
+                rivalCount++;
+            }
+            int averageTrust = rivalCount == 0 ? 0 : trustTotal / rivalCount;
+            int agreementScore = TreatyFulfillmentScore(state, civilizationId);
+            result.TrustAndAgreements = (averageTrust * 50 + Clamp(civ.Reputation, 0, 100) * 30 + agreementScore * 20) / 100;
+
+            result.Total = Clamp((result.QualityOfLife * 25 + result.EducationAndTechnology * 20 +
+                result.CulturalContribution * 20 + result.Sustainability * 20 + result.TrustAndAgreements * 15) / 100, 0, 100);
+            return result;
         }
 
         public static int HeritageScore(GameState state, int civilizationId)
         {
-            CivilizationState civ = state.Civilization(civilizationId);
-            if (civ == null) return 0;
-            int score = civ.CompletedTechnologies * 12 + Math.Min(150, civ.CulturePrestige) + civ.Reputation * 2;
-            score += CivilizationPopulation(state, civilizationId) / 5;
-            int cityCount = 0;
-            int qualityTotal = 0;
+            return HeritageBreakdown(state, civilizationId).Total;
+        }
+
+        public static bool HasCulturalVictoryStructures(GameState state, int civilizationId)
+        {
+            CityState culturalHouse = null;
+            CityState archive = null;
+            CityState exchangeHouse = null;
             for (int i = 0; i < state.Cities.Length; i++)
             {
                 CityState city = state.Cities[i];
                 if (city.OwnerId != civilizationId) continue;
-                cityCount++;
-                score += city.LocalCulturePrestige / 2 + city.BuildingIds.Length * 3;
-                score += city.BuildingLevel("cultural_house") * 10 + city.BuildingLevel("archive") * 15 + city.BuildingLevel("university") * 12;
-                int quality = city.Health + city.Safety + city.Education + city.Trust + city.Environment;
-                qualityTotal += quality / 5;
-                score += quality / 5;
-                if (city.FoodShortageTurns > 0) score -= 12;
-                if (city.OccupiedById >= 0) score -= 20;
+                if (city.BuildingLevel("cultural_house") > 0) culturalHouse = city;
+                if (city.BuildingLevel("archive") > 0) archive = city;
+                if (city.BuildingLevel("exchange_house") > 0) exchangeHouse = city;
             }
-            score += cityCount * 20 + civ.InfluenceTenths / 10 + CountTradeRoutes(state, civilizationId) * 12;
-            score += civ.ScienceProjectTurns * 8 + civ.DiplomaticCoalitionTurns * 4;
-            score -= civ.WarStrain / 2 + civ.DebtTenths / 15 + civ.ConsecutiveDeficitTurns * 8;
-            if (IsAtWar(state, civilizationId)) score -= 50;
-            return Math.Max(0, score);
+            return culturalHouse != null && archive != null && exchangeHouse != null &&
+                culturalHouse.Id != archive.Id && culturalHouse.Id != exchangeHouse.Id && archive.Id != exchangeHouse.Id;
+        }
+
+        public static bool HasDiplomaticAssemblyRoutes(GameState state, int civilizationId, int cityId)
+        {
+            CityState assemblyCity = state == null ? null : state.City(cityId);
+            if (assemblyCity == null || assemblyCity.OwnerId != civilizationId || assemblyCity.BuildingLevel("assembly") <= 0) return false;
+            var partners = new HashSet<int>();
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                TreatyState treaty = state.Treaties[i];
+                if (!treaty.Active || treaty.Kind != TreatyKind.TradeRoute) continue;
+                if (treaty.RouteCityA == cityId && treaty.FromCivilizationId == civilizationId) partners.Add(treaty.ToCivilizationId);
+                if (treaty.RouteCityB == cityId && treaty.ToCivilizationId == civilizationId) partners.Add(treaty.FromCivilizationId);
+            }
+            return partners.Count >= 2;
+        }
+
+        public static bool CanStartCulturalFestival(GameState state, int civilizationId)
+        {
+            CivilizationState civ = state == null ? null : state.Civilization(civilizationId);
+            return civ != null && civ.CulturePrestige >= 100 && HasCulturalVictoryStructures(state, civilizationId) && CulturalInfluenceReady(civ);
+        }
+
+        public static bool CanStartScientificProgram(GameState state, int civilizationId, int cityId)
+        {
+            CivilizationState civ = state == null ? null : state.Civilization(civilizationId);
+            CityState projectCity = state == null ? null : state.City(cityId);
+            if (civ == null || projectCity == null || projectCity.OwnerId != civilizationId ||
+                (projectCity.Project != null && projectCity.Project.Kind != ProjectKind.None)) return false;
+            if (!civ.Knows("computing_networks") || !civ.Knows("open_science")) return false;
+            int universityCities = 0;
+            bool academy = false;
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityState city = state.Cities[i];
+                if (city.OwnerId != civilizationId) continue;
+                if (city.BuildingLevel("university") > 0) universityCities++;
+                if (city.BuildingLevel("academy") > 0) academy = true;
+            }
+            return universityCities >= 2 && academy;
+        }
+
+        public static bool CanStartDiplomaticCoalition(GameState state, int civilizationId, int cityId)
+        {
+            CivilizationState civ = state == null ? null : state.Civilization(civilizationId);
+            return civ != null && civ.Knows("international_assembly") && HasDiplomaticAssemblyRoutes(state, civilizationId, cityId) && DiplomaticSupportReady(state, civ);
         }
 
         public static string PathName(VictoryPath path)
@@ -108,88 +289,194 @@ namespace Nasledie.Core
 
         private static bool QualityReady(GameState state, CivilizationState civ)
         {
-            int cities = 0;
-            int health = 0, safety = 0, education = 0, trust = 0, environment = 0;
+            var cities = OwnedCities(state, civ.Id);
+            if (cities.Count < 4 || civ.ConsecutiveDeficitTurns > 2) return false;
+            int totalPopulation = 0;
+            int qualifiedPopulation = 0;
+            int lowest = 101;
+            int highest = -1;
+            for (int i = 0; i < cities.Count; i++)
+            {
+                CityState city = cities[i];
+                if (city.Health < 60 || city.Safety < 60) return false;
+                int index = CityQualityIndex(state, city);
+                lowest = Math.Min(lowest, index);
+                highest = Math.Max(highest, index);
+                totalPopulation += Math.Max(0, city.PopulationTenths);
+                if (index >= 75) qualifiedPopulation += Math.Max(0, city.PopulationTenths);
+            }
+            return totalPopulation > 0 && qualifiedPopulation * 100L >= totalPopulation * 80L && highest - lowest <= 20;
+        }
+
+        private static bool ScienceReady(GameState state, CivilizationState civ)
+        {
+            if (!civ.Knows("computing_networks") || !civ.Knows("open_science") || civ.ScienceProjectTurns < 4) return false;
+            if (civ.LastTurnKnowledgeOutputTenths < 50 || civ.PreviousTurnKnowledgeOutputTenths < 50) return false;
+            int universityCities = 0;
+            bool hasAcademy = false;
+            bool activeProject = false;
             for (int i = 0; i < state.Cities.Length; i++)
             {
                 CityState city = state.Cities[i];
                 if (city.OwnerId != civ.Id) continue;
-                cities++;
-                health += city.Health;
-                safety += city.Safety;
-                education += city.Education;
-                trust += city.Trust;
-                environment += city.Environment;
-                if (city.FoodShortageTurns > 0 || city.OccupiedById >= 0 || city.PopulationTenths < 40) return false;
+                if (city.BuildingLevel("university") > 0) universityCities++;
+                if (city.BuildingLevel("academy") > 0) hasAcademy = true;
+                if (city.Project != null && city.Project.Kind == ProjectKind.ScientificProject) activeProject = true;
             }
-            if (cities < 3 || IsAtWar(state, civ.Id) || civ.ConsecutiveDeficitTurns > 0) return false;
-            return health / cities >= 72 && safety / cities >= 70 && education / cities >= 55 && trust / cities >= 70 && environment / cities >= 75;
+            return universityCities >= 2 && hasAcademy && activeProject;
         }
 
         private static bool CulturalReady(GameState state, CivilizationState civ)
         {
-            if (civ.CulturePrestige < 100 || civ.Reputation < 65) return false;
-            int citiesWithObjects = 0;
-            int distinctObjects = 0;
-            var seen = new HashSet<string>();
-            for (int i = 0; i < state.Cities.Length; i++)
+            return civ.CulturePrestige >= 100 && HasCulturalVictoryStructures(state, civ.Id) && CulturalInfluenceReady(civ);
+        }
+
+        private static bool CulturalInfluenceReady(CivilizationState civ)
+        {
+            int partners70 = 0;
+            int partners40 = 0;
+            for (int i = 0; i < civ.CulturalInfluence.Length; i++)
             {
-                CityState city = state.Cities[i];
-                if (city.OwnerId != civ.Id) continue;
-                if (city.CompletedCulturalIds.Length > 0) citiesWithObjects++;
-                for (int c = 0; c < city.CompletedCulturalIds.Length; c++)
-                    if (seen.Add(city.CompletedCulturalIds[c])) distinctObjects++;
+                if (i == civ.Id) continue;
+                if (civ.CulturalInfluence[i] >= 70) partners70++;
+                if (civ.CulturalInfluence[i] >= 40) partners40++;
             }
-            if (citiesWithObjects < 2 || distinctObjects < 3) return false;
-            int culturalSupport = 0;
-            for (int i = 0; i < civ.CulturalInfluence.Length; i++) if (i != civ.Id && civ.CulturalInfluence[i] >= 25) culturalSupport++;
-            return culturalSupport >= 2;
+            return partners70 >= 2 && partners40 >= 3;
         }
 
         private static bool DiplomaticReady(GameState state, CivilizationState civ)
         {
-            if (!state.HasResolvedGlobalCrisis || civ.Reputation < 70 || CountTradeRoutes(state, civ.Id) < 2 || IsAtWar(state, civ.Id)) return false;
-            int partners = 0;
-            for (int i = 0; i < civ.Relations.Length; i++)
-                if (i != civ.Id && civ.Relations[i] >= 25 && civ.Trusts[i] >= 50) partners++;
-            return partners >= 2;
+            return civ.DiplomaticCoalitionTurns > 0 && DiplomaticSupportReady(state, civ) &&
+                AssemblyHasTwoPartners(state, civ.Id);
         }
 
-        private static int CivilizationPopulation(GameState state, int civilizationId)
+        private static bool DiplomaticSupportReady(GameState state, CivilizationState civ)
         {
-            int total = 0;
-            for (int i = 0; i < state.Cities.Length; i++) if (state.Cities[i].OwnerId == civilizationId) total += state.Cities[i].PopulationTenths;
-            for (int i = 0; i < state.Units.Length; i++) if (state.Units[i].OwnerId == civilizationId) total += state.Units[i].PopulationTenths;
-            CivilizationState civ = state.Civilization(civilizationId);
-            if (civ != null) total += civ.RefugeePopulationTenths;
-            return total;
+            if (state.Crisis == null || !state.Crisis.Resolved || !state.HasResolvedGlobalCrisis) return false;
+            int participantCount = CountBits(state.ResolvedGlobalCrisisContributorMask);
+            if (participantCount < 3 || (state.ResolvedGlobalCrisisContributorMask & (1 << civ.Id)) == 0) return false;
+            int votes = 1;
+            for (int i = 0; i < state.Civilizations.Length; i++)
+            {
+                CivilizationState partner = state.Civilizations[i];
+                if (partner == null || partner.IsDefeated || partner.Id == civ.Id) continue;
+                int relation = civ.Relations != null && partner.Id < civ.Relations.Length ? civ.Relations[partner.Id] : -100;
+                int trust = civ.Trusts != null && partner.Id < civ.Trusts.Length ? civ.Trusts[partner.Id] : 0;
+                if (relation >= 25 && trust >= 50) votes++;
+            }
+            return votes >= 3;
         }
 
-        private static int CountTradeRoutes(GameState state, int civilizationId)
+        private static bool AssemblyHasTwoPartners(GameState state, int civilizationId)
         {
-            int count = 0;
-            for (int i = 0; i < state.Treaties.Length; i++)
-                if (state.Treaties[i].Active && state.Treaties[i].Kind == TreatyKind.TradeRoute &&
-                    (state.Treaties[i].FromCivilizationId == civilizationId || state.Treaties[i].ToCivilizationId == civilizationId)) count++;
-            return count;
-        }
-
-        private static bool IsAtWar(GameState state, int civilizationId)
-        {
-            for (int i = 0; i < state.Conflicts.Length; i++)
-                if (state.Conflicts[i].Active && state.Conflicts[i].Phase == 2 &&
-                    (state.Conflicts[i].AggressorId == civilizationId || state.Conflicts[i].DefenderId == civilizationId)) return true;
+            for (int i = 0; i < state.Cities.Length; i++)
+                if (state.Cities[i].OwnerId == civilizationId && state.Cities[i].BuildingLevel("assembly") > 0 &&
+                    HasDiplomaticAssemblyRoutes(state, civilizationId, state.Cities[i].Id)) return true;
             return false;
         }
 
-        private static void Finish(GameState state, int winnerId, VictoryPath path, List<string> lines, string reason)
+        private static int ServiceEqualityScore(GameState state, int civilizationId)
         {
-            CivilizationState winner = state.Civilization(winnerId);
+            int min = 101;
+            int max = -1;
+            int count = 0;
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityState city = state.Cities[i];
+                if (city.OwnerId != civilizationId) continue;
+                int coverage = Clamp(EconomyCalculator.Calculate(state, city).ServiceCoverage, 0, 100);
+                min = Math.Min(min, coverage);
+                max = Math.Max(max, coverage);
+                count++;
+            }
+            return count <= 1 ? 100 : 100 - Math.Max(0, max - min);
+        }
+
+        private static int TreatyFulfillmentScore(GameState state, int civilizationId)
+        {
+            int fulfilled = 0;
+            int broken = 0;
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                TreatyState treaty = state.Treaties[i];
+                if (treaty.FromCivilizationId != civilizationId && treaty.ToCivilizationId != civilizationId) continue;
+                if (treaty.Fulfilled) fulfilled++;
+                else if (treaty.Broken) broken++;
+            }
+            int resolved = fulfilled + broken;
+            return resolved == 0 ? 50 : fulfilled * 100 / resolved;
+        }
+
+        private static int DistinctTradePartners(GameState state, int civilizationId)
+        {
+            var partners = new HashSet<int>();
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                TreatyState treaty = state.Treaties[i];
+                if (!treaty.Active || treaty.Kind != TreatyKind.TradeRoute) continue;
+                if (treaty.FromCivilizationId == civilizationId) partners.Add(treaty.ToCivilizationId);
+                else if (treaty.ToCivilizationId == civilizationId) partners.Add(treaty.FromCivilizationId);
+            }
+            return partners.Count;
+        }
+
+        private static int AverageCityQuality(GameState state, List<CityState> cities)
+        {
+            int total = 0;
+            for (int i = 0; i < cities.Count; i++) total += CityQualityIndex(state, cities[i]);
+            return cities.Count == 0 ? 0 : total / cities.Count;
+        }
+
+        private static List<CityState> OwnedCities(GameState state, int civilizationId)
+        {
+            var result = new List<CityState>();
+            if (state.Cities == null) return result;
+            for (int i = 0; i < state.Cities.Length; i++)
+                if (state.Cities[i] != null && state.Cities[i].OwnerId == civilizationId) result.Add(state.Cities[i]);
+            return result;
+        }
+
+        private static int CountBits(int value)
+        {
+            int count = 0;
+            while (value != 0) { count += value & 1; value >>= 1; }
+            return count;
+        }
+
+        private static int Clamp(int value, int min, int max) { return Math.Max(min, Math.Min(max, value)); }
+
+        private static void FinishBestCandidates(GameState state, List<WinnerCandidate> candidates, List<string> lines)
+        {
+            int best = int.MinValue;
+            var winners = new List<WinnerCandidate>();
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                int score = HeritageScore(state, candidates[i].CivilizationId);
+                if (score > best) { best = score; winners.Clear(); }
+                if (score == best) winners.Add(candidates[i]);
+            }
+            if (winners.Count == 0) return;
+            WinnerCandidate primary = winners[0];
             state.IsFinished = true;
-            state.WinnerCivilizationId = winnerId;
-            state.WinningPath = path;
-            if (winner != null) winner.WinningPath = path;
-            lines.Add((winner == null ? "Цивилизация" : winner.Name) + " победила по пути «" + PathName(path) + ": " + reason + ".");
+            state.WinnerCivilizationId = primary.CivilizationId;
+            state.WinningPath = primary.Path;
+            state.WinningCivilizationIds = new int[winners.Count];
+            var winnerNames = new List<string>();
+            for (int i = 0; i < winners.Count; i++)
+            {
+                WinnerCandidate candidate = winners[i];
+                state.WinningCivilizationIds[i] = candidate.CivilizationId;
+                CivilizationState civ = state.Civilization(candidate.CivilizationId);
+                if (civ != null)
+                {
+                    civ.WinningPath = candidate.Path;
+                    winnerNames.Add(civ.Name);
+                }
+            }
+            if (winners.Count == 1)
+                lines.Add(winnerNames[0] + " победила по пути «" + PathName(primary.Path) + ": " + primary.Reason + ".");
+            else
+                lines.Add("Совместная победа по пути «" + PathName(primary.Path) + "»: " + string.Join(", ", winnerNames.ToArray()) + " разделили первое место по счёту наследия.");
         }
     }
 }

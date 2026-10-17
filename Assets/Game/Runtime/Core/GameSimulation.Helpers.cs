@@ -157,6 +157,14 @@ namespace Nasledie.Core
             return count;
         }
 
+        private static int CountCitiesWithBuilding(GameState state, int civilizationId, string buildingId)
+        {
+            int count = 0;
+            for (int i = 0; i < state.Cities.Length; i++)
+                if (state.Cities[i].OwnerId == civilizationId && state.Cities[i].BuildingLevel(buildingId) > 0) count++;
+            return count;
+        }
+
         private static int CountRoutes(GameState state, int civilizationId)
         {
             int count = 0;
@@ -270,7 +278,11 @@ namespace Nasledie.Core
                 for (int i = 0; i < state.Treaties.Length; i++)
                     if (state.Treaties[i].Active && state.Treaties[i].Kind == TreatyKind.TradeRoute &&
                         ((state.Treaties[i].FromCivilizationId == first.Id && state.Treaties[i].ToCivilizationId == second.Id) ||
-                         (state.Treaties[i].FromCivilizationId == second.Id && state.Treaties[i].ToCivilizationId == first.Id))) state.Treaties[i].Active = false;
+                         (state.Treaties[i].FromCivilizationId == second.Id && state.Treaties[i].ToCivilizationId == first.Id)))
+                    {
+                        MarkTreatyBroken(state, state.Treaties[i]);
+                        state.Treaties[i].Active = false;
+                    }
             }
         }
 
@@ -282,8 +294,18 @@ namespace Nasledie.Core
                 if (!treaty.Active || treaty.Kind != TreatyKind.TradeRoute) continue;
                 bool belongsToActor = treaty.FromCivilizationId == civilizationId || treaty.ToCivilizationId == civilizationId;
                 bool partnerMatches = partnerId < 0 || treaty.FromCivilizationId == partnerId || treaty.ToCivilizationId == partnerId;
-                if (belongsToActor && partnerMatches) treaty.Active = false;
+                if (belongsToActor && partnerMatches)
+                {
+                    MarkTreatyBroken(state, treaty);
+                    treaty.Active = false;
+                }
             }
+        }
+
+        private static void MarkTreatyBroken(GameState state, TreatyState treaty)
+        {
+            if (state == null || treaty == null || treaty.Fulfilled || treaty.Broken || treaty.Pending) return;
+            treaty.Broken = true;
         }
 
         private static int TradeAcceptance(CivilizationState actor, CivilizationState target, TreatyKind kind)
@@ -465,8 +487,31 @@ namespace Nasledie.Core
             CivilizationState first = state.Civilization(firstId);
             CivilizationState second = state.Civilization(secondId);
             if (first == null || second == null) return;
-            first.CulturalInfluence[secondId] = Math.Min(100, first.CulturalInfluence[secondId] + 1);
-            second.CulturalInfluence[firstId] = Math.Min(100, second.CulturalInfluence[firstId] + 1);
+            int growth = 1;
+            if (HasTreaty(state, TreatyKind.OpenBorders, firstId, secondId)) growth++;
+            if (HasCulturalPresence(state, firstId) || HasCulturalPresence(state, secondId)) growth++;
+            if (AverageEducation(state, firstId) >= 60 || AverageEducation(state, secondId) >= 60) growth++;
+            first.CulturalInfluence[secondId] = Math.Min(100, first.CulturalInfluence[secondId] + growth);
+            second.CulturalInfluence[firstId] = Math.Min(100, second.CulturalInfluence[firstId] + growth);
+        }
+
+        private static bool HasCulturalPresence(GameState state, int civilizationId)
+        {
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityState city = state.Cities[i];
+                if (city.OwnerId == civilizationId && (city.BuildingLevel("cultural_house") > 0 || city.BuildingLevel("archive") > 0 || city.BuildingLevel("exchange_house") > 0)) return true;
+            }
+            return false;
+        }
+
+        private static int AverageEducation(GameState state, int civilizationId)
+        {
+            int total = 0;
+            int cities = 0;
+            for (int i = 0; i < state.Cities.Length; i++)
+                if (state.Cities[i].OwnerId == civilizationId) { total += state.Cities[i].Education; cities++; }
+            return cities == 0 ? 0 : total / cities;
         }
 
         private static string FormatPopulation(int tenths) { return (tenths / 10.0).ToString("0.0"); }

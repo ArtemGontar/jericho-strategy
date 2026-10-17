@@ -136,9 +136,9 @@ namespace Nasledie.Client
                 case "caretaker": return QualifyingCities(state, player.Id) + "/2 города с хорошим здоровьем и доверием";
                 case "crisis_helper": return HasHelpedWithCrisis(state, player.Id) ? "Вклад внесён" : "Вклад пока не внесён";
                 case "reconciler": return player.WarsStarted == 0 ? "Конфликтов игрока ещё не было" : HasActiveConflict(state, player.Id) ? "Идёт восстановление после конфликта" : "Военная нагрузка " + player.WarStrain + "/40";
-                case "victor": return state.IsFinished && state.WinnerCivilizationId == player.Id ? "Победа достигнута" : "Победите любым путём";
+                case "victor": return IsWinner(state, player.Id) ? "Победа достигнута" : "Победите любым путём";
                 case "peaceful_victory": return player.WarsStarted == 0 ? "Выиграйте путь благополучия или дипломатии" : "Объявленная война закрыла это достижение в текущей кампании";
-                case "cultural_victory": return state.IsFinished && state.WinnerCivilizationId == player.Id && state.WinningPath == VictoryPath.Cultural ? "Культурная победа достигнута" : "Завершите культурную победу";
+                case "cultural_victory": return IsWinner(state, player.Id) && state.WinningPath == VictoryPath.Cultural ? "Культурная победа достигнута" : "Завершите культурную победу";
                 default: return "В процессе";
             }
         }
@@ -157,12 +157,19 @@ namespace Nasledie.Client
                 case "caretaker": return QualifyingCities(state, player.Id) >= 2;
                 case "crisis_helper": return HasHelpedWithCrisis(state, player.Id);
                 case "reconciler": return player.WarsStarted > 0 && !HasActiveConflict(state, player.Id) && player.WarStrain <= 40;
-                case "victor": return state.IsFinished && state.WinnerCivilizationId == player.Id;
-                case "peaceful_victory": return state.IsFinished && state.WinnerCivilizationId == player.Id && player.WarsStarted == 0 &&
+                case "victor": return IsWinner(state, player.Id);
+                case "peaceful_victory": return IsWinner(state, player.Id) && player.WarsStarted == 0 &&
                     (state.WinningPath == VictoryPath.QualityOfLife || state.WinningPath == VictoryPath.Diplomatic);
-                case "cultural_victory": return state.IsFinished && state.WinnerCivilizationId == player.Id && state.WinningPath == VictoryPath.Cultural;
+                case "cultural_victory": return IsWinner(state, player.Id) && state.WinningPath == VictoryPath.Cultural;
                 default: return false;
             }
+        }
+
+        private static bool IsWinner(GameState state, int civilizationId)
+        {
+            if (state == null || !state.IsFinished) return false;
+            if (state.WinningCivilizationIds != null && Array.IndexOf(state.WinningCivilizationIds, civilizationId) >= 0) return true;
+            return state.WinnerCivilizationId == civilizationId;
         }
 
         private static int CountImprovements(GameState state, int ownerId)

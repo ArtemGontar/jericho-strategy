@@ -108,31 +108,36 @@ namespace Nasledie.Core
                     if (state.Cities[i].OwnerId == civ.Id && (capital == null || state.Cities[i].AdministrativeLoad > capital.AdministrativeLoad)) capital = state.Cities[i];
                 if (capital == null) continue;
 
-                CityYield yield = EconomyCalculator.Calculate(state, capital);
-                int consumption = capital.PopulationTenths;
-                if (capital.FoodTenths + yield.FoodTenths < consumption * 2)
-                    EconomyCalculator.AutoAssign(state, capital, "food");
-                else if (civ.Archetype == "Учёный") EconomyCalculator.AutoAssign(state, capital, "science");
-                else if (civ.Archetype == "Торговец") EconomyCalculator.AutoAssign(state, capital, "trade");
-                else if (civ.Archetype == "Стратег безопасности") EconomyCalculator.AutoAssign(state, capital, "industry");
-                else EconomyCalculator.AutoAssign(state, capital, "balanced");
-
                 ChooseAiResearch(civ);
-                if (capital.Project == null || capital.Project.Kind == ProjectKind.None)
+                TryAiVictoryProjects(state, civ);
+                for (int i = 0; i < state.Cities.Length; i++)
                 {
-                    int eraKnowledge = 0;
-                    for (int t = 0; t < civ.KnownTechnologies.Length; t++)
+                    CityState city = state.Cities[i];
+                    if (city.OwnerId != civ.Id) continue;
+                    CityYield yield = EconomyCalculator.Calculate(state, city);
+                    if (city.FoodTenths + yield.FoodTenths < city.PopulationTenths * 2)
+                        EconomyCalculator.AutoAssign(state, city, "food");
+                    else if (civ.Archetype == "Учёный") EconomyCalculator.AutoAssign(state, city, "science");
+                    else if (civ.Archetype == "Торговец") EconomyCalculator.AutoAssign(state, city, "trade");
+                    else if (civ.Archetype == "Попечитель") EconomyCalculator.AutoAssign(state, city, "culture");
+                    else if (civ.Archetype == "Стратег безопасности") EconomyCalculator.AutoAssign(state, city, "industry");
+                    else EconomyCalculator.AutoAssign(state, city, "balanced");
+
+                    if (city.Project != null && city.Project.Kind != ProjectKind.None) continue;
+                    if (city.Id == capital.Id && CanAiExpand(state, civ, capital))
                     {
-                        TechnologyDefinition known = RulesCatalog.Technology(civ.KnownTechnologies[t]);
-                        if (known != null && known.Era == civ.Era) eraKnowledge++;
+                        Recruit(state, civ, capital, UnitKind.SettlerWagon, false);
+                        continue;
                     }
-                    if ((int)civ.Era < 4 && eraKnowledge >= 4 && civ.InfluenceTenths >= 100)
-                        SetProject(state, civ, capital, "era_transition", false);
-                    else
+
+                    if (ShouldAiAdvanceEra(state, civ))
                     {
-                        string preferredBuilding = AiBuildingChoice(state, civ, capital);
-                        if (!string.IsNullOrEmpty(preferredBuilding)) SetProject(state, civ, capital, preferredBuilding, false);
+                        SetProject(state, civ, city, "era_transition", false);
+                        continue;
                     }
+
+                    string preferredBuilding = AiBuildingChoice(state, civ, city);
+                    if (!string.IsNullOrEmpty(preferredBuilding)) SetProject(state, civ, city, preferredBuilding, false);
                 }
 
                 if (civ.Archetype == "Торговец" && CountRoutes(state, civ.Id) == 0 && civ.InfluenceTenths >= 20)
@@ -145,17 +150,41 @@ namespace Nasledie.Core
                     }
                 }
 
-                if (capital.PopulationTenths >= 60 && capital.FoodTenths >= 80 && CountOwnedCities(state, civ.Id) < Math.Min(4, civ.AdministrativeCapacity) && capital.Project.Kind == ProjectKind.None)
-                    Recruit(state, civ, capital, UnitKind.SettlerWagon, false);
-
                 if (capital.BuildingLevel("barracks") > 0 && !HasUnitKind(state, civ.Id, UnitKind.Militia) && civ.TreasuryTenths > 200 && capital.Project.Kind == ProjectKind.None)
                     Recruit(state, civ, capital, UnitKind.Militia, false);
+
+                ResolveAiSettlers(state, civ);
 
                 civ.StrategyHoldTurns = Math.Max(0, civ.StrategyHoldTurns - 1);
                 if (civ.StrategyHoldTurns == 0)
                 {
                     civ.StrategicGoal = ChooseAiGoal(state, civ);
                     civ.StrategyHoldTurns = 5;
+                }
+            }
+        }
+
+        private void TryAiVictoryProjects(GameState state, CivilizationState civ)
+        {
+            if (civ.Archetype != "Учёный" && civ.Archetype != "Попечитель" && civ.Archetype != "Торговец") return;
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityState city = state.Cities[i];
+                if (city.OwnerId != civ.Id || city.Project == null || city.Project.Kind != ProjectKind.None) continue;
+                if (civ.Archetype == "Учёный" && VictoryEvaluator.CanStartScientificProgram(state, civ.Id, city.Id) && civ.KnowledgeTenths >= 300 && civ.InfluenceTenths >= 80)
+                {
+                    BeginVictoryProject(state, civ, city, VictoryPath.Scientific, false);
+                    return;
+                }
+                if (civ.Archetype == "Попечитель" && VictoryEvaluator.CanStartCulturalFestival(state, civ.Id) && civ.InfluenceTenths >= 200 && civ.TreasuryTenths >= 100)
+                {
+                    BeginVictoryProject(state, civ, city, VictoryPath.Cultural, false);
+                    return;
+                }
+                if (civ.Archetype == "Торговец" && civ.InfluenceTenths >= 200 && VictoryEvaluator.CanStartDiplomaticCoalition(state, civ.Id, city.Id))
+                {
+                    BeginVictoryProject(state, civ, city, VictoryPath.Diplomatic, false);
+                    return;
                 }
             }
         }
@@ -167,16 +196,11 @@ namespace Nasledie.Core
                 TechnologyDefinition active = RulesCatalog.Technologies[civ.ActiveResearchIndex];
                 if (!civ.Knows(active.Id) && (int)active.Era <= (int)civ.Era) return;
             }
-            string[] priorities = civ.Archetype == "Учёный"
-                ? new[] { "writing", "civic_schools", "university", "computing_networks", "open_science", "agriculture", "stone", "roads", "medicine", "engineering" }
-                : civ.Archetype == "Торговец"
-                    ? new[] { "writing", "coin_markets", "roads", "trade_league", "coastal_craft", "agriculture", "stone", "engineering" }
-                    : civ.Archetype == "Стратег безопасности"
-                        ? new[] { "stone", "roads", "engineering", "medicine", "agriculture", "coin_markets" }
-                        : new[] { "agriculture", "writing", "medicine", "civic_schools", "public_health", "pottery", "stone" };
-            for (int i = 0; i < priorities.Length; i++)
+            int selected = -1;
+            int bestScore = int.MinValue;
+            for (int i = 0; i < RulesCatalog.Technologies.Length; i++)
             {
-                TechnologyDefinition tech = RulesCatalog.Technology(priorities[i]);
+                TechnologyDefinition tech = RulesCatalog.Technologies[i];
                 if (tech == null || civ.Knows(tech.Id) || (int)tech.Era > (int)civ.Era) continue;
                 bool prerequisites = true;
                 for (int j = 0; j < tech.Prerequisites.Length; j++)
@@ -189,22 +213,171 @@ namespace Nasledie.Core
                     }
                     else if (!civ.Knows(prerequisite)) prerequisites = false;
                 }
-                if (prerequisites) { civ.ActiveResearchIndex = RulesCatalog.TechnologyIndex(tech.Id); return; }
+                if (!prerequisites) continue;
+                int score = -tech.Cost;
+                if (civ.Archetype == "Учёный")
+                {
+                    if (tech.Id == "civic_schools" || tech.Id == "university" || tech.Id == "computing_networks" || tech.Id == "open_science") score += 50;
+                    if (tech.Id == "mass_education" || tech.Id == "writing" || tech.Id == "public_health") score += 15;
+                }
+                else if (civ.Archetype == "Торговец")
+                {
+                    if (tech.Id == "coin_markets" || tech.Id == "trade_league" || tech.Id == "international_assembly" || tech.Id == "roads") score += 45;
+                    if (tech.Id == "writing" || tech.Id == "free_press" || tech.Id == "coastal_craft") score += 15;
+                }
+                else if (civ.Archetype == "Попечитель")
+                {
+                    if (tech.Id == "writing" || tech.Id == "printing" || tech.Id == "free_press" || tech.Id == "trade_league") score += 35;
+                    if (tech.Id == "agriculture" || tech.Id == "medicine" || tech.Id == "public_health" || tech.Id == "global_health") score += 20;
+                }
+                else if (civ.Archetype == "Стратег безопасности")
+                {
+                    if (tech.Id == "stone" || tech.Id == "roads" || tech.Id == "engineering" || tech.Id == "mechanization") score += 35;
+                    if (tech.Id == "medicine" || tech.Id == "public_health" || tech.Id == "agriculture") score += 15;
+                }
+                if (score > bestScore) { bestScore = score; selected = i; }
             }
-            civ.ActiveResearchIndex = -1;
+            civ.ActiveResearchIndex = selected;
         }
 
         private string AiBuildingChoice(GameState state, CivilizationState civ, CityState city)
         {
-            if (city.HousingTenths <= city.PopulationTenths + 10 && city.BuildingLevel("house") == 0) return "house";
-            if (city.Health < 65 && civ.Knows("medicine") && city.BuildingLevel("clinic") == 0) return "clinic";
-            if (civ.Archetype == "Учёный" && civ.Knows("civic_schools") && city.BuildingLevel("school") == 0) return "school";
-            if (civ.Archetype == "Торговец" && civ.Knows("coin_markets") && city.BuildingLevel("market") == 0) return "market";
-            if (civ.Knows("writing") && CountOwnedBuilding(state, civ.Id, "council") == 0) return "council";
-            if (civ.Knows("stone") && city.BuildingLevel("workshop") == 0) return "workshop";
-            if (civ.Knows("writing") && city.BuildingLevel("cultural_house") == 0) return "cultural_house";
-            return "house";
+            if (city.HousingTenths <= city.PopulationTenths + 40 && CanAiBuild(state, civ, city, "house")) return "house";
+            if (city.FoodShortageTurns > 0 && CanAiBuild(state, civ, city, "granary")) return "granary";
+            if (city.Health < 72 && CanAiBuild(state, civ, city, civ.Knows("public_health") ? "hospital" : "clinic"))
+                return civ.Knows("public_health") ? "hospital" : "clinic";
+            if (CountOwnedBuilding(state, civ.Id, "council") == 0 && CanAiBuild(state, civ, city, "council")) return "council";
+            if (civ.AdministrativeCapacity < 4 && CanAiBuild(state, civ, city, "administration")) return "administration";
+            if (civ.Knows("civic_schools") && CountOwnedBuilding(state, civ.Id, "school") == 0 && CanAiBuild(state, civ, city, "school")) return "school";
+            if (civ.Archetype == "Учёный")
+            {
+                if (civ.Knows("university") && CountCitiesWithBuilding(state, civ.Id, "university") < 2 && city.BuildingLevel("university") == 0 && CanAiBuild(state, civ, city, "university")) return "university";
+                if (civ.Knows("open_science") && CountOwnedBuilding(state, civ.Id, "academy") == 0 && CanAiBuild(state, civ, city, "academy")) return "academy";
+            }
+            if (civ.Archetype == "Попечитель")
+            {
+                if (CanPlaceAiCulturalBuilding(state, civ, city, "cultural_house") && CanAiBuild(state, civ, city, "cultural_house")) return "cultural_house";
+                if (CanPlaceAiCulturalBuilding(state, civ, city, "archive") && CanAiBuild(state, civ, city, "archive")) return "archive";
+                if (CanPlaceAiCulturalBuilding(state, civ, city, "exchange_house") && CanAiBuild(state, civ, city, "exchange_house")) return "exchange_house";
+            }
+            if (civ.Knows("coin_markets") && city.BuildingLevel("market") == 0 && CanAiBuild(state, civ, city, "market")) return "market";
+            if (civ.Knows("stone") && city.BuildingLevel("workshop") == 0 && CanAiBuild(state, civ, city, "workshop")) return "workshop";
+            if (civ.Knows("roads") && city.BuildingLevel("road_services") == 0 && CanAiBuild(state, civ, city, "road_services")) return "road_services";
+            if (civ.Archetype == "Торговец" && civ.Knows("international_assembly") && CountOwnedBuilding(state, civ.Id, "assembly") == 0 && CanAiBuild(state, civ, city, "assembly")) return "assembly";
+            return null;
         }
+
+        private bool CanAiBuild(GameState state, CivilizationState civ, CityState city, string id)
+        {
+            BuildingDefinition building = RulesCatalog.Building(id);
+            if (building == null || city.BuildingLevel(id) > 0) return false;
+            if (building.RequiredTechnology != null && !civ.Knows(building.RequiredTechnology)) return false;
+            if (building.UniqueEmpireBuilding && CountOwnedBuilding(state, civ.Id, id) > 0) return false;
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityProject project = state.Cities[i].Project;
+                if (state.Cities[i].OwnerId == civ.Id && project != null && project.Kind == ProjectKind.Building && project.TargetId == id) return false;
+            }
+            return true;
+        }
+
+        private bool CanPlaceAiCulturalBuilding(GameState state, CivilizationState civ, CityState city, string id)
+        {
+            if (CountOwnedBuilding(state, civ.Id, id) > 0) return false;
+            bool cityHasCulturalBuilding = city.BuildingLevel("cultural_house") > 0 || city.BuildingLevel("archive") > 0 || city.BuildingLevel("exchange_house") > 0;
+            if (city.Project != null && city.Project.Kind == ProjectKind.Building &&
+                (city.Project.TargetId == "cultural_house" || city.Project.TargetId == "archive" || city.Project.TargetId == "exchange_house")) cityHasCulturalBuilding = true;
+            return !cityHasCulturalBuilding;
+        }
+
+        private bool CanAiExpand(GameState state, CivilizationState civ, CityState capital)
+        {
+            if (CountOwnedCities(state, civ.Id) >= Math.Min(4, civ.AdministrativeCapacity) || capital.PopulationTenths < 80 || capital.FoodTenths < 60) return false;
+            for (int i = 0; i < state.Units.Length; i++)
+                if (state.Units[i].OwnerId == civ.Id && state.Units[i].Kind == UnitKind.SettlerWagon) return false;
+            return true;
+        }
+
+        private bool ShouldAiAdvanceEra(GameState state, CivilizationState civ)
+        {
+            if ((int)civ.Era >= 4 || civ.InfluenceTenths < 100 || CountOwnedBuilding(state, civ.Id, "council") == 0) return false;
+            for (int i = 0; i < state.Cities.Length; i++)
+                if (state.Cities[i].OwnerId == civ.Id && state.Cities[i].Project != null && state.Cities[i].Project.Kind == ProjectKind.EraTransition) return false;
+            int eraKnowledge = 0;
+            for (int i = 0; i < civ.KnownTechnologies.Length; i++)
+            {
+                TechnologyDefinition tech = RulesCatalog.Technology(civ.KnownTechnologies[i]);
+                if (tech != null && tech.Era == civ.Era) eraKnowledge++;
+            }
+            return eraKnowledge >= 3;
+        }
+
+        private void ResolveAiSettlers(GameState state, CivilizationState civ)
+        {
+            for (int i = 0; i < state.Units.Length; i++)
+            {
+                UnitState wagon = state.Units[i];
+                if (wagon.OwnerId != civ.Id || wagon.Kind != UnitKind.SettlerWagon) continue;
+                CityState source = state.City(wagon.CitySourceId);
+                if (source == null) continue;
+                HexCell target = FindSettlerCell(state, source);
+                if (target == null) continue;
+                if (wagon.Q == target.Q && wagon.R == target.R)
+                {
+                    FoundCity(state, civ, wagon.Id, false);
+                    i--;
+                    continue;
+                }
+                HexCell step = FindPathStep(state, civ.Id, wagon, target);
+                if (step == null || wagon.MovementLeft <= 0) continue;
+                if (!MoveUnit(state, civ, wagon.Id, step.Q, step.R, false).Accepted) continue;
+                if (wagon.Q == target.Q && wagon.R == target.R)
+                {
+                    FoundCity(state, civ, wagon.Id, false);
+                    i--;
+                }
+            }
+        }
+
+        private HexCell FindPathStep(GameState state, int civilizationId, UnitState unit, HexCell target)
+        {
+            var queue = new Queue<HexCell>();
+            var parent = new Dictionary<int, int>();
+            int start = CellKey(unit.Q, unit.R);
+            int goal = CellKey(target.Q, target.R);
+            HexCell startCell = state.Cell(unit.Q, unit.R);
+            if (startCell == null) return null;
+            queue.Enqueue(startCell);
+            parent[start] = start;
+            while (queue.Count > 0)
+            {
+                HexCell current = queue.Dequeue();
+                int currentKey = CellKey(current.Q, current.R);
+                if (currentKey == goal) break;
+                for (int d = 0; d < HexGrid.Directions.GetLength(0); d++)
+                {
+                    int q = current.Q + HexGrid.Directions[d, 0];
+                    int r = current.R + HexGrid.Directions[d, 1];
+                    int key = CellKey(q, r);
+                    if (parent.ContainsKey(key)) continue;
+                    HexCell next = state.Cell(q, r);
+                    if (next == null || next.Terrain == TerrainKind.Mountain || next.Terrain == TerrainKind.Water) continue;
+                    if (next.OwnerId >= 0 && next.OwnerId != civilizationId && !HasTreaty(state, TreatyKind.OpenBorders, civilizationId, next.OwnerId)) continue;
+                    parent[key] = currentKey;
+                    queue.Enqueue(next);
+                }
+            }
+            if (!parent.ContainsKey(goal)) return null;
+            int cursor = goal;
+            while (parent[cursor] != start)
+            {
+                cursor = parent[cursor];
+                if (cursor == start) return null;
+            }
+            return state.Cell(cursor / 100, cursor % 100);
+        }
+
+        private static int CellKey(int q, int r) { return q * 100 + r; }
 
         private string ChooseAiGoal(GameState state, CivilizationState civ)
         {
@@ -254,6 +427,8 @@ namespace Nasledie.Core
             {
                 CivilizationState civ = state.Civilizations[i];
                 if (civ.IsDefeated) continue;
+                civ.PreviousTurnKnowledgeOutputTenths = civ.LastTurnKnowledgeOutputTenths;
+                civ.LastTurnKnowledgeOutputTenths = knowledgeProduced[i];
                 civ.KnowledgeTenths += knowledgeProduced[i];
                 civ.CulturePrestige += cultureProduced[i];
                 if (civ.CulturePrestige > 1000) civ.Reputation = Math.Min(100, civ.Reputation + Math.Min(3, (civ.CulturePrestige - 1000) / 50));
@@ -324,6 +499,7 @@ namespace Nasledie.Core
                 if (!treaty.Active || treaty.Kind != TreatyKind.TradeRoute) continue;
                 if (AtWar(state, treaty.FromCivilizationId, treaty.ToCivilizationId))
                 {
+                    MarkTreatyBroken(state, treaty);
                     treaty.Active = false;
                     treaty.TurnsRemaining = Math.Max(treaty.TurnsRemaining, 1);
                     lines.Add("Война перекрыла торговый маршрут.");

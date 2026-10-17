@@ -335,6 +335,7 @@ namespace Nasledie.Client
                 GameState state = JsonUtility.FromJson<GameState>(json);
                 if (state == null || state.SaveVersion != 1 || state.Civilizations == null || state.Cities == null || state.Cells == null) return null;
                 state.SelectedMapOffset = state.SelectedMapOffset ?? new int[2];
+                state.WinningCivilizationIds = state.WinningCivilizationIds ?? Array.Empty<int>();
                 state.Units = state.Units ?? Array.Empty<UnitState>();
                 state.Treaties = state.Treaties ?? Array.Empty<TreatyState>();
                 state.Conflicts = state.Conflicts ?? Array.Empty<ConflictState>();

@@ -180,10 +180,15 @@ namespace Nasledie.Core
                     TechnologyDefinition known = RulesCatalog.Technology(actor.KnownTechnologies[i]);
                     if (known != null && known.Era == actor.Era) eraKnowledge++;
                 }
-                if (eraKnowledge < 4) return CommandResult.Reject("era_technologies", "Чтобы перейти дальше, изучите минимум четыре технологии текущей эпохи.");
+                if (eraKnowledge < 3) return CommandResult.Reject("era_technologies", "Чтобы перейти дальше, изучите минимум три технологии текущей эпохи.");
+                if (CountOwnedBuilding(state, actor.Id, "council") == 0)
+                    return CommandResult.Reject("era_institution", "Для общественного перехода постройте Совет хотя бы в одном городе.");
+                for (int i = 0; i < state.Cities.Length; i++)
+                    if (state.Cities[i].OwnerId == actor.Id && state.Cities[i].Project != null && state.Cities[i].Project.Kind == ProjectKind.EraTransition)
+                        return CommandResult.Reject("era_transition_busy", "В другой город уже вложено производство в переход эпохи.");
                 if (actor.InfluenceTenths < 100) return CommandResult.Reject("era_influence", "Переход требует 10 влияния на общие институты.");
                 actor.InfluenceTenths -= 100;
-                city.Project = new CityProject { Kind = ProjectKind.EraTransition, TargetId = "era_transition", Cost = 18 + (int)actor.Era * 6 };
+                city.Project = new CityProject { Kind = ProjectKind.EraTransition, TargetId = "era_transition", Cost = EraTransitionProductionCost(actor.Era) };
                 if (feedback) AppendLog(state, actor.Name + ": начат общественный переход в следующую эпоху.");
                 return CommandResult.Ok("Переход эпохи начат.");
             }
@@ -213,6 +218,13 @@ namespace Nasledie.Core
             city.Project = new CityProject { Kind = ProjectKind.Building, TargetId = targetId, Cost = building.ProductionCost, Progress = carryover };
             if (feedback) AppendLog(state, city.Name + ": начат проект «" + building.NameRu + "».");
             return CommandResult.Ok("Проект начат.");
+        }
+
+        public static int EraTransitionProductionCost(Era era)
+        {
+            // Era I -> II is the 12 point base cost; each later transition rises by 50%.
+            double multiplier = Math.Pow(1.5d, Math.Max(0, (int)era));
+            return (int)Math.Round(12d * multiplier, MidpointRounding.AwayFromZero);
         }
 
         private CommandResult ChooseTechnology(CivilizationState civilization, string technologyId, bool feedback)
@@ -391,6 +403,8 @@ namespace Nasledie.Core
             actor.Reputation = Math.Max(0, actor.Reputation - 12);
             actor.Relations[targetId] = Math.Max(-100, actor.Relations[targetId] - 20);
             actor.Trusts[targetId] = Math.Max(0, actor.Trusts[targetId] - 20);
+            actor.CulturalInfluence[targetId] = Math.Max(0, actor.CulturalInfluence[targetId] - 15);
+            target.CulturalInfluence[actor.Id] = Math.Max(0, target.CulturalInfluence[actor.Id] - 15);
             if (feedback) AppendLog(state, actor.Name + " объявила кризисную мобилизацию против цивилизации «" + target.Name + "». Цель: " + legalGoal + ".");
             return CommandResult.Ok("Кризис начался. У стороны есть один ход на ответ и посредничество.");
         }
@@ -631,8 +645,7 @@ namespace Nasledie.Core
             if (city.Project != null && city.Project.Kind != ProjectKind.None) return CommandResult.Reject("project_busy", "Сначала завершите или отмените текущий проект города.");
             if (path == VictoryPath.Scientific)
             {
-                if (!actor.Knows("computing_networks") || !actor.Knows("open_science")) return CommandResult.Reject("science_prerequisites", "Изучите «Вычислительные сети» и «Открытую науку».");
-                if (CountOwnedBuilding(state, actor.Id, "university") < 2 || CountOwnedBuilding(state, actor.Id, "academy") < 1) return CommandResult.Reject("science_buildings", "Нужны два университета и одна академия.");
+                if (!VictoryEvaluator.CanStartScientificProgram(state, actor.Id, city.Id)) return CommandResult.Reject("science_prerequisites", "Нужны финальные научные технологии, университеты в двух городах, академия и свободная очередь.");
                 if (actor.KnowledgeTenths < 300 || actor.InfluenceTenths < 80) return CommandResult.Reject("science_resources", "Нужно 30 знаний и 8 влияния.");
                 actor.KnowledgeTenths -= 300;
                 actor.InfluenceTenths -= 80;
@@ -641,7 +654,8 @@ namespace Nasledie.Core
             }
             else if (path == VictoryPath.Cultural)
             {
-                if (actor.CulturePrestige < 100) return CommandResult.Reject("culture_prestige", "Нужно накопить 100 культурного престижа.");
+                if (!VictoryEvaluator.CanStartCulturalFestival(state, actor.Id))
+                    return CommandResult.Reject("culture_requirements", "Нужны 100 престижа, три разных культурных здания в трёх городах и влияние 70/70/40 у соседей.");
                 if (actor.InfluenceTenths < 200 || actor.TreasuryTenths < 100) return CommandResult.Reject("festival_resources", "Фестиваль стоит 20 влияния и 10 казны.");
                 actor.InfluenceTenths -= 200;
                 actor.TreasuryTenths -= 100;
@@ -649,8 +663,10 @@ namespace Nasledie.Core
             }
             else if (path == VictoryPath.Diplomatic)
             {
-                if (!actor.Knows("international_assembly") || city.BuildingLevel("assembly") < 1) return CommandResult.Reject("assembly_required", "Нужны технология и здание Международной ассамблеи.");
-                if (!state.Crisis.Resolved || CountRoutes(state, actor.Id) < 2) return CommandResult.Reject("diplomacy_requirements", "Нужны два торговых контакта и разрешённый глобальный кризис.");
+                if (!VictoryEvaluator.CanStartDiplomaticCoalition(state, actor.Id, city.Id))
+                    return CommandResult.Reject("diplomacy_requirements", "Нужны Международная ассамблея на узле двух торговых маршрутов, разрешённый кризис с тремя участниками и три голоса.");
+                if (actor.InfluenceTenths < 200) return CommandResult.Reject("diplomacy_fund", "Международный фонд требует 20 влияния.");
+                actor.InfluenceTenths -= 200;
                 actor.DiplomaticCoalitionTurns = 2;
             }
             else return CommandResult.Reject("victory_path", "Этот путь не использует отдельный проект.");

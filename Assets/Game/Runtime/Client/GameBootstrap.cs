@@ -13,6 +13,12 @@ namespace Nasledie.Client
     {
         private enum ScreenPage { Overview, City, Research, Diplomacy, Laws, Events, Victory, Chronicle }
 
+        private sealed class BuildingMilestone
+        {
+            public BuildingDefinition Definition;
+            public string CityName;
+        }
+
         private GameSimulation simulation;
         private Canvas canvas;
         private RectTransform safeRoot;
@@ -465,6 +471,21 @@ namespace Nasledie.Client
             return string.IsNullOrEmpty(artwork) ? null : "Building_" + era + "_" + artwork.Substring("Building_".Length);
         }
 
+        private static string CityMapArtwork(CityState city, Era era)
+        {
+            if (city == null) return "City";
+            string[] visualPriority =
+            {
+                "assembly", "academy", "university", "archive", "exchange_house", "cultural_house",
+                "hospital", "administration", "market", "workshop", "barracks", "school", "council",
+                "clinic", "granary", "residential_quarter", "house", "road_services"
+            };
+            for (int i = 0; i < visualPriority.Length; i++)
+                if (city.BuildingLevel(visualPriority[i]) > 0)
+                    return BuildingArtwork(visualPriority[i], era);
+            return "City";
+        }
+
         private static string ImprovementArtwork(ImprovementKind kind, Era era)
         {
             switch (kind)
@@ -794,7 +815,7 @@ namespace Nasledie.Client
             if (!string.IsNullOrEmpty(marker))
             {
                 string artwork = null;
-                if (explored && city != null) artwork = BuildingArtwork("council", CivilizationEra(city.OwnerId));
+                if (explored && city != null) artwork = CityMapArtwork(city, CivilizationEra(city.OwnerId));
                 else if (visible)
                 {
                     UnitState unit = UnitAt(cell.Q, cell.R);
@@ -1090,9 +1111,9 @@ namespace Nasledie.Client
             GameObject card = UiKit.Card(parent, "Архитектура · эпоха «" + EraName(owner.Era) + "»");
             GameObject center = UiKit.CreateObject("CityCenterArtwork", card.transform);
             UiKit.Horizontal(center, 8, 14);
-            AddCityBuildingArtwork(center.transform, BuildingArtwork("council", owner.Era), 138);
+            AddCityBuildingArtwork(center.transform, CityMapArtwork(city, owner.Era), 138);
             Text eraDescription = UiKit.Label(center.transform,
-                "Центральное здание и новые постройки используют архитектуру текущей эпохи. При переходе эпохи ансамбль обновится на карте и в городе.",
+                "Главный видимый объект города и новые постройки используют архитектуру текущей эпохи. При переходе эпохи ансамбль обновится на карте и в городе.",
                 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             eraDescription.GetComponent<LayoutElement>().flexibleWidth = 1f;
 
@@ -1307,11 +1328,29 @@ namespace Nasledie.Client
             }
         }
 
+        private static bool HasEraTransition(GameState state, int ownerId)
+        {
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityProject project = state.Cities[i].Project;
+                if (state.Cities[i].OwnerId == ownerId && project != null && project.Kind == ProjectKind.EraTransition) return true;
+            }
+            return false;
+        }
+
         private int CountEmpireBuilding(int ownerId, string buildingId)
         {
             int count = 0;
             for (int i = 0; i < simulation.State.Cities.Length; i++)
                 if (simulation.State.Cities[i].OwnerId == ownerId) count += simulation.State.Cities[i].BuildingLevel(buildingId);
+            return count;
+        }
+
+        private int CountCitiesWithBuilding(int ownerId, string buildingId)
+        {
+            int count = 0;
+            for (int i = 0; i < simulation.State.Cities.Length; i++)
+                if (simulation.State.Cities[i].OwnerId == ownerId && simulation.State.Cities[i].BuildingLevel(buildingId) > 0) count++;
             return count;
         }
 
@@ -1394,7 +1433,7 @@ namespace Nasledie.Client
             if (advanced)
             {
                 Era nextEra = simulation.State.Civilization(simulation.State.HumanCivilizationId).Era;
-                List<BuildingDefinition> completed = FindNewlyCompletedBuildings(buildingLevels);
+                List<BuildingMilestone> completed = FindNewlyCompletedBuildings(buildingLevels);
                 bool hasEraTransition = nextEra != previousEra;
                 if (hasEraTransition || completed.Count > 0)
                 {
@@ -1427,9 +1466,9 @@ namespace Nasledie.Client
             return result;
         }
 
-        private List<BuildingDefinition> FindNewlyCompletedBuildings(Dictionary<string, int> previous)
+        private List<BuildingMilestone> FindNewlyCompletedBuildings(Dictionary<string, int> previous)
         {
-            List<BuildingDefinition> completed = new List<BuildingDefinition>();
+            List<BuildingMilestone> completed = new List<BuildingMilestone>();
             int playerId = simulation.State.HumanCivilizationId;
             for (int i = 0; i < simulation.State.Cities.Length; i++)
             {
@@ -1444,14 +1483,14 @@ namespace Nasledie.Client
                     if (current > old)
                     {
                         BuildingDefinition definition = RulesCatalog.Building(id);
-                        if (definition != null) completed.Add(definition);
+                        if (definition != null) completed.Add(new BuildingMilestone { Definition = definition, CityName = city.Name });
                     }
                 }
             }
             return completed;
         }
 
-        private void ShowTurnMilestones(Transform layer, int completedTurn, Era oldEra, Era newEra, List<BuildingDefinition> buildings)
+        private void ShowTurnMilestones(Transform layer, int completedTurn, Era oldEra, Era newEra, List<BuildingMilestone> buildings)
         {
             DestroyChildren(layer);
             Image blocker = layer.GetComponent<Image>();
@@ -1487,8 +1526,12 @@ namespace Nasledie.Client
                 {
                     GameObject row = UiKit.CreateObject("CompletedBuilding_" + i, card.transform);
                     UiKit.Horizontal(row, 8, 12);
-                    AddArtwork(row.transform, BuildingArtwork(buildings[i].Id, newEra), 98);
-                    UiKit.Label(row.transform, buildings[i].NameRu, 23, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                    BuildingMilestone milestone = buildings[i];
+                    AddArtwork(row.transform, BuildingArtwork(milestone.Definition.Id, newEra), 98);
+                    UiKit.Label(row.transform, milestone.Definition.NameRu + " · " + milestone.CityName, 23, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                    CanvasGroup reveal = row.AddComponent<CanvasGroup>();
+                    reveal.alpha = 0f;
+                    StartCoroutine(ScaleIn(UiKit.Rect(row), reveal, (0.24f + i * 0.08f) * AnimationScale));
                 }
                 if (buildings.Count > count) UiKit.Label(card.transform, "И ещё завершено зданий: " + (buildings.Count - count), 18, GamePalette.Muted, TextAnchor.MiddleCenter, false);
             }
@@ -1663,12 +1706,15 @@ namespace Nasledie.Client
                 UiKit.Label(summary.transform, "Сейчас: «" + active.NameRu + "» · " + Format(progress) + "/" + Format(cost) + " знаний · " +
                     (cost <= 0 ? 0 : progress * 100 / cost) + "%", 23, GamePalette.Paper, TextAnchor.MiddleLeft, true);
             }
-            UiKit.Label(summary.transform, "Знания поступают от учёных и школ. Передовые эпохи открываются через общественный переход: минимум четыре изученные технологии текущей эпохи и 10 влияния.",
-                20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             int eraKnowledge = CountTechnologiesInEra(owner, owner.Era);
-            Button eraButton = UiKit.Button(summary.transform, "НАЧАТЬ ПЕРЕХОД ЭПОХИ · " + eraKnowledge + "/4 ТЕХНОЛОГИЙ · 10 ВЛИЯНИЯ",
+            int councils = CountCitiesWithBuilding(simulation.State, owner.Id, "council");
+            int transitionCost = GameSimulation.EraTransitionProductionCost(owner.Era);
+            bool transitionInProgress = HasEraTransition(simulation.State, owner.Id);
+            UiKit.Label(summary.transform, "Знания поступают от учёных и школ. Для общественного перехода нужны три технологии текущей эпохи, Совет и 10 влияния; выбранный город вложит " + transitionCost + " производства.",
+                20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            Button eraButton = UiKit.Button(summary.transform, (transitionInProgress ? "ПЕРЕХОД ЭПОХИ УЖЕ ИДЁТ" : "НАЧАТЬ ПЕРЕХОД ЭПОХИ") + " · " + eraKnowledge + "/3 · СОВЕТ " + (councils > 0 ? "ЕСТЬ" : "НЕТ") + " · 10 ВЛИЯНИЯ · " + transitionCost + " ПРОИЗВОДСТВА",
                 delegate { Issue(CommandKind.SetProject, SelectedCity().Id, text: "era_transition"); }, GamePalette.Gold, 70, 19);
-            eraButton.interactable = (int)owner.Era < 4 && eraKnowledge >= 4 && owner.InfluenceTenths >= 100 &&
+            eraButton.interactable = (int)owner.Era < 4 && !transitionInProgress && eraKnowledge >= 3 && councils > 0 && owner.InfluenceTenths >= 100 &&
                 (SelectedCity().Project == null || SelectedCity().Project.Kind == ProjectKind.None);
 
             for (int i = 0; i < RulesCatalog.Technologies.Length; i++)
@@ -1990,10 +2036,20 @@ namespace Nasledie.Client
             CivilizationState player = state.Civilization(state.HumanCivilizationId);
             if (state.IsFinished)
             {
-                CivilizationState winner = state.Civilization(state.WinnerCivilizationId);
-                GameObject final = UiKit.Card(parent, winner == null ? "Кампания завершена" : winner.Name + " победила");
+                int[] winners = state.WinningCivilizationIds ?? Array.Empty<int>();
+                if (winners.Length == 0 && state.WinnerCivilizationId >= 0) winners = new[] { state.WinnerCivilizationId };
+                var winnerNames = new List<string>();
+                bool playerWon = false;
+                for (int i = 0; i < winners.Length; i++)
+                {
+                    CivilizationState candidate = state.Civilization(winners[i]);
+                    if (candidate != null) winnerNames.Add(candidate.Name);
+                    if (winners[i] == player.Id) playerWon = true;
+                }
+                string resultTitle = winnerNames.Count == 0 ? "Кампания завершена" : winnerNames.Count == 1 ? winnerNames[0] + " победила" : "Совместная победа · " + string.Join(", ", winnerNames.ToArray());
+                GameObject final = UiKit.Card(parent, resultTitle);
                 UiKit.Label(final.transform, "Путь: " + VictoryEvaluator.PathName(state.WinningPath) + "\n" +
-                    (winner != null && winner.Id == player.Id ? "Вы завершили кампанию победой." : "Победила другая цивилизация. Вы можете изучить итоги в летописи."),
+                    (playerWon ? "Вы завершили кампанию победой." : "Победила другая цивилизация. Вы можете изучить итоги в летописи."),
                     28, GamePalette.Gold, TextAnchor.MiddleLeft, true);
                 UiKit.Label(final.transform, "Итоговый счёт наследия: " + VictoryEvaluator.HeritageScore(state, player.Id) + " · население " + Format(simulation.CivilizationPopulationTenths(player.Id)) +
                     " · технологии " + player.CompletedTechnologies + " · культура " + player.CulturePrestige + " · репутация " + player.Reputation,
@@ -2010,51 +2066,58 @@ namespace Nasledie.Client
                 21, GamePalette.Gold, TextAnchor.MiddleLeft, true);
 
             int qualityCities = 0;
-            int health = 0, safety = 0, education = 0, trust = 0, environment = 0;
+            int totalPopulation = 0;
+            int qualifiedPopulation = 0;
+            int lowestQuality = 101;
+            int highestQuality = -1;
+            bool cityServicesReady = true;
             for (int i = 0; i < state.Cities.Length; i++)
             {
                 CityState city = state.Cities[i];
                 if (city.OwnerId != player.Id) continue;
                 qualityCities++;
-                health += city.Health;
-                safety += city.Safety;
-                education += city.Education;
-                trust += city.Trust;
-                environment += city.Environment;
+                int index = VictoryEvaluator.CityQualityIndex(state, city);
+                lowestQuality = Math.Min(lowestQuality, index);
+                highestQuality = Math.Max(highestQuality, index);
+                totalPopulation += city.PopulationTenths;
+                if (index >= 75) qualifiedPopulation += city.PopulationTenths;
+                if (city.Health < 60 || city.Safety < 60) cityServicesReady = false;
             }
             GameObject quality = UiKit.Card(parent, "Благополучие · пассивный путь");
-            UiKit.Label(quality.transform, "Удерживать 5 ходов: не менее 3 городов, средние здоровье ≥72, безопасность ≥70, образование ≥55, доверие ≥70 и среда ≥75. Нельзя воевать или иметь дефицит казны.",
+            UiKit.Label(quality.transform, "Пять ходов подряд: 4+ города; индекс качества жизни ≥75 у 80% населения; здоровье и безопасность каждого города ≥60; разница индексов ≤20; дефицит не дольше двух ходов.",
                 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(quality.transform, "Города " + qualityCities + " · здоровье " + Average(health, qualityCities) + " · безопасность " + Average(safety, qualityCities) +
-                " · образование " + Average(education, qualityCities) + " · доверие " + Average(trust, qualityCities) + " · среда " + Average(environment, qualityCities) +
+            UiKit.Label(quality.transform, "Города " + qualityCities + "/4 · население с индексом ≥75: " + (totalPopulation == 0 ? 0 : qualifiedPopulation * 100 / totalPopulation) + "% · диапазон индекса " +
+                (qualityCities == 0 ? "—" : lowestQuality + "–" + highestQuality) + " · состояние служб " + (cityServicesReady ? "в норме" : "нуждается в улучшении") +
                 " · спокойные ходы " + player.QualityVictoryTurns + "/5", 21, GamePalette.Sage, TextAnchor.MiddleLeft, true);
 
-            int universities = CountEmpireBuilding(player.Id, "university");
+            int universities = CountCitiesWithBuilding(player.Id, "university");
             int academies = CountEmpireBuilding(player.Id, "academy");
             bool scienceReady = player.Knows("computing_networks") && player.Knows("open_science") && universities >= 2 && academies >= 1 && player.KnowledgeTenths >= 300 && player.InfluenceTenths >= 80;
             GameObject science = UiKit.Card(parent, "Научный прорыв · активный путь");
-            UiKit.Label(science.transform, "Изучите вычислительные сети и открытую науку; постройте 2 университета и академию; внесите 30 знаний и 8 влияния. После накопления 20 ПП программа проходит четыре этапа международного подтверждения.",
+            UiKit.Label(science.transform, "Исследуйте вычислительные сети и открытую науку; постройте университеты в двух городах и академию; внесите 30 знаний, 20 ПП города и 8 влияния. Проект длится 4 хода, последние два выпуска знаний должны быть ≥5.",
                 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(science.transform, "Университеты " + universities + "/2 · академии " + academies + "/1 · прогресс программы " + player.ScienceProjectTurns + "/4", 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            UiKit.Label(science.transform, "Города с университетом " + universities + "/2 · академии " + academies + "/1 · прогресс " + player.ScienceProjectTurns + "/4 · выпуск знаний " +
+                Format(player.PreviousTurnKnowledgeOutputTenths) + "/" + Format(player.LastTurnKnowledgeOutputTenths) + " из 5", 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             Button scienceButton = UiKit.Button(science.transform, "НАЧАТЬ ПРОГРАММУ В ГОРОДЕ", delegate { Issue(CommandKind.BeginVictoryProject, SelectedCity().Id, value: (int)VictoryPath.Scientific); }, GamePalette.Teal, 62, 19);
             scienceButton.interactable = scienceReady && (SelectedCity().Project == null || SelectedCity().Project.Kind == ProjectKind.None);
 
             int culturalObjects = CountCulturalObjects(player.Id);
             GameObject culture = UiKit.Card(parent, "Культурное наследие · активный путь");
-            UiKit.Label(culture.transform, "Нужно 100 культурного престижа и культурные центры в двух городах. Во время фестиваля не менее двух соседей должны иметь культурное влияние от 25.",
+            UiKit.Label(culture.transform, "Постройте культурный дом, архив и Дом обмена в трёх разных городах; накопите 100 престижа; влияние должно быть 70/70/40. Оплатите 20 влияния и 10 казны и завершите двухходовый фестиваль.",
                 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(culture.transform, "Престиж " + player.CulturePrestige + "/100 · культурных объектов " + culturalObjects + " · влияние соседей " + CulturalPartners(player) + "/2 · фестиваль " + player.CultureFestivalTurns + "/2", 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            string festivalProgress = player.CultureFestivalTurns > 0 ? (2 - player.CultureFestivalTurns) + "/2" : "не начат";
+            UiKit.Label(culture.transform, "Престиж " + player.CulturePrestige + "/100 · объекты " + culturalObjects + "/3 · влияние " + CulturalInfluenceLabel(player) + " · фестиваль " + festivalProgress, 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             Button cultureButton = UiKit.Button(culture.transform, "ПРОВЕСТИ ФЕСТИВАЛЬ · 20 ВЛИЯНИЯ И 10 КАЗНЫ",
                 delegate { Issue(CommandKind.BeginVictoryProject, SelectedCity().Id, value: (int)VictoryPath.Cultural); }, GamePalette.Rust, 62, 18);
-            cultureButton.interactable = player.CulturePrestige >= 100 && player.InfluenceTenths >= 200 && player.TreasuryTenths >= 100 && player.CultureFestivalTurns == 0;
+            cultureButton.interactable = VictoryEvaluator.CanStartCulturalFestival(state, player.Id) && player.InfluenceTenths >= 200 && player.TreasuryTenths >= 100 && player.CultureFestivalTurns == 0;
 
             int routes = CountRoutes(player.Id);
             GameObject diplomatic = UiKit.Card(parent, "Международное сотрудничество · активный путь");
-            UiKit.Label(diplomatic.transform, "Изучите международную ассамблею и постройте её. Преодолейте глобальный кризис, заключите два торговых маршрута, удержите репутацию 70 и доверие минимум двух партнёров.",
+            UiKit.Label(diplomatic.transform, "Исследуйте Международную ассамблею; свяжите её город маршрутами с двумя цивилизациями; внесите 20 влияния в фонд. Разрешите кризис вкладом трёх сторон, получите три голоса из четырёх и удержите коалицию два хода.",
                 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(diplomatic.transform, "Торговые маршруты " + routes + "/2 · репутация " + player.Reputation + "/70 · кризис " + (state.HasResolvedGlobalCrisis ? "преодолён" : "не преодолён") +
-                " · коалиция " + player.DiplomaticCoalitionTurns + "/2", 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-            bool diplomacyReady = player.Knows("international_assembly") && CountEmpireBuilding(player.Id, "assembly") > 0 && state.HasResolvedGlobalCrisis && routes >= 2 && player.Reputation >= 70;
+            UiKit.Label(diplomatic.transform, "Маршруты " + routes + "/2 · участники кризиса " + CountBits(state.ResolvedGlobalCrisisContributorMask) + "/3 · поддержавшие стороны " + DiplomaticPartners(player) + "/2 · коалиция " + player.DiplomaticCoalitionTurns + "/2",
+                20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            bool diplomacyReady = VictoryEvaluator.CanStartDiplomaticCoalition(state, player.Id, SelectedCity().Id) && player.InfluenceTenths >= 200;
             Button diplomaticButton = UiKit.Button(diplomatic.transform, "СОЗВАТЬ КОАЛИЦИЮ В АССАМБЛЕЕ", delegate { Issue(CommandKind.BeginVictoryProject, SelectedCity().Id, value: (int)VictoryPath.Diplomatic); }, GamePalette.Ink, 62, 18);
             diplomaticButton.interactable = diplomacyReady && player.DiplomaticCoalitionTurns == 0 && (SelectedCity().Project == null || SelectedCity().Project.Kind == ProjectKind.None);
 
@@ -2085,6 +2148,29 @@ namespace Nasledie.Client
         {
             int count = 0;
             for (int i = 0; i < civ.CulturalInfluence.Length; i++) if (i != civ.Id && civ.CulturalInfluence[i] >= 25) count++;
+            return count;
+        }
+
+        private static string CulturalInfluenceLabel(CivilizationState civ)
+        {
+            var values = new List<int>();
+            for (int i = 0; i < civ.CulturalInfluence.Length; i++) if (i != civ.Id) values.Add(civ.CulturalInfluence[i]);
+            values.Sort(delegate(int a, int b) { return b.CompareTo(a); });
+            return values.Count < 3 ? "—" : values[0] + "/" + values[1] + "/" + values[2];
+        }
+
+        private static int DiplomaticPartners(CivilizationState civ)
+        {
+            int count = 0;
+            for (int i = 0; i < civ.Relations.Length; i++)
+                if (i != civ.Id && civ.Relations[i] >= 25 && i < civ.Trusts.Length && civ.Trusts[i] >= 50) count++;
+            return count;
+        }
+
+        private static int CountBits(int value)
+        {
+            int count = 0;
+            while (value != 0) { count += value & 1; value >>= 1; }
             return count;
         }
 

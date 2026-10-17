@@ -42,7 +42,7 @@ namespace Nasledie.Core
 
             result.FoodTenths += Scale(farmerCount * 20, efficiency);
             result.Production += Scale(artisanCount * 2, efficiency);
-            result.KnowledgeTenths += Scale(scholarCount * 20, efficiency);
+            result.KnowledgeTenths += Scale(scholarCount * 30, efficiency);
             result.TreasuryTenths += Scale(merchantCount * 20, efficiency);
             result.CulturePrestige += Scale(artistCount, efficiency);
             result.ServiceCoverage += servantCount * 20;
@@ -231,8 +231,16 @@ namespace Nasledie.Core
                 next[(int)WorkerRole.Artisan] += extra;
                 available -= extra;
             }
-            AssignPreferred(next, WorkerRole.Artisan, roleSlots, ref available, 1);
-            AssignPreferred(next, WorkerRole.Scholar, roleSlots, ref available, focus == "science" ? 2 : 1);
+            if (focus == "science")
+            {
+                AssignPreferred(next, WorkerRole.Scholar, roleSlots, ref available, 2);
+                AssignPreferred(next, WorkerRole.Artisan, roleSlots, ref available, 1);
+            }
+            else
+            {
+                AssignPreferred(next, WorkerRole.Artisan, roleSlots, ref available, 1);
+                AssignPreferred(next, WorkerRole.Scholar, roleSlots, ref available, 1);
+            }
             AssignPreferred(next, WorkerRole.Merchant, roleSlots, ref available, focus == "trade" ? 2 : 1);
             AssignPreferred(next, WorkerRole.Artist, roleSlots, ref available, focus == "culture" ? 2 : 0);
             AssignPreferred(next, WorkerRole.CivilServant, roleSlots, ref available, 0);
