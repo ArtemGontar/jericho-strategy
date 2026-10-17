@@ -228,9 +228,9 @@ namespace Nasledie.Core
 
         public static int EraTransitionProductionCost(Era era)
         {
-            // Era I -> II is the 12 point base cost; each later transition rises by 50%.
+            // Era I -> II is the 6 point base cost; each later transition rises by 50%.
             double multiplier = Math.Pow(1.5d, Math.Max(0, (int)era));
-            return (int)Math.Round(12d * multiplier, MidpointRounding.AwayFromZero);
+            return (int)Math.Round(6d * multiplier, MidpointRounding.AwayFromZero);
         }
 
         private CommandResult ChooseTechnology(CivilizationState civilization, string technologyId, bool feedback)

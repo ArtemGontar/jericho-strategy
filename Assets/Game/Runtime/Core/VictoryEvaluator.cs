@@ -262,6 +262,7 @@ namespace Nasledie.Core
             {
                 CityState city = state.Cities[i];
                 if (city.OwnerId != civilizationId) continue;
+                if (city.Project != null && city.Project.Kind == ProjectKind.ScientificProject) return false;
                 if (city.BuildingLevel("university") > 0) universityCities++;
                 if (city.BuildingLevel("academy") > 0) academy = true;
             }

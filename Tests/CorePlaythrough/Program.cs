@@ -15,6 +15,10 @@ internal static class Program
             RunSaveResumeCampaign();
             RunPunitiveWarAndRecovery();
             RunVictoryPathAcceptance();
+            ActiveQualityVictoryScenario.Run(Console.WriteLine);
+            FreshCulturalVictoryScenario.Run(Console.WriteLine);
+            FreshDiplomaticVictoryScenario.Run(Console.WriteLine);
+            FreshScienceVictoryScenario.Run(Console.WriteLine);
             RunScientificVictoryLiveProjectAcceptance();
             RunUniqueEmpireBuildingQueueAcceptance();
             RunEraTransitionAcceptance();
@@ -163,7 +167,10 @@ internal static class Program
         EconomyCalculator.AutoAssign(state, city, "science");
         Assert(city.Workers[(int)WorkerRole.Scholar] == 1 && city.Workers[(int)WorkerRole.Artisan] == 0,
             "science focus must assign a specialist before the default artisan when only one worker is free after farming");
-        Console.WriteLine("PASS: science focus prioritizes research workers while preserving food assignments.");
+        EconomyCalculator.AutoAssign(state, city, "culture");
+        Assert(city.Workers[(int)WorkerRole.Artist] == 1 && city.Workers[(int)WorkerRole.Artisan] == 0,
+            "culture focus must assign an artist before the default artisan when only one worker is free after farming");
+        Console.WriteLine("PASS: science and culture focus prioritize their specialists while preserving food assignments.");
     }
 
     private static void RunAiProgressionAcceptance()
@@ -188,7 +195,7 @@ internal static class Program
 
     private static void RunEraTransitionAcceptance()
     {
-        int[] expectedCosts = { 12, 18, 27, 41 };
+        int[] expectedCosts = { 6, 9, 14, 20 };
         for (int era = 0; era < expectedCosts.Length; era++)
             Assert(GameSimulation.EraTransitionProductionCost((Era)era) == expectedCosts[era], "era transition costs must follow the 50% progression in the GDD");
 
@@ -199,8 +206,8 @@ internal static class Program
         state.Cities = new[] { VictoryCity(1, 0, "council"), VictoryCity(2, 0) };
         GameSimulation simulation = new GameSimulation(state);
         Accept(simulation.Issue(new GameCommand { Kind = CommandKind.SetProject, ActorId = 0, EntityId = 1, Text = "era_transition" }), "start first era transition");
-        Assert(simulation.State.Civilization(0).InfluenceTenths == 0 && simulation.State.City(1).Project.Cost == 12,
-            "first era transition must require three technologies, a council, and 10 influence at 12 production");
+        Assert(simulation.State.Civilization(0).InfluenceTenths == 0 && simulation.State.City(1).Project.Cost == 6,
+            "first era transition must require three technologies, a council, and 10 influence at 6 production");
         CommandResult duplicateTransition = simulation.Issue(new GameCommand { Kind = CommandKind.SetProject, ActorId = 0, EntityId = 2, Text = "era_transition" });
         Assert(!duplicateTransition.Accepted && duplicateTransition.Code == "era_transition_busy",
             "a civilization must not advance multiple eras through parallel projects");
@@ -513,6 +520,9 @@ internal static class Program
         Assert(science.State.Civilization(0).KnowledgeTenths == 0 && science.State.Civilization(0).InfluenceTenths == 0 &&
             science.State.City(1).Project.Kind == ProjectKind.ScientificProject && science.State.City(1).Project.Cost == 20,
             "science launch must pay the documented resource cost and reserve 20 production");
+        CommandResult duplicateScience = science.Issue(new GameCommand { Kind = CommandKind.BeginVictoryProject, ActorId = 0, EntityId = 2, Value = (int)VictoryPath.Scientific });
+        Assert(!duplicateScience.Accepted && science.State.City(2).Project.Kind == ProjectKind.None,
+            "a civilization must not split one scientific program across multiple city queues");
 
         state = MinimalVictoryState();
         player = state.Civilization(0);

@@ -236,12 +236,17 @@ namespace Nasledie.Core
                 AssignPreferred(next, WorkerRole.Scholar, roleSlots, ref available, 2);
                 AssignPreferred(next, WorkerRole.Artisan, roleSlots, ref available, 1);
             }
+            else if (focus == "culture")
+            {
+                AssignPreferred(next, WorkerRole.Artist, roleSlots, ref available, 2);
+                AssignPreferred(next, WorkerRole.Artisan, roleSlots, ref available, 1);
+            }
             else
             {
                 AssignPreferred(next, WorkerRole.Artisan, roleSlots, ref available, 1);
                 AssignPreferred(next, WorkerRole.Scholar, roleSlots, ref available, 1);
             }
-            AssignPreferred(next, WorkerRole.Merchant, roleSlots, ref available, focus == "trade" ? 2 : 1);
+            AssignPreferred(next, WorkerRole.Merchant, roleSlots, ref available, focus == "trade" ? 2 : focus == "culture" ? 0 : 1);
             AssignPreferred(next, WorkerRole.Artist, roleSlots, ref available, focus == "culture" ? 2 : 0);
             AssignPreferred(next, WorkerRole.CivilServant, roleSlots, ref available, 0);
             if (available > 0)

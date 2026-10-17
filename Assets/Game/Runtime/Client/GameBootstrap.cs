@@ -599,7 +599,7 @@ namespace Nasledie.Client
                 "3. Растите без голода: запас еды кормит жителей, переполненный запас начинает рост.\n\n" +
                 "4. Законы и договоры дают преимущества. Перейдите в дипломатию, чтобы торговать и договариваться.\n\n" +
                 "5. Война проходит через кризис мобилизации. Она отнимает репутацию, доверие, торговлю и население. Захват не приносит отдельного пути к победе.\n\n" +
-                "6. Откройте вкладку «Победа»: развивайтесь через качество жизни, науку, культуру, дипломатию или итоговое наследие к 70-му ходу.",
+                "6. Откройте вкладку «Победа»: развивайтесь через качество жизни, науку, культуру, дипломатию или итоговое наследие к 80-му ходу.",
                 25, GamePalette.Paper, TextAnchor.UpperLeft, false);
             UiKit.Button(tutorial.transform, "НАЗАД", ShowMenu, GamePalette.Teal, 82, 25);
         }
@@ -2271,7 +2271,7 @@ namespace Nasledie.Client
             diplomaticButton.interactable = diplomacyReady && player.DiplomaticCoalitionTurns == 0 && (SelectedCity().Project == null || SelectedCity().Project.Kind == ProjectKind.None);
 
             GameObject heritage = UiKit.Card(parent, "Наследие эпох · итоговый путь");
-            UiKit.Label(heritage.transform, "Если никто не завершил другой путь, на 70-м ходу побеждает цивилизация с наибольшим счётом развития. Он учитывает население, качество городов, технологии, культуру, связи, репутацию и цену войны.",
+            UiKit.Label(heritage.transform, "Если никто не завершил другой путь, на 80-м ходу побеждает цивилизация с наибольшим счётом развития. Он учитывает население, качество городов, технологии, культуру, связи, репутацию и цену войны.",
                 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             UiKit.Label(heritage.transform, "Ваш счёт: " + VictoryEvaluator.HeritageScore(state, player.Id) + " · прогресс города: " + player.CompletedTechnologies + " технологий · " + CountCities(state, player.Id) + " городов · " + Format(simulation.CivilizationPopulationTenths(player.Id)) + " жителей.",
                 21, GamePalette.Gold, TextAnchor.MiddleLeft, true);

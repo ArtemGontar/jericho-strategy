@@ -9,5 +9,9 @@
   <ItemGroup>
     <Compile Include="../../Assets/Game/Runtime/Core/*.cs" Link="Core/%(Filename)%(Extension)" />
     <Compile Include="Program.cs" />
+    <Compile Include="ActiveQualityVictoryScenario.cs" />
+    <Compile Include="FreshScienceVictoryScenario.cs" />
+    <Compile Include="FreshCulturalVictoryScenario.cs" />
+    <Compile Include="FreshDiplomaticVictoryScenario.cs" />
   </ItemGroup>
 </Project>

@@ -77,7 +77,7 @@ namespace Nasledie.Core
 
             // The final evaluated turn is already a completed turn. Keeping the
             // counter at MaximumTurn avoids showing a phantom 71/70 turn after
-            // a Heritage victory at the end of a 70-turn campaign.
+            // a Heritage victory at the end of an 80-turn campaign.
             if (!state.IsFinished) state.Turn++;
             for (int i = 0; i < state.Units.Length; i++)
             {

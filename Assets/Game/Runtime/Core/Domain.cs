@@ -333,7 +333,7 @@ namespace Nasledie.Core
         public int RulesVersion = 1;
         public int Seed;
         public int Turn = 1;
-        public int MaximumTurn = 70;
+        public int MaximumTurn = 80;
         public int NextEntityId = 1;
         public int HumanCivilizationId;
         public bool IsFinished;

@@ -141,7 +141,7 @@ namespace Nasledie.Core
             Building("hospital", "Больница", "Hospital", 20, 30, "public_health", health: 15, workerPlaceRole: (int)WorkerRole.CivilServant, workerPlaces: 2),
             Building("archive", "Архив и музей", "Archive and Museum", 18, 20, "printing", culturePerArtist: 4, culturalObject: true),
             Building("exchange_house", "Дом обмена", "House of Exchange", 20, 20, "trade_league", culturePerArtist: 3, culturalObject: true),
-            Building("academy", "Академия", "Academy", 24, 30, "open_science", knowledgePerScholar: 5, education: 15, workerPlaceRole: (int)WorkerRole.Scholar, workerPlaces: 2),
+            Building("academy", "Академия", "Academy", 16, 30, "computing_networks", knowledgePerScholar: 5, education: 15, workerPlaceRole: (int)WorkerRole.Scholar, workerPlaces: 2),
             Building("barracks", "Казармы", "Barracks", 14, 15, "stone", defense: 10),
             Building("assembly", "Ассамблея", "Assembly", 26, 25, "international_assembly", adminCapacity: 1, unique: true)
         };

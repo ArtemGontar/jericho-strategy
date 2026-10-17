@@ -64,7 +64,7 @@ namespace Nasledie.Core
             {
                 Seed = seed,
                 Turn = 1,
-                MaximumTurn = 70,
+                MaximumTurn = 80,
                 HumanCivilizationId = 0,
                 SelectedCityId = 1,
                 Crisis = new CrisisState { Kind = CrisisKind.None }
