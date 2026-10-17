@@ -1,0 +1,183 @@
+using System.IO;
+using System.Collections.Generic;
+using UnityEditor;
+using UnityEditor.Build;
+using UnityEditor.Build.Reporting;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using Nasledie.Client;
+
+namespace Nasledie.EditorTools
+{
+    [InitializeOnLoad]
+    public static class ProjectSetup
+    {
+        public const string MainScenePath = "Assets/Scenes/Main.unity";
+
+        static ProjectSetup()
+        {
+            EditorApplication.delayCall += EnsureProject;
+        }
+
+        [MenuItem("JERICHO/Создать главную сцену")]
+        public static void EnsureProject()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+            Directory.CreateDirectory("Assets/Scenes");
+            if (!File.Exists(MainScenePath))
+            {
+                Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                GameObject bootstrap = new GameObject("JerichoGame");
+                bootstrap.AddComponent<GameBootstrap>();
+                EditorSceneManager.SaveScene(scene, MainScenePath);
+                AssetDatabase.Refresh();
+            }
+
+            EditorBuildSettings.scenes = new[]
+            {
+                new EditorBuildSettingsScene(MainScenePath, true)
+            };
+            PlayerSettings.productName = "JERICHO";
+            PlayerSettings.bundleVersion = "0.1.0";
+            PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
+            PlayerSettings.allowedAutorotateToPortrait = false;
+            PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
+            PlayerSettings.allowedAutorotateToLandscapeRight = false;
+            PlayerSettings.allowedAutorotateToLandscapeLeft = false;
+            PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.jericho.strategy");
+            PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.iOS, "com.jericho.strategy");
+            PlayerSettings.SetScriptingBackend(BuildTargetGroup.iOS, ScriptingImplementation.IL2CPP);
+            PlayerSettings.SetApiCompatibilityLevel(BuildTargetGroup.iOS, ApiCompatibilityLevel.NET_Standard_2_1);
+            PlayerSettings.iOS.targetOSVersionString = "13.0";
+            Texture2D iosIcon = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Game/Runtime/Client/Resources/Art/AppIcon_iOS.png");
+            if (iosIcon != null) PlayerSettings.SetIcons(NamedBuildTarget.iOS, new[] { iosIcon }, IconKind.Application);
+            AssetDatabase.SaveAssets();
+        }
+    }
+
+    public sealed class BuildSceneValidator : IPreprocessBuildWithReport
+    {
+        public int callbackOrder { get { return -1000; } }
+
+        public void OnPreprocessBuild(BuildReport report)
+        {
+            ProjectSetup.EnsureProject();
+            if (!File.Exists(ProjectSetup.MainScenePath)) throw new BuildFailedException("Главная сцена игры не найдена.");
+            string guid = AssetDatabase.AssetPathToGUID(ProjectSetup.MainScenePath);
+            if (string.IsNullOrEmpty(guid)) throw new BuildFailedException("Главная сцена не импортирована в Unity AssetDatabase.");
+            ArtResourceCheck.Run();
+            CampaignSmokeCheck.Run();
+        }
+    }
+
+    public static class ArtResourceCheck
+    {
+        [MenuItem("JERICHO/Проверить игровые материалы")]
+        public static void RunFromMenu()
+        {
+            Run();
+            Debug.Log("JERICHO: атласы пяти эпох, местность, отряды, логотип и музыка доступны через Resources.");
+        }
+
+        public static void Run()
+        {
+            RequireSprites("Art/BuildingAtlas", 16);
+            string[] eras = { "Communities", "Cities", "ConnectedLands", "Industry", "Synthesis" };
+            for (int i = 0; i < eras.Length; i++) RequireSprites("Art/BuildingAtlas_" + eras[i], 16);
+            RequireSprites("Art/WorldAtlas", 16);
+            RequireSprites("Art/UnitAtlas", 4);
+            RequireSprites("Art/UnitEraAtlas", 20);
+            RequireSprites("Art/AchievementAtlas", 12);
+            if (Resources.Load<Sprite>("Art/Jericho_Logo") == null) throw new BuildFailedException("Не найден логотип JERICHO.");
+            if (Resources.Load<Sprite>("Art/AppIcon_iOS") == null) throw new BuildFailedException("Не найдена иконка iOS.");
+            if (Resources.Load<AudioClip>("Audio/Nasledie_Theme") == null) throw new BuildFailedException("Не найдена музыкальная тема.");
+        }
+
+        private static void RequireSprites(string path, int expected)
+        {
+            Sprite[] sprites = Resources.LoadAll<Sprite>(path);
+            if (sprites == null || sprites.Length != expected)
+                throw new BuildFailedException("Атлас " + path + " должен содержать " + expected + " спрайтов, сейчас: " + (sprites == null ? 0 : sprites.Length) + ". Проверьте импорт ArtAssetImporter.");
+        }
+    }
+
+    public static class CampaignSmokeCheck
+    {
+        [MenuItem("JERICHO/Проверить кампанию")]
+        public static void RunFromMenu()
+        {
+            Run();
+            Debug.Log("JERICHO: проверка каталога, сериализации и пошагового цикла завершилась без ошибок.");
+        }
+
+        public static void Run()
+        {
+            CheckUniqueIds();
+            for (int difficulty = 0; difficulty < 4; difficulty++)
+            {
+                GameSimulation simulation = GameSimulation.NewCampaign(126831 + difficulty, (Difficulty)difficulty);
+                if (simulation.State.Cells.Length != 169 || simulation.State.Civilizations.Length != 4 || simulation.State.Cities.Length != 4)
+                    throw new BuildFailedException("Начальная карта кампании имеет неверный размер.");
+                string json = JsonUtility.ToJson(simulation.State);
+                GameState restored = JsonUtility.FromJson<GameState>(json);
+                if (restored == null || restored.Seed != simulation.State.Seed || restored.Cities.Length != 4)
+                    throw new BuildFailedException("Игровое состояние не проходит сериализацию JSON.");
+                simulation = new GameSimulation(restored);
+                while (!simulation.State.IsFinished && simulation.State.Turn <= simulation.State.MaximumTurn)
+                {
+                    int before = simulation.State.Turn;
+                    simulation.EndTurn();
+                    if (!simulation.State.IsFinished && simulation.State.Turn != before + 1)
+                        throw new BuildFailedException("Пошаговый цикл остановился на сложности " + (Difficulty)difficulty + ": " + simulation.LastMessage);
+                    if (simulation.LastMessage != null && simulation.LastMessage.StartsWith("Ход не сохранён", System.StringComparison.Ordinal))
+                        throw new BuildFailedException("Внутренняя проверка кампании остановила ход на сложности " + (Difficulty)difficulty + ": " + simulation.LastMessage);
+                }
+                if (!simulation.State.IsFinished || simulation.State.WinnerCivilizationId < 0 || simulation.State.Turn > simulation.State.MaximumTurn)
+                    throw new BuildFailedException("Кампания не дошла до корректного финала на сложности " + (Difficulty)difficulty + ".");
+            }
+        }
+
+        private static void CheckUniqueIds()
+        {
+            var technologyIds = new HashSet<string>();
+            for (int i = 0; i < RulesCatalog.Technologies.Length; i++)
+            {
+                TechnologyDefinition technology = RulesCatalog.Technologies[i];
+                if (!technologyIds.Add(technology.Id)) throw new BuildFailedException("Повторяется технология " + technology.Id + ".");
+            }
+            for (int i = 0; i < RulesCatalog.Technologies.Length; i++)
+                for (int p = 0; p < RulesCatalog.Technologies[i].Prerequisites.Length; p++)
+                {
+                    string prerequisite = RulesCatalog.Technologies[i].Prerequisites[p];
+                    string[] alternatives = prerequisite.Split('|');
+                    bool found = false;
+                    for (int a = 0; a < alternatives.Length; a++) if (technologyIds.Contains(alternatives[a])) found = true;
+                    if (!found) throw new BuildFailedException("Не найдена предварительная технология " + prerequisite + ".");
+                }
+            var buildingIds = new HashSet<string>();
+            for (int i = 0; i < RulesCatalog.Buildings.Length; i++)
+            {
+                BuildingDefinition building = RulesCatalog.Buildings[i];
+                if (!buildingIds.Add(building.Id)) throw new BuildFailedException("Повторяется здание " + building.Id + ".");
+                if (!string.IsNullOrEmpty(building.RequiredTechnology) && !technologyIds.Contains(building.RequiredTechnology))
+                    throw new BuildFailedException("Здание " + building.Id + " ссылается на отсутствующую технологию.");
+            }
+            for (int i = 0; i < RulesCatalog.Units.Length; i++)
+            {
+                UnitDefinition unit = RulesCatalog.Units[i];
+                if (!string.IsNullOrEmpty(unit.RequiredTechnology) && !technologyIds.Contains(unit.RequiredTechnology))
+                    throw new BuildFailedException("Отряд " + unit.Kind + " ссылается на отсутствующую технологию.");
+                if (!string.IsNullOrEmpty(unit.RequiredBuilding) && !buildingIds.Contains(unit.RequiredBuilding))
+                    throw new BuildFailedException("Отряд " + unit.Kind + " ссылается на отсутствующее здание.");
+            }
+            var improvements = new HashSet<ImprovementKind>();
+            for (int i = 0; i < RulesCatalog.Improvements.Length; i++)
+            {
+                ImprovementDefinition improvement = RulesCatalog.Improvements[i];
+                if (!improvements.Add(improvement.Kind)) throw new BuildFailedException("Повторяется улучшение " + improvement.Kind + ".");
+                if (!technologyIds.Contains(improvement.RequiredTechnology)) throw new BuildFailedException("Улучшение " + improvement.Kind + " ссылается на отсутствующую технологию.");
+            }
+        }
+    }
+}

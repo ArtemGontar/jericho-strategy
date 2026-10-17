@@ -1,0 +1,510 @@
+using System;
+using System.Collections.Generic;
+
+namespace Nasledie.Core
+{
+    public sealed partial class GameSimulation
+    {
+        private static T[] Append<T>(ref T[] values, T value)
+        {
+            if (values == null) values = Array.Empty<T>();
+            Array.Resize(ref values, values.Length + 1);
+            values[values.Length - 1] = value;
+            return values;
+        }
+
+        private static void AppendLog(GameState state, string entry)
+        {
+            if (state.EventLog == null) state.EventLog = Array.Empty<string>();
+            Array.Resize(ref state.EventLog, state.EventLog.Length + 1);
+            state.EventLog[state.EventLog.Length - 1] = "Ход " + state.Turn + " · " + entry;
+            if (state.EventLog.Length > 80)
+            {
+                string[] trimmed = new string[80];
+                Array.Copy(state.EventLog, state.EventLog.Length - trimmed.Length, trimmed, 0, trimmed.Length);
+                state.EventLog = trimmed;
+            }
+        }
+
+        private static int CivilizationPopulationTenths(GameState state, int civilizationId)
+        {
+            int total = 0;
+            for (int i = 0; i < state.Cities.Length; i++) if (state.Cities[i].OwnerId == civilizationId) total += state.Cities[i].PopulationTenths;
+            for (int i = 0; i < state.Units.Length; i++) if (state.Units[i].OwnerId == civilizationId) total += state.Units[i].PopulationTenths;
+            CivilizationState civ = state.Civilization(civilizationId);
+            if (civ != null) total += civ.RefugeePopulationTenths;
+            return total;
+        }
+
+        private static void ValidateInvariants(GameState state)
+        {
+            if (state.Civilizations == null || state.Civilizations.Length == 0) throw new InvalidOperationException("Нет цивилизаций.");
+            if (state.Cities == null || state.Cells == null || state.Units == null) throw new InvalidOperationException("Повреждена карта или список сущностей.");
+            if (state.HumanCivilizationId < 0 || state.HumanCivilizationId >= state.Civilizations.Length) throw new InvalidOperationException("Игрок не найден.");
+            var entityIds = new HashSet<int>();
+            int maximumEntityId = 0;
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityState city = state.Cities[i];
+                if (city == null || city.Id <= 0 || !entityIds.Add(city.Id)) throw new InvalidOperationException("Повторяется идентификатор города.");
+                maximumEntityId = Math.Max(maximumEntityId, city.Id);
+                if (city.Project == null) city.Project = new CityProject();
+                city.Workers = city.Workers ?? new int[6];
+                city.ServiceFunding = city.ServiceFunding ?? new int[3];
+                city.BuildingIds = city.BuildingIds ?? Array.Empty<string>();
+                city.BuildingLevels = city.BuildingLevels ?? Array.Empty<int>();
+                city.CompletedCulturalIds = city.CompletedCulturalIds ?? Array.Empty<string>();
+                city.PopulationTenths = Math.Max(0, Math.Min(city.HousingTenths, city.PopulationTenths));
+                city.ReservedPopulationTenths = Math.Max(0, Math.Min(city.PopulationTenths, city.ReservedPopulationTenths));
+                city.FoodTenths = Math.Max(0, Math.Min(Math.Max(city.FoodStoreCapacityTenths, city.PopulationTenths * 4), city.FoodTenths));
+                int people = city.WorkerCount;
+                int assigned = 0;
+                for (int w = 0; w < city.Workers.Length; w++)
+                {
+                    city.Workers[w] = Math.Max(0, city.Workers[w]);
+                    assigned += city.Workers[w];
+                }
+                if (assigned > people)
+                {
+                    int remove = assigned - people;
+                    for (int w = city.Workers.Length - 1; w >= 0 && remove > 0; w--)
+                    {
+                        int take = Math.Min(remove, city.Workers[w]);
+                        city.Workers[w] -= take;
+                        remove -= take;
+                    }
+                }
+                for (int w = 0; w < city.ServiceFunding.Length; w++) city.ServiceFunding[w] = Math.Max(0, Math.Min(2, city.ServiceFunding[w]));
+                if (city.OwnerId < 0 || city.OwnerId >= state.Civilizations.Length) throw new InvalidOperationException("У города нет владельца.");
+            }
+            for (int i = 0; i < state.Civilizations.Length; i++)
+            {
+                CivilizationState civ = state.Civilizations[i];
+                civ.KnownTechnologies = civ.KnownTechnologies ?? Array.Empty<string>();
+                civ.Laws = civ.Laws ?? Array.Empty<string>();
+                civ.TechnologyProgressTenths = civ.TechnologyProgressTenths ?? new int[RulesCatalog.Technologies.Length];
+                civ.Relations = civ.Relations ?? new int[state.Civilizations.Length];
+                civ.Trusts = civ.Trusts ?? new int[state.Civilizations.Length];
+                civ.Threats = civ.Threats ?? new int[state.Civilizations.Length];
+                civ.CulturalInfluence = civ.CulturalInfluence ?? new int[state.Civilizations.Length];
+                civ.TradeDependency = civ.TradeDependency ?? new int[state.Civilizations.Length];
+                if (civ.TechnologyProgressTenths.Length != RulesCatalog.Technologies.Length)
+                    Array.Resize(ref civ.TechnologyProgressTenths, RulesCatalog.Technologies.Length);
+            }
+            for (int i = 0; i < state.Units.Length; i++)
+            {
+                UnitState unit = state.Units[i];
+                if (unit == null || unit.Id <= 0 || !entityIds.Add(unit.Id)) throw new InvalidOperationException("Повторяется идентификатор отряда.");
+                maximumEntityId = Math.Max(maximumEntityId, unit.Id);
+                if (state.Civilization(unit.OwnerId) == null || RulesCatalog.Unit(unit.Kind) == null) throw new InvalidOperationException("Повреждён отряд.");
+                unit.Strength = Math.Max(0, Math.Min(150, unit.Strength));
+                unit.Readiness = Math.Max(0, Math.Min(120, unit.Readiness));
+            }
+            if (state.Treaties == null) state.Treaties = Array.Empty<TreatyState>();
+            if (state.Conflicts == null) state.Conflicts = Array.Empty<ConflictState>();
+            if (state.Events == null) state.Events = Array.Empty<ActiveEventState>();
+            if (state.Reports == null) state.Reports = Array.Empty<TurnReport>();
+            if (state.EventLog == null) state.EventLog = Array.Empty<string>();
+            if (state.Crisis == null) state.Crisis = new CrisisState();
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                if (state.Treaties[i] == null || state.Treaties[i].Id <= 0 || !entityIds.Add(state.Treaties[i].Id)) throw new InvalidOperationException("Повторяется идентификатор договора.");
+                maximumEntityId = Math.Max(maximumEntityId, state.Treaties[i].Id);
+            }
+            for (int i = 0; i < state.Conflicts.Length; i++)
+            {
+                if (state.Conflicts[i] == null || state.Conflicts[i].Id <= 0 || !entityIds.Add(state.Conflicts[i].Id)) throw new InvalidOperationException("Повторяется идентификатор конфликта.");
+                maximumEntityId = Math.Max(maximumEntityId, state.Conflicts[i].Id);
+            }
+            for (int i = 0; i < state.Events.Length; i++)
+            {
+                if (state.Events[i] == null || state.Events[i].Id <= 0 || !entityIds.Add(state.Events[i].Id)) throw new InvalidOperationException("Повторяется идентификатор события.");
+                maximumEntityId = Math.Max(maximumEntityId, state.Events[i].Id);
+            }
+            if (state.NextEntityId <= maximumEntityId) state.NextEntityId = maximumEntityId + 1;
+        }
+
+        private static UnitState FindUnit(GameState state, int id)
+        {
+            for (int i = 0; i < state.Units.Length; i++) if (state.Units[i].Id == id) return state.Units[i];
+            return null;
+        }
+
+        private static UnitState FindUnitAt(GameState state, int q, int r, int excludeCivilizationId)
+        {
+            for (int i = 0; i < state.Units.Length; i++)
+            {
+                UnitState unit = state.Units[i];
+                if (unit.Q == q && unit.R == r && unit.OwnerId != excludeCivilizationId) return unit;
+            }
+            return null;
+        }
+
+        private static CityState FindCity(GameState state, int id) { return state.City(id); }
+
+        private static int CountOwnedCities(GameState state, int civilizationId)
+        {
+            int count = 0;
+            for (int i = 0; i < state.Cities.Length; i++) if (state.Cities[i].OwnerId == civilizationId) count++;
+            return count;
+        }
+
+        private static int CountOwnedBuilding(GameState state, int civilizationId, string buildingId)
+        {
+            int count = 0;
+            for (int i = 0; i < state.Cities.Length; i++)
+                if (state.Cities[i].OwnerId == civilizationId) count += state.Cities[i].BuildingLevel(buildingId);
+            return count;
+        }
+
+        private static int CountRoutes(GameState state, int civilizationId)
+        {
+            int count = 0;
+            for (int i = 0; i < state.Treaties.Length; i++)
+                if (state.Treaties[i].Active && state.Treaties[i].Kind == TreatyKind.TradeRoute &&
+                    (state.Treaties[i].FromCivilizationId == civilizationId || state.Treaties[i].ToCivilizationId == civilizationId)) count++;
+            return count;
+        }
+
+        private static int TradeSlots(GameState state, int civilizationId)
+        {
+            int slots = 1;
+            for (int i = 0; i < state.Cities.Length; i++)
+                if (state.Cities[i].OwnerId == civilizationId) slots += state.Cities[i].BuildingLevel("market");
+            if (state.Civilization(civilizationId).Knows("trade_league")) slots++;
+            return slots;
+        }
+
+        private static bool AtWar(GameState state, int first, int second)
+        {
+            ConflictState conflict = FindConflict(state, first, second);
+            return conflict != null && conflict.Phase == 2;
+        }
+
+        private static bool HasTreaty(GameState state, TreatyKind kind, int first, int second)
+        {
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                TreatyState treaty = state.Treaties[i];
+                if (!treaty.Active || treaty.Kind != kind) continue;
+                if ((treaty.FromCivilizationId == first && treaty.ToCivilizationId == second) ||
+                    (treaty.FromCivilizationId == second && treaty.ToCivilizationId == first)) return true;
+            }
+            return false;
+        }
+
+        private static ConflictState FindConflict(GameState state, int first, int second)
+        {
+            for (int i = 0; i < state.Conflicts.Length; i++)
+            {
+                ConflictState conflict = state.Conflicts[i];
+                if (conflict.Active && ((conflict.AggressorId == first && conflict.DefenderId == second) ||
+                    (conflict.AggressorId == second && conflict.DefenderId == first))) return conflict;
+            }
+            return null;
+        }
+
+        private static int TreatyCost(TreatyKind kind)
+        {
+            switch (kind)
+            {
+                case TreatyKind.TradeRoute: return 10;
+                case TreatyKind.NonAggression: return 15;
+                case TreatyKind.OpenBorders: return 20;
+                case TreatyKind.KnowledgeExchange: return 25;
+                case TreatyKind.Guarantee: return 30;
+                case TreatyKind.Embargo: return 25;
+                case TreatyKind.Peace: return 0;
+                default: return 20;
+            }
+        }
+
+        private static int TreatyDuration(TreatyKind kind)
+        {
+            return kind == TreatyKind.NonAggression ? 6 : kind == TreatyKind.Peace ? 2 : 8;
+        }
+
+        private static string TreatyName(TreatyKind kind)
+        {
+            switch (kind)
+            {
+                case TreatyKind.TradeRoute: return "торговый маршрут";
+                case TreatyKind.NonAggression: return "договор о ненападении";
+                case TreatyKind.OpenBorders: return "открытые границы";
+                case TreatyKind.KnowledgeExchange: return "обмен знаниями";
+                case TreatyKind.Guarantee: return "гарантия безопасности";
+                case TreatyKind.Embargo: return "эмбарго";
+                case TreatyKind.Peace: return "перемирие";
+                default: return "соглашение";
+            }
+        }
+
+        private static void ApplyTreatyEffect(GameState state, TreatyState treaty)
+        {
+            state.TreatiesThisTurn++;
+            CivilizationState first = state.Civilization(treaty.FromCivilizationId);
+            CivilizationState second = state.Civilization(treaty.ToCivilizationId);
+            if (first == null || second == null) return;
+            first.Relations[second.Id] = Math.Min(100, first.Relations[second.Id] + 8);
+            second.Relations[first.Id] = Math.Min(100, second.Relations[first.Id] + 8);
+            first.Trusts[second.Id] = Math.Min(100, first.Trusts[second.Id] + 5);
+            second.Trusts[first.Id] = Math.Min(100, second.Trusts[first.Id] + 5);
+            if (treaty.Kind == TreatyKind.KnowledgeExchange)
+            {
+                int firstContribution = Math.Min(30, first.KnowledgeTenths / 2);
+                int secondContribution = Math.Min(30, second.KnowledgeTenths / 2);
+                first.KnowledgeTenths -= firstContribution;
+                second.KnowledgeTenths -= secondContribution;
+                first.KnowledgeTenths += secondContribution;
+                second.KnowledgeTenths += firstContribution;
+                first.CulturePrestige++;
+                second.CulturePrestige++;
+            }
+            if (treaty.Kind == TreatyKind.Guarantee)
+            {
+                first.Threats[second.Id] = Math.Max(0, first.Threats[second.Id] - 10);
+                second.Threats[first.Id] = Math.Max(0, second.Threats[first.Id] - 10);
+            }
+            if (treaty.Kind == TreatyKind.Embargo)
+            {
+                for (int i = 0; i < state.Treaties.Length; i++)
+                    if (state.Treaties[i].Active && state.Treaties[i].Kind == TreatyKind.TradeRoute &&
+                        ((state.Treaties[i].FromCivilizationId == first.Id && state.Treaties[i].ToCivilizationId == second.Id) ||
+                         (state.Treaties[i].FromCivilizationId == second.Id && state.Treaties[i].ToCivilizationId == first.Id))) state.Treaties[i].Active = false;
+            }
+        }
+
+        private static void CloseTradeRoutes(GameState state, int civilizationId, int partnerId)
+        {
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                TreatyState treaty = state.Treaties[i];
+                if (!treaty.Active || treaty.Kind != TreatyKind.TradeRoute) continue;
+                bool belongsToActor = treaty.FromCivilizationId == civilizationId || treaty.ToCivilizationId == civilizationId;
+                bool partnerMatches = partnerId < 0 || treaty.FromCivilizationId == partnerId || treaty.ToCivilizationId == partnerId;
+                if (belongsToActor && partnerMatches) treaty.Active = false;
+            }
+        }
+
+        private static int TradeAcceptance(CivilizationState actor, CivilizationState target, TreatyKind kind)
+        {
+            int score = target.Trusts[actor.Id] + target.Relations[actor.Id] / 2 - target.Threats[actor.Id] / 2;
+            if (target.Archetype == "Торговец" && kind == TreatyKind.TradeRoute) score += 25;
+            if (target.Archetype == "Попечитель" && (kind == TreatyKind.OpenBorders || kind == TreatyKind.NonAggression)) score += 15;
+            if (kind == TreatyKind.TradeRoute) score += 15;
+            return score;
+        }
+
+        private static bool RouteExists(GameState state, CityState start, CityState goal)
+        {
+            if (HexGrid.Distance(start.Q, start.R, goal.Q, goal.R) <= 1) return true;
+            var queue = new Queue<int>();
+            var seen = new HashSet<int>();
+            int startIndex = FindCellIndex(state, start.Q, start.R);
+            if (startIndex < 0) return false;
+            queue.Enqueue(startIndex);
+            seen.Add(startIndex);
+            while (queue.Count > 0)
+            {
+                int index = queue.Dequeue();
+                HexCell cell = state.Cells[index];
+                if (cell.Q == goal.Q && cell.R == goal.R) return true;
+                for (int d = 0; d < 6; d++)
+                {
+                    int q = cell.Q + HexGrid.Directions[d, 0];
+                    int r = cell.R + HexGrid.Directions[d, 1];
+                    int next = FindCellIndex(state, q, r);
+                    if (next < 0 || seen.Contains(next)) continue;
+                    HexCell candidate = state.Cells[next];
+                    if (candidate.Terrain == TerrainKind.Water || candidate.Terrain == TerrainKind.Mountain || candidate.Terrain == TerrainKind.Swamp) continue;
+                    if (candidate.OwnerId >= 0 && candidate.OwnerId != start.OwnerId && candidate.OwnerId != goal.OwnerId &&
+                        !HasTreaty(state, TreatyKind.OpenBorders, start.OwnerId, candidate.OwnerId) &&
+                        !HasTreaty(state, TreatyKind.OpenBorders, goal.OwnerId, candidate.OwnerId)) continue;
+                    seen.Add(next);
+                    queue.Enqueue(next);
+                }
+            }
+            return false;
+        }
+
+        private static int FindCellIndex(GameState state, int q, int r)
+        {
+            for (int i = 0; i < state.Cells.Length; i++) if (state.Cells[i].Q == q && state.Cells[i].R == r) return i;
+            return -1;
+        }
+
+        private static int TradeSlots(GameState state, int ownerId, bool includeLeague)
+        {
+            return TradeSlots(state, ownerId) + (includeLeague ? 1 : 0);
+        }
+
+        private static CityState FirstCityOf(GameState state, int ownerId)
+        {
+            for (int i = 0; i < state.Cities.Length; i++) if (state.Cities[i].OwnerId == ownerId) return state.Cities[i];
+            return null;
+        }
+
+        private static int FindBestTradePartner(GameState state, int ownerId)
+        {
+            int best = -1;
+            int score = int.MinValue;
+            CivilizationState civ = state.Civilization(ownerId);
+            for (int i = 0; i < state.Civilizations.Length; i++)
+            {
+                if (i == ownerId || state.Civilizations[i].IsDefeated || AtWar(state, ownerId, i)) continue;
+                CityState cityA = FirstCityOf(state, ownerId);
+                CityState cityB = FirstCityOf(state, i);
+                if (cityA == null || cityB == null || !RouteExists(state, cityA, cityB)) continue;
+                int current = civ.Relations[i] + civ.Trusts[i] - civ.Threats[i] + (state.Civilizations[i].Archetype == "Торговец" ? 10 : 0);
+                if (current > score) { score = current; best = i; }
+            }
+            return best;
+        }
+
+        private static bool HasUnitKind(GameState state, int ownerId, UnitKind kind)
+        {
+            for (int i = 0; i < state.Units.Length; i++) if (state.Units[i].OwnerId == ownerId && state.Units[i].Kind == kind) return true;
+            return false;
+        }
+
+        private static bool IsThreatened(GameState state, int ownerId)
+        {
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityState city = state.Cities[i];
+                if (city.OwnerId != ownerId) continue;
+                for (int u = 0; u < state.Units.Length; u++)
+                    if (state.Units[u].OwnerId != ownerId && AtWar(state, ownerId, state.Units[u].OwnerId) &&
+                        HexGrid.Distance(city.Q, city.R, state.Units[u].Q, state.Units[u].R) <= 2) return true;
+            }
+            return false;
+        }
+
+        private static bool AtWarWithAny(GameState state, int ownerId)
+        {
+            for (int i = 0; i < state.Conflicts.Length; i++)
+                if (state.Conflicts[i].Active && state.Conflicts[i].Phase == 2 &&
+                    (state.Conflicts[i].AggressorId == ownerId || state.Conflicts[i].DefenderId == ownerId)) return true;
+            return false;
+        }
+
+        private static CityState MostAttractiveDestination(GameState state, CityState origin)
+        {
+            CityState best = null;
+            int bestValue = int.MinValue;
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityState candidate = state.Cities[i];
+                if (candidate.Id == origin.Id || candidate.OwnerId != origin.OwnerId || candidate.OccupiedById >= 0 ||
+                    candidate.PopulationTenths >= candidate.HousingTenths || candidate.Health < 30 || candidate.FoodShortageTurns > 0) continue;
+                int attraction = CityAttraction(state, candidate);
+                if (attraction > bestValue) { bestValue = attraction; best = candidate; }
+            }
+            return best;
+        }
+
+        private static int CityAttraction(GameState state, CityState city)
+        {
+            CivilizationState civ = state.Civilization(city.OwnerId);
+            int value = city.Attraction + city.Health / 3 + city.Trust / 4 + city.Environment / 5 + city.Safety / 6;
+            value += Math.Min(15, city.Education / 6) + (city.FoodShortageTurns == 0 ? 10 : -20);
+            if (civ != null && civ.HasLaw("city_autonomy")) value += 10;
+            if (city.OccupiedById >= 0) value -= 30;
+            if (AtWarWithAny(state, city.OwnerId)) value -= 8;
+            return value;
+        }
+
+        private static bool HasFriendlySupplyPath(GameState state, int ownerId, int fromQ, int fromR, int toQ, int toR)
+        {
+            if (HexGrid.Distance(fromQ, fromR, toQ, toR) > 4) return false;
+            int currentQ = fromQ;
+            int currentR = fromR;
+            int guard = 0;
+            while ((currentQ != toQ || currentR != toR) && guard++ < 8)
+            {
+                int bestQ = currentQ;
+                int bestR = currentR;
+                int bestDistance = HexGrid.Distance(currentQ, currentR, toQ, toR);
+                for (int d = 0; d < 6; d++)
+                {
+                    int q = currentQ + HexGrid.Directions[d, 0];
+                    int r = currentR + HexGrid.Directions[d, 1];
+                    HexCell candidate = state.Cell(q, r);
+                    if (candidate == null || (candidate.OwnerId != ownerId && !(q == toQ && r == toR)) || candidate.Terrain == TerrainKind.Water || candidate.Terrain == TerrainKind.Mountain) continue;
+                    int distance = HexGrid.Distance(q, r, toQ, toR);
+                    if (distance < bestDistance) { bestDistance = distance; bestQ = q; bestR = r; }
+                }
+                if (bestQ == currentQ && bestR == currentR) return false;
+                currentQ = bestQ;
+                currentR = bestR;
+            }
+            return currentQ == toQ && currentR == toR;
+        }
+
+        private static HexCell FindSettlerCell(GameState state, CityState city)
+        {
+            HexCell best = null;
+            int bestValue = int.MinValue;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell cell = state.Cells[i];
+                if (cell.OwnerId >= 0 || cell.Terrain == TerrainKind.Mountain || cell.Terrain == TerrainKind.Swamp || cell.Terrain == TerrainKind.Water) continue;
+                bool farEnough = true;
+                for (int c = 0; c < state.Cities.Length; c++) if (HexGrid.Distance(cell.Q, cell.R, state.Cities[c].Q, state.Cities[c].R) < 3) farEnough = false;
+                if (!farEnough) continue;
+                int value = cell.Terrain == TerrainKind.Meadow || cell.Terrain == TerrainKind.River ? 10 : cell.Terrain == TerrainKind.Forest ? 5 : 0;
+                if (cell.Resource == ResourceKind.FertileSoil) value += 5;
+                value -= HexGrid.Distance(city.Q, city.R, cell.Q, cell.R);
+                if (value > bestValue) { bestValue = value; best = cell; }
+            }
+            return best;
+        }
+
+        private static void IncreaseCulturalExchange(GameState state, int firstId, int secondId)
+        {
+            CivilizationState first = state.Civilization(firstId);
+            CivilizationState second = state.Civilization(secondId);
+            if (first == null || second == null) return;
+            first.CulturalInfluence[secondId] = Math.Min(100, first.CulturalInfluence[secondId] + 1);
+            second.CulturalInfluence[firstId] = Math.Min(100, second.CulturalInfluence[firstId] + 1);
+        }
+
+        private static string FormatPopulation(int tenths) { return (tenths / 10.0).ToString("0.0"); }
+
+        private static string NextCityName(GameState state, int ownerId)
+        {
+            string[] names = { "Новый берег", "Дальний сад", "Сосновый круг", "Речные ворота", "Тихая гавань", "Зелёный холм" };
+            int ordinal = 0;
+            for (int i = 0; i < state.Cities.Length; i++) if (state.Cities[i].OwnerId == ownerId) ordinal++;
+            string candidate = names[Math.Max(0, ordinal - 1) % names.Length];
+            int suffix = 2;
+            while (true)
+            {
+                bool duplicate = false;
+                for (int i = 0; i < state.Cities.Length; i++) if (state.Cities[i].Name == candidate) duplicate = true;
+                if (!duplicate) return candidate;
+                candidate = names[(Math.Max(0, ordinal - 1) + suffix - 1) % names.Length] + " " + suffix;
+                suffix++;
+            }
+        }
+
+        private static string EraName(Era era)
+        {
+            switch (era)
+            {
+                case Era.Communities: return "общин";
+                case Era.Cities: return "городов";
+                case Era.ConnectedLands: return "связанных земель";
+                case Era.Industry: return "индустрии";
+                case Era.Synthesis: return "синтеза";
+                default: return "неизвестной эпохи";
+            }
+        }
+
+        private static string EventName(EventKind kind)
+        {
+            for (int i = 0; i < RulesCatalog.Events.Length; i++) if (RulesCatalog.Events[i].Kind == kind) return RulesCatalog.Events[i].NameRu;
+            return kind.ToString();
+        }
+    }
+}
