@@ -375,7 +375,7 @@ internal static class Program
         Assert(!simulation.State.IsFinished, "the knowledge requirement must hold for two consecutive turns");
         simulation.EndTurn();
         Assert(simulation.State.IsFinished && simulation.State.WinningPath == VictoryPath.Scientific,
-            "a completed fresh scientific project must win after meeting both recent output checks");
+            "a completed scientific project must win after meeting both recent output checks");
         Console.WriteLine("PASS: live science project survives four turns, waits for output recovery, and awards its victory.");
     }
 
