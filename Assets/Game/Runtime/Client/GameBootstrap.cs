@@ -19,6 +19,17 @@ namespace Nasledie.Client
             public string CityName;
         }
 
+        private sealed class UnitMovePresentation
+        {
+            public int UnitId;
+            public int OwnerId;
+            public UnitKind Kind;
+            public int StartQ;
+            public int StartR;
+            public int TargetQ;
+            public int TargetR;
+        }
+
         private GameSimulation simulation;
         private Canvas canvas;
         private RectTransform safeRoot;
@@ -51,6 +62,7 @@ namespace Nasledie.Client
         private bool presentationBusy;
         private bool dismissPresentationRequested;
         private int movingUnitId = -1;
+        private readonly HashSet<int> movingUnitIds = new HashSet<int>();
         private Vector2 mapScrollPosition = new Vector2(0f, 1f);
         private GameObject presentationLayer;
 
@@ -641,7 +653,7 @@ namespace Nasledie.Client
             selectedUnitId = -1;
             currentPage = ScreenPage.Overview;
             notice = "Новая кампания создана · мир " + seed + ".";
-            SaveService.SaveAuto(simulation.State);
+            if (!SaveService.SaveAuto(simulation.State)) notice += " Автосохранение не удалось; проверьте свободное место и сохраните вручную.";
             menuHost.gameObject.SetActive(false);
             RenderGame();
         }
@@ -807,7 +819,7 @@ namespace Nasledie.Client
             else
             {
                 UnitState unit = visible ? UnitAt(cell.Q, cell.R) : null;
-                if (unit != null && unit.Id == movingUnitId) unit = null;
+                if (unit != null && IsUnitMoving(unit.Id)) unit = null;
                 if (unit != null) marker = unit.Kind == UnitKind.SettlerWagon ? "◇" : "●";
                 else if (cell.Improvement != ImprovementKind.None && cell.Damage < 75) marker = ImprovementMark(cell.Improvement);
                 else if (cell.Resource != ResourceKind.None) marker = ResourceMark(cell.Resource);
@@ -819,7 +831,7 @@ namespace Nasledie.Client
                 else if (visible)
                 {
                     UnitState unit = UnitAt(cell.Q, cell.R);
-                    if (unit != null && unit.Id == movingUnitId) unit = null;
+                    if (unit != null && IsUnitMoving(unit.Id)) unit = null;
                     if (unit != null) artwork = UnitArtwork(unit.Kind, CivilizationEra(unit.OwnerId));
                     else if (cell.Improvement != ImprovementKind.None && cell.Damage < 75) artwork = ImprovementArtwork(cell.Improvement, CivilizationEra(cell.OwnerId));
                     else artwork = ResourceArtwork(cell.Resource);
@@ -1217,11 +1229,17 @@ namespace Nasledie.Client
             if (project.Kind == ProjectKind.None) UiKit.Label(card.transform, "Очередь пуста. Проект получает производство города в конце каждого хода.", 21, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             else
             {
+                CivilizationState owner = simulation.State.Civilization(city.OwnerId);
+                bool scienceReadyToValidate = project.Kind == ProjectKind.ScientificProject && owner != null && owner.ScienceProjectTurns >= 4;
                 int percent = project.Cost <= 0 ? 0 : Math.Min(100, project.Progress * 100 / project.Cost);
                 int production = Math.Max(1, simulation.PreviewCity(city.Id).Production);
                 int turnsLeft = Math.Max(0, project.Cost - project.Progress + production - 1) / production;
-                UiKit.Label(card.transform, ProjectName(project) + " · " + project.Progress + "/" + project.Cost + " ПП · " + percent + "% · примерно " + turnsLeft + " ход(а) до завершения",
-                    22, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                if (scienceReadyToValidate)
+                    UiKit.Label(card.transform, "Научная программа завершена. Поддерживайте выпуск не ниже 5 знаний за ход два хода подряд · сейчас " +
+                        Format(owner.PreviousTurnKnowledgeOutputTenths) + " / " + Format(owner.LastTurnKnowledgeOutputTenths) + ".", 22, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                else
+                    UiKit.Label(card.transform, ProjectName(project) + " · " + project.Progress + "/" + project.Cost + " ПП · " + percent + "% · примерно " + turnsLeft + " ход(а) до завершения",
+                        22, GamePalette.Paper, TextAnchor.MiddleLeft, true);
                 UiKit.Button(card.transform, "ОТМЕНИТЬ ПРОЕКТ · ВОЗВРАТ ПОЛОВИНЫ ВЛОЖЕННОЙ КАЗНЫ", delegate { Issue(CommandKind.SetProject, city.Id, text: "cancel"); }, GamePalette.Rust, 62, 18);
             }
         }
@@ -1371,8 +1389,9 @@ namespace Nasledie.Client
         private void SaveManual()
         {
             if (simulation == null) return;
-            SaveService.SaveManual(simulation.State);
-            notice = "Кампания сохранена на этом устройстве.";
+            notice = SaveService.SaveManual(simulation.State)
+                ? "Кампания сохранена на этом устройстве."
+                : "Не удалось сохранить кампанию. Освободите место и повторите попытку.";
             if (menuHost.gameObject.activeSelf) ShowMenu(); else RenderGame();
         }
 
@@ -1389,8 +1408,9 @@ namespace Nasledie.Client
             simulation.EndTurn();
             if (simulation.State.Turn != previousTurn)
             {
-                SaveService.SaveAuto(simulation.State);
-                notice = "Ход " + previousTurn + " завершён. " + simulation.LastMessage;
+                bool saved = SaveService.SaveAuto(simulation.State);
+                notice = "Ход " + previousTurn + " завершён. " + simulation.LastMessage +
+                    (saved ? "" : " Автосохранение не удалось; сохраните кампанию вручную.");
             }
             else notice = simulation.LastMessage;
             if (simulation.State.IsFinished) currentPage = ScreenPage.Victory;
@@ -1405,6 +1425,7 @@ namespace Nasledie.Client
             Era previousEra = simulation.State.Civilization(simulation.State.HumanCivilizationId).Era;
             int previousTurn = simulation.State.Turn;
             Dictionary<string, int> buildingLevels = CapturePlayerBuildingLevels();
+            Dictionary<int, UnitMovePresentation> unitPositions = CaptureUnitPositions();
             GameObject layer = CreatePresentationLayer();
             Text status;
             Image progress;
@@ -1423,12 +1444,27 @@ namespace Nasledie.Client
 
             simulation.EndTurn();
             bool advanced = simulation.State.Turn != previousTurn;
-            if (advanced) SaveService.SaveAuto(simulation.State);
-            if (simulation.State.IsFinished) currentPage = ScreenPage.Victory;
-            else if (HasPendingEvent()) currentPage = ScreenPage.Events;
-            else currentPage = ScreenPage.Overview;
-            notice = advanced ? "Ход " + previousTurn + " завершён. " + simulation.LastMessage : simulation.LastMessage;
+            bool saved = !advanced || SaveService.SaveAuto(simulation.State);
+            ScreenPage resolvedPage = simulation.State.IsFinished ? ScreenPage.Victory : HasPendingEvent() ? ScreenPage.Events : ScreenPage.Overview;
+            List<UnitMovePresentation> turnMoves = advanced && resolvedPage == ScreenPage.Overview && animationMode > 0
+                ? FindTurnUnitMoves(unitPositions)
+                : new List<UnitMovePresentation>();
+            movingUnitIds.Clear();
+            for (int i = 0; i < turnMoves.Count; i++) movingUnitIds.Add(turnMoves[i].UnitId);
+            currentPage = turnMoves.Count > 0 ? ScreenPage.Overview : resolvedPage;
+            notice = advanced
+                ? "Ход " + previousTurn + " завершён. " + simulation.LastMessage + (saved ? "" : " Автосохранение не удалось; сохраните кампанию вручную.")
+                : simulation.LastMessage;
             RenderGame();
+
+            if (turnMoves.Count > 0 && animationMode > 0)
+                yield return AnimateTurnUnitMovements(layer, turnMoves);
+            if (currentPage != resolvedPage)
+            {
+                currentPage = resolvedPage;
+                movingUnitIds.Clear();
+                RenderGame();
+            }
 
             if (advanced)
             {
@@ -1450,6 +1486,48 @@ namespace Nasledie.Client
             if (presentationLayer != null) Destroy(presentationLayer);
             presentationLayer = null;
             presentationBusy = false;
+        }
+
+        private Dictionary<int, UnitMovePresentation> CaptureUnitPositions()
+        {
+            var result = new Dictionary<int, UnitMovePresentation>();
+            UnitState[] units = simulation.State.Units;
+            for (int i = 0; i < units.Length; i++)
+            {
+                UnitState unit = units[i];
+                if (unit == null) continue;
+                result[unit.Id] = new UnitMovePresentation
+                {
+                    UnitId = unit.Id, OwnerId = unit.OwnerId, Kind = unit.Kind,
+                    StartQ = unit.Q, StartR = unit.R
+                };
+            }
+            return result;
+        }
+
+        private List<UnitMovePresentation> FindTurnUnitMoves(Dictionary<int, UnitMovePresentation> previous)
+        {
+            var result = new List<UnitMovePresentation>();
+            if (previous == null) return result;
+            UnitState[] units = simulation.State.Units;
+            for (int i = 0; i < units.Length; i++)
+            {
+                UnitState unit = units[i];
+                UnitMovePresentation start;
+                if (unit == null || !previous.TryGetValue(unit.Id, out start) ||
+                    (unit.Q == start.StartQ && unit.R == start.StartR) ||
+                    HexGrid.Distance(unit.Q, unit.R, start.StartQ, start.StartR) > 2) continue;
+                HexCell destination = simulation.State.Cell(unit.Q, unit.R);
+                int humanMask = 1 << simulation.State.HumanCivilizationId;
+                if (destination == null || (destination.VisibleToMask & humanMask) == 0) continue;
+                result.Add(new UnitMovePresentation
+                {
+                    UnitId = unit.Id, OwnerId = unit.OwnerId, Kind = unit.Kind,
+                    StartQ = start.StartQ, StartR = start.StartR,
+                    TargetQ = unit.Q, TargetR = unit.R
+                });
+            }
+            return result;
         }
 
         private Dictionary<string, int> CapturePlayerBuildingLevels()
@@ -1641,6 +1719,77 @@ namespace Nasledie.Client
             presentationLayer = null;
             presentationBusy = false;
             RenderGame();
+        }
+
+        private IEnumerator AnimateTurnUnitMovements(GameObject layer, List<UnitMovePresentation> moves)
+        {
+            if (layer == null || moves == null || moves.Count == 0) yield break;
+            Image blocker = layer.GetComponent<Image>();
+            if (blocker != null) blocker.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.16f);
+            DestroyChildren(layer.transform);
+            yield return new WaitForEndOfFrame();
+            Canvas.ForceUpdateCanvases();
+
+            var movers = new List<RectTransform>();
+            var starts = new List<Vector2>();
+            var targets = new List<Vector2>();
+            var durations = new List<float>();
+            float longest = 0f;
+            for (int i = 0; i < moves.Count; i++)
+            {
+                UnitMovePresentation move = moves[i];
+                RectTransform fromHex = FindHex(move.StartQ, move.StartR);
+                RectTransform toHex = FindHex(move.TargetQ, move.TargetR);
+                if (fromHex == null || toHex == null) { movingUnitIds.Remove(move.UnitId); continue; }
+                Vector2 fromScreen = RectScreenCenter(fromHex);
+                Vector2 toScreen = RectScreenCenter(toHex);
+                Vector2 fromLocal, toLocal;
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(safeRoot, fromScreen, null, out fromLocal);
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(safeRoot, toScreen, null, out toLocal);
+                string artwork = UnitArtwork(move.Kind, CivilizationEra(move.OwnerId));
+                Sprite sprite = LoadArtwork(artwork);
+                if (sprite == null) { movingUnitIds.Remove(move.UnitId); continue; }
+                GameObject mover = UiKit.CreateObject("MovingRivalUnit_" + move.UnitId, layer.transform);
+                Image image = mover.AddComponent<Image>();
+                image.sprite = sprite;
+                image.preserveAspect = true;
+                image.raycastTarget = false;
+                RectTransform rect = UiKit.Rect(mover);
+                rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+                rect.pivot = new Vector2(0.5f, 0.5f);
+                rect.sizeDelta = new Vector2(move.Kind == UnitKind.SettlerWagon ? 58 : 48, move.Kind == UnitKind.SettlerWagon ? 50 : 46);
+                rect.anchoredPosition = fromLocal;
+                movers.Add(rect);
+                starts.Add(fromLocal);
+                targets.Add(toLocal);
+                float duration = (move.Kind == UnitKind.SettlerWagon ? 0.78f : 0.58f) * AnimationScale;
+                durations.Add(duration);
+                longest = Mathf.Max(longest, duration);
+            }
+
+            float elapsed = 0f;
+            while (elapsed < longest)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                for (int i = 0; i < movers.Count; i++)
+                {
+                    if (movers[i] == null) continue;
+                    float t = Mathf.Clamp01(elapsed / durations[i]);
+                    float eased = t * t * (3f - 2f * t);
+                    float arc = movers[i].sizeDelta.y * 0.4f;
+                    movers[i].anchoredPosition = Vector2.Lerp(starts[i], targets[i], eased) + Vector2.up * Mathf.Sin(t * Mathf.PI) * arc;
+                    movers[i].localScale = Vector3.one * (0.9f + 0.1f * Mathf.Sin(t * Mathf.PI));
+                }
+                yield return null;
+            }
+            movingUnitIds.Clear();
+            if (blocker != null) blocker.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.72f);
+            RenderGame();
+        }
+
+        private bool IsUnitMoving(int unitId)
+        {
+            return unitId == movingUnitId || movingUnitIds.Contains(unitId);
         }
 
         private RectTransform FindHex(int q, int r)

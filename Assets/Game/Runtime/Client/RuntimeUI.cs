@@ -283,49 +283,154 @@ namespace Nasledie.Client
 
     public static class SaveService
     {
+        private const int CurrentSaveVersion = 2;
         private static string DirectoryPath { get { return Path.Combine(Application.persistentDataPath, "NasledieSaves"); } }
         private static string AutoPath(int slot) { return Path.Combine(DirectoryPath, "autosave_" + slot + ".json"); }
         private static string ManualPath { get { return Path.Combine(DirectoryPath, "campaign.json"); } }
+        private static string BackupPath(string path) { return path + ".bak"; }
+        private static string TemporaryPath(string path) { return path + ".tmp"; }
 
-        public static void SaveAuto(GameState state)
+        public static bool SaveAuto(GameState state)
         {
-            Directory.CreateDirectory(DirectoryPath);
-            for (int slot = 2; slot >= 1; slot--)
-                if (File.Exists(AutoPath(slot - 1))) File.Copy(AutoPath(slot - 1), AutoPath(slot), true);
-            File.WriteAllText(AutoPath(0), JsonUtility.ToJson(state, true));
+            try
+            {
+                Directory.CreateDirectory(DirectoryPath);
+                for (int slot = 2; slot >= 1; slot--)
+                {
+                    string source = AutoPath(slot - 1);
+                    string destination = AutoPath(slot);
+                    if (File.Exists(source))
+                    {
+                        File.Copy(source, destination, true);
+                        if (File.Exists(BackupPath(source))) File.Copy(BackupPath(source), BackupPath(destination), true);
+                        else if (File.Exists(BackupPath(destination))) File.Delete(BackupPath(destination));
+                    }
+                    else if (File.Exists(BackupPath(source)))
+                    {
+                        File.Copy(BackupPath(source), destination, true);
+                        if (File.Exists(BackupPath(destination))) File.Delete(BackupPath(destination));
+                    }
+                    else
+                    {
+                        if (File.Exists(destination)) File.Delete(destination);
+                        if (File.Exists(BackupPath(destination))) File.Delete(BackupPath(destination));
+                    }
+                }
+                Write(AutoPath(0), state);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("Не удалось создать автосохранение: " + exception.Message);
+                return false;
+            }
         }
 
-        public static void SaveManual(GameState state)
+        public static bool SaveManual(GameState state)
         {
-            Directory.CreateDirectory(DirectoryPath);
-            File.WriteAllText(ManualPath, JsonUtility.ToJson(state, true));
+            try
+            {
+                Directory.CreateDirectory(DirectoryPath);
+                Write(ManualPath, state);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("Не удалось сохранить кампанию: " + exception.Message);
+                return false;
+            }
         }
 
         public static GameState LoadLatest()
         {
-            string latestPath = null;
+            GameState latest = null;
             DateTime latestTime = DateTime.MinValue;
             string[] paths = { ManualPath, AutoPath(0), AutoPath(1), AutoPath(2) };
             for (int i = 0; i < paths.Length; i++)
             {
-                if (!File.Exists(paths[i])) continue;
-                DateTime time = File.GetLastWriteTimeUtc(paths[i]);
-                if (time > latestTime) { latestTime = time; latestPath = paths[i]; }
+                string[] candidates = { paths[i], BackupPath(paths[i]) };
+                for (int j = 0; j < candidates.Length; j++)
+                {
+                    if (!File.Exists(candidates[j])) continue;
+                    DateTime time = File.GetLastWriteTimeUtc(candidates[j]);
+                    if (time <= latestTime) continue;
+                    GameState candidate = ReadSingle(candidates[j]);
+                    if (candidate == null) continue;
+                    latest = candidate;
+                    latestTime = time;
+                }
             }
-            return latestPath == null ? null : Read(latestPath);
+            return latest;
         }
 
         public static GameState LoadManual() { return Read(ManualPath); }
         public static GameState LoadAuto(int slot) { return slot < 0 || slot > 2 ? null : Read(AutoPath(slot)); }
-        public static bool HasManualSave { get { return File.Exists(ManualPath); } }
-        public static bool HasAutoSave(int slot) { return slot >= 0 && slot <= 2 && File.Exists(AutoPath(slot)); }
+        public static bool HasManualSave { get { return File.Exists(ManualPath) || File.Exists(BackupPath(ManualPath)); } }
+        public static bool HasAutoSave(int slot) { return slot >= 0 && slot <= 2 && (File.Exists(AutoPath(slot)) || File.Exists(BackupPath(AutoPath(slot)))); }
 
         public static bool HasSave
         {
-            get { return File.Exists(ManualPath) || File.Exists(AutoPath(0)) || File.Exists(AutoPath(1)) || File.Exists(AutoPath(2)); }
+            get { return HasManualSave || HasAutoSave(0) || HasAutoSave(1) || HasAutoSave(2); }
+        }
+
+        private static void Write(string path, GameState state)
+        {
+            if (state == null) throw new ArgumentNullException("state");
+            Directory.CreateDirectory(DirectoryPath);
+            state.SaveVersion = CurrentSaveVersion;
+            string temporary = TemporaryPath(path);
+            string backup = BackupPath(path);
+            try
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+                File.WriteAllText(temporary, JsonUtility.ToJson(state, true));
+                GameState staged = ReadSingle(temporary);
+                if (staged == null || staged.Turn != state.Turn || staged.Seed != state.Seed)
+                    throw new IOException("Сохранение не прошло проверку после записи.");
+                if (!File.Exists(path))
+                {
+                    File.Move(temporary, path);
+                    return;
+                }
+                if (File.Exists(backup)) File.Delete(backup);
+                try
+                {
+                    File.Replace(temporary, path, backup);
+                }
+                catch (PlatformNotSupportedException)
+                {
+                    ReplaceWithBackup(temporary, path, backup);
+                }
+                catch (NotSupportedException)
+                {
+                    ReplaceWithBackup(temporary, path, backup);
+                }
+                catch (IOException)
+                {
+                    ReplaceWithBackup(temporary, path, backup);
+                }
+            }
+            catch
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+                throw;
+            }
+        }
+
+        private static void ReplaceWithBackup(string temporary, string path, string backup)
+        {
+            if (File.Exists(path)) File.Copy(path, backup, true);
+            if (File.Exists(path)) File.Delete(path);
+            File.Move(temporary, path);
         }
 
         private static GameState Read(string path)
+        {
+            GameState state = ReadSingle(path);
+            return state ?? ReadSingle(BackupPath(path));
+        }
+
+        private static GameState ReadSingle(string path)
         {
             try
             {
@@ -333,7 +438,8 @@ namespace Nasledie.Client
                 string json = File.ReadAllText(path);
                 if (string.IsNullOrEmpty(json)) return null;
                 GameState state = JsonUtility.FromJson<GameState>(json);
-                if (state == null || state.SaveVersion != 1 || state.Civilizations == null || state.Cities == null || state.Cells == null) return null;
+                if (state == null || state.SaveVersion < 1 || state.SaveVersion > CurrentSaveVersion || state.Civilizations == null || state.Cities == null || state.Cells == null) return null;
+                Migrate(state);
                 state.SelectedMapOffset = state.SelectedMapOffset ?? new int[2];
                 state.WinningCivilizationIds = state.WinningCivilizationIds ?? Array.Empty<int>();
                 state.Units = state.Units ?? Array.Empty<UnitState>();
@@ -349,6 +455,8 @@ namespace Nasledie.Client
                     if (city == null) return null;
                     city.Workers = city.Workers ?? new int[6];
                     city.ServiceFunding = city.ServiceFunding ?? new int[3];
+                    if (city.Workers.Length != 6) Array.Resize(ref city.Workers, 6);
+                    if (city.ServiceFunding.Length != 3) Array.Resize(ref city.ServiceFunding, 3);
                     city.Project = city.Project ?? new CityProject();
                     city.BuildingIds = city.BuildingIds ?? Array.Empty<string>();
                     city.BuildingLevels = city.BuildingLevels ?? Array.Empty<int>();
@@ -367,6 +475,11 @@ namespace Nasledie.Client
                     civ.CulturalInfluence = civ.CulturalInfluence ?? new int[state.Civilizations.Length];
                     civ.TradeDependency = civ.TradeDependency ?? new int[state.Civilizations.Length];
                     if (civ.TechnologyProgressTenths.Length != RulesCatalog.Technologies.Length) Array.Resize(ref civ.TechnologyProgressTenths, RulesCatalog.Technologies.Length);
+                    if (civ.Relations.Length != state.Civilizations.Length) Array.Resize(ref civ.Relations, state.Civilizations.Length);
+                    if (civ.Trusts.Length != state.Civilizations.Length) Array.Resize(ref civ.Trusts, state.Civilizations.Length);
+                    if (civ.Threats.Length != state.Civilizations.Length) Array.Resize(ref civ.Threats, state.Civilizations.Length);
+                    if (civ.CulturalInfluence.Length != state.Civilizations.Length) Array.Resize(ref civ.CulturalInfluence, state.Civilizations.Length);
+                    if (civ.TradeDependency.Length != state.Civilizations.Length) Array.Resize(ref civ.TradeDependency, state.Civilizations.Length);
                 }
                 for (int i = 0; i < state.Cells.Length; i++) if (state.Cells[i] == null) return null;
                 for (int i = 0; i < state.Events.Length; i++)
@@ -385,6 +498,23 @@ namespace Nasledie.Client
             {
                 Debug.LogWarning("Не удалось прочитать сохранение: " + exception.Message);
                 return null;
+            }
+        }
+
+        private static void Migrate(GameState state)
+        {
+            if (state.SaveVersion == 1)
+            {
+                if ((state.WinningCivilizationIds == null || state.WinningCivilizationIds.Length == 0) && state.IsFinished && state.WinnerCivilizationId >= 0)
+                    state.WinningCivilizationIds = new[] { state.WinnerCivilizationId };
+                if (state.Civilizations != null)
+                    for (int i = 0; i < state.Civilizations.Length; i++)
+                    {
+                        CivilizationState civ = state.Civilizations[i];
+                        if (civ != null && civ.PreviousTurnKnowledgeOutputTenths == 0 && civ.LastTurnKnowledgeOutputTenths > 0)
+                            civ.PreviousTurnKnowledgeOutputTenths = civ.LastTurnKnowledgeOutputTenths;
+                    }
+                state.SaveVersion = 2;
             }
         }
     }

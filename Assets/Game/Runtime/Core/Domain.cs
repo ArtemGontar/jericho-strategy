@@ -329,7 +329,7 @@ namespace Nasledie.Core
     [Serializable]
     public sealed class GameState
     {
-        public int SaveVersion = 1;
+        public int SaveVersion = 2;
         public int RulesVersion = 1;
         public int Seed;
         public int Turn = 1;

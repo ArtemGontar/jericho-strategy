@@ -416,7 +416,9 @@ namespace Nasledie.Core
                 }
                 if (city.Project != null && city.Project.Kind != ProjectKind.None)
                 {
-                    city.Project.Progress += yield.Production;
+                    if (city.Project.Kind == ProjectKind.ScientificProject && city.Project.Progress >= city.Project.Cost)
+                        city.Project.Progress = city.Project.Cost;
+                    else city.Project.Progress += yield.Production;
                     city.Project.TurnsActive++;
                 }
                 if (city.IntegrationTurns > 0) city.IntegrationTurns--;
@@ -640,14 +642,16 @@ namespace Nasledie.Core
                 if (project.Kind == ProjectKind.ScientificProject)
                 {
                     CivilizationState owner = state.Civilization(city.OwnerId);
-                    if (owner != null) owner.ScienceProjectTurns++;
-                    if (owner != null && owner.ScienceProjectTurns >= 4)
+                    if (owner != null && owner.ScienceProjectTurns < 4)
                     {
-                        owner.ScienceProjectTurns = 4;
-                        owner.WinningPath = VictoryPath.Scientific;
-                        lines.Add(owner.Name + " завершает международную научную программу.");
-                        city.Project = new CityProject { Kind = ProjectKind.None, TargetId = "" };
+                        owner.ScienceProjectTurns++;
+                        if (owner.ScienceProjectTurns >= 4)
+                        {
+                            owner.ScienceProjectTurns = 4;
+                            lines.Add(owner.Name + " завершает международную научную программу; проверяются последние показатели знаний.");
+                        }
                     }
+                    continue;
                 }
             }
         }

@@ -15,6 +15,7 @@ internal static class Program
             RunSaveResumeCampaign();
             RunPunitiveWarAndRecovery();
             RunVictoryPathAcceptance();
+            RunScientificVictoryLiveProjectAcceptance();
             RunEraTransitionAcceptance();
             RunAiProgressionAcceptance();
             Console.WriteLine("PASS: all headless campaign scenarios reached a valid ending.");
@@ -346,6 +347,36 @@ internal static class Program
         VictoryEvaluator.Check(state, new System.Collections.Generic.List<string>());
         Assert(!state.IsFinished, "scientific victory must not ignore the minimum knowledge output");
         Console.WriteLine("PASS: science victory validates its two-era technologies, distributed universities, academy, project, and recent output.");
+    }
+
+    private static void RunScientificVictoryLiveProjectAcceptance()
+    {
+        GameState state = MinimalVictoryState();
+        CivilizationState player = state.Civilization(0);
+        player.Era = Era.Synthesis;
+        player.KnownTechnologies = new[] { "computing_networks", "open_science" };
+        player.KnowledgeTenths = 300;
+        player.InfluenceTenths = 80;
+        state.Cities = new[]
+        {
+            VictoryCity(1, 0, "university", "academy", true),
+            VictoryCity(2, 0, "university")
+        };
+        GameSimulation simulation = new GameSimulation(state);
+        for (int i = 0; i < 4 && !simulation.State.IsFinished; i++) simulation.EndTurn();
+        Assert(!simulation.State.IsFinished && simulation.State.Civilization(0).ScienceProjectTurns == 4,
+            "the science project must wait for its knowledge-output condition instead of disappearing after four turns");
+        Assert(simulation.State.City(1).Project.Kind == ProjectKind.ScientificProject && simulation.State.City(1).Project.Progress == 20,
+            "completed science production must remain reserved while its final output condition is checked");
+
+        Accept(simulation.Issue(new GameCommand { Kind = CommandKind.SetWorkers, ActorId = 0, EntityId = 1, Value = (int)WorkerRole.Scholar, TargetId = 1 }), "assign first scientific worker");
+        Accept(simulation.Issue(new GameCommand { Kind = CommandKind.SetWorkers, ActorId = 0, EntityId = 2, Value = (int)WorkerRole.Scholar, TargetId = 1 }), "assign second scientific worker");
+        simulation.EndTurn();
+        Assert(!simulation.State.IsFinished, "the knowledge requirement must hold for two consecutive turns");
+        simulation.EndTurn();
+        Assert(simulation.State.IsFinished && simulation.State.WinningPath == VictoryPath.Scientific,
+            "a completed fresh scientific project must win after meeting both recent output checks");
+        Console.WriteLine("PASS: live science project survives four turns, waits for output recovery, and awards its victory.");
     }
 
     private static void RunCulturalVictoryAcceptance()
