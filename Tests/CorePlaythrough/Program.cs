@@ -16,6 +16,7 @@ internal static class Program
             RunPunitiveWarAndRecovery();
             RunVictoryPathAcceptance();
             RunScientificVictoryLiveProjectAcceptance();
+            RunUniqueEmpireBuildingQueueAcceptance();
             RunEraTransitionAcceptance();
             RunAiProgressionAcceptance();
             Console.WriteLine("PASS: all headless campaign scenarios reached a valid ending.");
@@ -221,6 +222,22 @@ internal static class Program
         Assert(!missingTechnology.Accepted && missingTechnology.Code == "era_technologies" && simulation.State.Civilization(0).InfluenceTenths == 100,
             "era transition must require three current-era technologies without charging influence on rejection");
         Console.WriteLine("PASS: era transitions follow the GDD threshold, council institution, resource cost, and clear rejection rules.");
+    }
+
+    private static void RunUniqueEmpireBuildingQueueAcceptance()
+    {
+        GameState state = MinimalVictoryState();
+        state.Civilization(0).KnownTechnologies = new[] { "writing" };
+        state.Cities = new[] { VictoryCity(1, 0), VictoryCity(2, 0) };
+        GameSimulation simulation = new GameSimulation(state);
+        Accept(simulation.Issue(new GameCommand { Kind = CommandKind.SetProject, ActorId = 0, EntityId = 1, Text = "council" }),
+            "queue the unique council in the first city");
+        CommandResult duplicate = simulation.Issue(new GameCommand { Kind = CommandKind.SetProject, ActorId = 0, EntityId = 2, Text = "council" });
+        Assert(!duplicate.Accepted && duplicate.Code == "unique_building",
+            "a unique empire building must not be queued in multiple cities at the same time");
+        Accept(simulation.Issue(new GameCommand { Kind = CommandKind.SetProject, ActorId = 0, EntityId = 1, Text = "council" }),
+            "reselect the existing unique building project");
+        Console.WriteLine("PASS: unique empire buildings cannot occupy parallel city queues, and repeating the chosen project is idempotent.");
     }
 
     private static void RunSaveResumeCampaign()

@@ -195,16 +195,22 @@ namespace Nasledie.Core
             BuildingDefinition building = RulesCatalog.Building(targetId);
             if (building == null) return CommandResult.Reject("unknown_building", "Такого здания нет в каталоге.");
             if (building.RequiredTechnology != null && !actor.Knows(building.RequiredTechnology)) return CommandResult.Reject("technology_locked", "Сначала изучите технологию: " + building.RequiredTechnology + ".");
+            if (city.Project != null && city.Project.TargetId == targetId && city.Project.Kind == ProjectKind.Building)
+                return CommandResult.Ok("Проект уже выбран.");
             if (building.UniqueEmpireBuilding)
             {
                 for (int i = 0; i < state.Cities.Length; i++)
-                    if (state.Cities[i].OwnerId == actor.Id && state.Cities[i].BuildingLevel(targetId) > 0)
+                {
+                    CityState otherCity = state.Cities[i];
+                    if (otherCity.OwnerId != actor.Id) continue;
+                    if (otherCity.BuildingLevel(targetId) > 0)
                         return CommandResult.Reject("unique_building", "Это уникальное здание уже построено.");
+                    if (otherCity.Id != city.Id && otherCity.Project != null && otherCity.Project.Kind == ProjectKind.Building && otherCity.Project.TargetId == targetId)
+                        return CommandResult.Reject("unique_building", "Это уникальное здание уже стоит в очереди другого города.");
+                }
             }
             if (city.BuildingLevel(targetId) > 0 && targetId != "house")
                 return CommandResult.Reject("already_built", "Это здание уже построено в городе.");
-            if (city.Project != null && city.Project.TargetId == targetId && city.Project.Kind == ProjectKind.Building)
-                return CommandResult.Ok("Проект уже выбран.");
             int carryover = 0;
             if (city.Project != null && city.Project.Kind != ProjectKind.None)
             {
