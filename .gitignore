@@ -1,0 +1,37 @@
+# Unity generated state and local editor data
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+MemoryCaptures/
+Recordings/
+*.csproj
+!Tests/CorePlaythrough/CorePlaythrough.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.tmp
+*.bak
+*.stackdump
+
+# IDE and operating system files
+.idea/
+.vs/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local test build output
+Tests/**/bin/
+Tests/**/obj/
