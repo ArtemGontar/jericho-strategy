@@ -121,29 +121,25 @@ namespace Nasledie.Client
 
             GameObject pageObject = UiKit.CreateObject("PageHost", safeRoot);
             pageHost = UiKit.Rect(pageObject);
-            UiKit.SetAnchors(pageHost, new Vector2(0, 0.365f), new Vector2(1, 0.88f), Vector2.zero, Vector2.zero);
+            UiKit.SetAnchors(pageHost, new Vector2(0, 0.24f), new Vector2(1, 0.88f), Vector2.zero, Vector2.zero);
             pageObject.SetActive(false);
 
             GameObject navObject = UiKit.Panel(safeRoot, "Navigation", GamePalette.Ink);
             navHost = UiKit.Rect(navObject);
-            UiKit.SetAnchors(navHost, new Vector2(0, 0.125f), new Vector2(1, 0.365f), Vector2.zero, Vector2.zero);
-            UiKit.Vertical(navObject, 4, 3);
-            GameObject navRow1 = UiKit.CreateObject("NavigationRow1", navObject.transform);
-            UiKit.Horizontal(navRow1, 4, 8);
-            GameObject navRow2 = UiKit.CreateObject("NavigationRow2", navObject.transform);
-            UiKit.Horizontal(navRow2, 4, 8);
-            AddNavButton(navRow1.transform, "МИР", ScreenPage.Overview);
-            AddNavButton(navRow1.transform, "ГОРОД", ScreenPage.City);
-            AddNavButton(navRow1.transform, "НАУКА", ScreenPage.Research);
-            AddNavButton(navRow1.transform, "ДИПЛОМАТИЯ", ScreenPage.Diplomacy);
-            AddNavButton(navRow2.transform, "ЗАКОНЫ", ScreenPage.Laws);
-            AddNavButton(navRow2.transform, "СОБЫТИЯ", ScreenPage.Events);
-            AddNavButton(navRow2.transform, "ПОБЕДА", ScreenPage.Victory);
-            AddNavButton(navRow2.transform, "ЛЕТОПИСЬ", ScreenPage.Chronicle);
+            UiKit.SetAnchors(navHost, new Vector2(0, 0.12f), new Vector2(1, 0.24f), Vector2.zero, Vector2.zero);
+            UiKit.Horizontal(navObject, 4, 4);
+            AddNavButton(navObject.transform, "МИР", ScreenPage.Overview);
+            AddNavButton(navObject.transform, "ГОРОД", ScreenPage.City);
+            AddNavButton(navObject.transform, "НАУКА", ScreenPage.Research);
+            AddNavButton(navObject.transform, "ДИПЛОМАТИЯ", ScreenPage.Diplomacy);
+            AddNavButton(navObject.transform, "ЗАКОНЫ", ScreenPage.Laws);
+            AddNavButton(navObject.transform, "СОБЫТИЯ", ScreenPage.Events);
+            AddNavButton(navObject.transform, "ПОБЕДА", ScreenPage.Victory);
+            AddNavButton(navObject.transform, "ЛЕТОПИСЬ", ScreenPage.Chronicle);
 
             GameObject actionObject = UiKit.Panel(safeRoot, "TurnActions", GamePalette.InkSoft);
             actionHost = UiKit.Rect(actionObject);
-            UiKit.SetAnchors(actionHost, Vector2.zero, new Vector2(1, 0.125f), Vector2.zero, Vector2.zero);
+            UiKit.SetAnchors(actionHost, Vector2.zero, new Vector2(1, 0.12f), Vector2.zero, Vector2.zero);
             UiKit.Horizontal(actionObject, 4, 4);
             Button menuButton = UiKit.Button(actionObject.transform, "МЕНЮ", ShowMenu, GamePalette.Ink, 110, 16);
             Button saveButton = UiKit.Button(actionObject.transform, "СОХРАНИТЬ", SaveManual, GamePalette.Ink, 110, 16);
