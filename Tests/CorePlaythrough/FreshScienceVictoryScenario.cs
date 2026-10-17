@@ -15,7 +15,7 @@ internal static class FreshScienceVictoryScenario
 
     public static void Run(Action<string> output)
     {
-        int[] seeds = { 1028 };
+        int[] seeds = { 1028, 1000, 1017, 1029 };
         for (int i = 0; i < seeds.Length; i++)
         {
             GameSimulation simulation = GameSimulation.NewCampaign(seeds[i], Difficulty.Calm);
@@ -53,7 +53,11 @@ internal static class FreshScienceVictoryScenario
             }
 
             Require(simulation.State.IsFinished, "fresh science campaign did not finish before the turn limit");
-            Require(simulation.State.WinnerCivilizationId == playerId, "the human did not win the fresh science campaign");
+            Require(simulation.State.WinnerCivilizationId == playerId, "the human did not win the fresh science campaign; winner " +
+                simulation.State.WinnerCivilizationId + " path " + VictoryEvaluator.PathName(simulation.State.WinningPath) + " turn " + simulation.State.Turn +
+                ", era " + player.Era + ", technologies " + string.Join(",", player.KnownTechnologies) + ", cities " + CountCities(simulation.State, playerId) +
+                ", universities " + universityCities + ", academy " + hasAcademy + ", science turns " + player.ScienceProjectTurns +
+                ", project cities " + activeScienceProjects + ", prestige " + player.CulturePrestige + ", treasury " + player.TreasuryTenths);
             Require(simulation.State.WinningPath == VictoryPath.Scientific, "fresh campaign did not use the scientific victory");
             Require(simulation.State.Turn <= simulation.State.MaximumTurn, "science victory went beyond the configured turn limit");
             Require(player.Knows("computing_networks") && player.Knows("open_science"), "science victory skipped a required final technology");
@@ -61,7 +65,7 @@ internal static class FreshScienceVictoryScenario
             Require(player.ScienceProjectTurns == 4 && activeScienceProjects == 1, "science project did not complete exactly once");
             Require(player.LastTurnKnowledgeOutputTenths >= 50 && player.PreviousTurnKnowledgeOutputTenths >= 50,
                 "science victory ignored the two-turn knowledge output requirement");
-            output("PASS: fresh campaign seed 1028 won by science on turn " + simulation.State.Turn + " with two cities.");
+            output("PASS: fresh campaign seed " + seeds[i] + " won by science on turn " + simulation.State.Turn + " with two cities.");
         }
         output("PASS: the scientific victory is reachable from a new campaign within the configured turn limit.");
     }
@@ -124,7 +128,7 @@ internal static class FreshScienceVictoryScenario
             string focus;
             if (city.Project != null && city.Project.Kind != ProjectKind.None) focus = "industry";
             else if (city.FoodTenths < city.PopulationTenths * 2 && yield.FoodTenths < city.PopulationTenths) focus = "food";
-            else if (player.TreasuryTenths < 2000) focus = "trade";
+            else if (player.TreasuryTenths < 0) focus = "trade";
             else focus = "science";
 
             simulation.Issue(new GameCommand
@@ -329,5 +333,6 @@ internal static class FreshScienceVictoryScenario
     {
         if (!condition) throw new InvalidOperationException(message);
     }
+
 }
 

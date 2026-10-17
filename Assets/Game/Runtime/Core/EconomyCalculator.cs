@@ -88,7 +88,15 @@ namespace Nasledie.Core
             result.Production += artisanCount > 0 ? workshopLevel * 2 : 0;
             result.KnowledgeTenths += scholarCount > 0 ? schoolLevel * 20 + universityLevel * 40 + academyLevel * 50 : 0;
             result.TreasuryTenths += merchantCount > 0 ? marketLevel * 20 + marketTileBonus : 0;
-            result.CulturePrestige += artistCount > 0 ? culturalHouse * 2 + archive * 4 + exchangeHouse * 3 : 0;
+            if (artistCount > 0)
+            {
+                BuildingDefinition culturalHouseDefinition = RulesCatalog.Building("cultural_house");
+                BuildingDefinition archiveDefinition = RulesCatalog.Building("archive");
+                BuildingDefinition exchangeHouseDefinition = RulesCatalog.Building("exchange_house");
+                result.CulturePrestige += culturalHouse * (culturalHouseDefinition == null ? 3 : culturalHouseDefinition.CulturePerArtist) +
+                    archive * (archiveDefinition == null ? 5 : archiveDefinition.CulturePerArtist) +
+                    exchangeHouse * (exchangeHouseDefinition == null ? 4 : exchangeHouseDefinition.CulturePerArtist);
+            }
             result.ServiceCoverage += servantCount > 0 ? (clinic + hospital) * 20 : 0;
             result.HealthChange += clinic + hospital * 2;
             result.SafetyChange += city.BuildingLevel("barracks") + city.BuildingLevel("road_services");

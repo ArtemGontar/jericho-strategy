@@ -15,7 +15,7 @@ internal static class FreshCulturalVictoryScenario
 
     public static void Run(Action<string> output)
     {
-        int[] seeds = { 1028 };
+        int[] seeds = { 1028, 1000, 1017, 1029 };
         for (int i = 0; i < seeds.Length; i++)
         {
             GameSimulation simulation = GameSimulation.NewCampaign(seeds[i], Difficulty.Calm);
@@ -115,6 +115,8 @@ internal static class FreshCulturalVictoryScenario
         int capitalId = simulation.FindCapital(playerId);
         int cityCount = CountCities(simulation.State, playerId);
         bool needsCultureTechnologies = !player.Knows("trade_league") || !player.Knows("printing");
+            bool protectReadyFestival = player.CulturePrestige >= 90 && player.TreasuryTenths >= 100;
+            bool needsFestivalFunding = player.CulturePrestige >= 50 && player.TreasuryTenths < 800 && !protectReadyFestival;
         for (int i = 0; i < simulation.State.Cities.Length; i++)
         {
             CityState city = simulation.State.Cities[i];
@@ -125,7 +127,7 @@ internal static class FreshCulturalVictoryScenario
             if (culturalConstruction) focus = "industry";
             else if (city.FoodTenths < city.PopulationTenths * 2 && yield.FoodTenths < city.PopulationTenths) focus = "food";
             else if (needsCultureTechnologies && (city.Id != capitalId || cityCount == 1)) focus = "science";
-            else if (player.TreasuryTenths < 1000 && city.Id == capitalId) focus = "trade";
+            else if (needsFestivalFunding && city.Id == capitalId) focus = "trade";
             else focus = "culture";
 
             simulation.Issue(new GameCommand

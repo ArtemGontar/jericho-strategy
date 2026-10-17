@@ -15,7 +15,7 @@ internal static class FreshDiplomaticVictoryScenario
 
     public static void Run(Action<string> output)
     {
-        int[] seeds = { 1028 };
+        int[] seeds = { 1028, 1000, 1017, 1029 };
         for (int i = 0; i < seeds.Length; i++)
         {
             GameSimulation simulation = GameSimulation.NewCampaign(seeds[i], Difficulty.Calm);
@@ -323,26 +323,48 @@ internal static class FreshDiplomaticVictoryScenario
     {
         CivilizationState player = simulation.State.Civilization(playerId);
         int assemblyCityId = simulation.FindCapital(playerId);
-        int[] votingPartners = { 1, 2 };
         if (CountCities(simulation.State, playerId) < 2 || !player.Knows("coin_markets") || CountBuilding(simulation.State, playerId, "market") == 0) return;
-        for (int i = 0; i < votingPartners.Length; i++)
+        for (int partner = 0; partner < simulation.State.Civilizations.Length; partner++)
         {
-            int partner = votingPartners[i];
             if (partner == playerId || simulation.State.Civilization(partner).IsDefeated) continue;
             if (HasActiveRoute(simulation.State, playerId, partner, assemblyCityId) || player.InfluenceTenths < 10) continue;
             int routeCount = CountRoutes(simulation.State, playerId);
             int routeSlots = 1 + CountBuilding(simulation.State, playerId, "market") + (player.Knows("trade_league") ? 1 : 0);
             if (routeCount >= routeSlots) return;
-            ProposeDiplomaticTreaty(simulation, playerId, partner, TreatyKind.TradeRoute, assemblyCityId);
+            CommandResult result = ProposeDiplomaticTreaty(simulation, playerId, partner, TreatyKind.TradeRoute, assemblyCityId);
+            if (result.Code == "route_blocked") continue;
+            if (!result.Accepted && result.Code != "route_slots")
+                throw new InvalidOperationException("diplomatic strategy could not propose a route to partner " + partner + ": " + result.Code);
             return;
+        }
+
+        if (CountRoutes(simulation.State, playerId) >= 2 || player.InfluenceTenths < 20) return;
+        for (int partner = 0; partner < simulation.State.Civilizations.Length; partner++)
+        {
+            if (partner == playerId || simulation.State.Civilization(partner).IsDefeated ||
+                HasOpenBorders(simulation.State, playerId, partner)) continue;
+            CommandResult result = ProposeDiplomaticTreaty(simulation, playerId, partner, TreatyKind.OpenBorders, assemblyCityId);
+            if (result.Accepted) return;
         }
     }
 
-    private static void ProposeDiplomaticTreaty(GameSimulation simulation, int playerId, int partnerId, TreatyKind kind, int sourceCityId)
+    private static bool HasOpenBorders(GameState state, int first, int second)
+    {
+        for (int i = 0; i < state.Treaties.Length; i++)
+        {
+            TreatyState treaty = state.Treaties[i];
+            if ((treaty.Active || treaty.Pending) && treaty.Kind == TreatyKind.OpenBorders &&
+                ((treaty.FromCivilizationId == first && treaty.ToCivilizationId == second) ||
+                 (treaty.FromCivilizationId == second && treaty.ToCivilizationId == first))) return true;
+        }
+        return false;
+    }
+
+    private static CommandResult ProposeDiplomaticTreaty(GameSimulation simulation, int playerId, int partnerId, TreatyKind kind, int sourceCityId)
     {
         int partnerCapital = simulation.FindCapital(partnerId);
-        if (partnerCapital < 0) return;
-        CommandResult result = simulation.Issue(new GameCommand
+        if (partnerCapital < 0) return CommandResult.Reject("route_cities", "У партнёра нет столицы.");
+        return simulation.Issue(new GameCommand
         {
             Kind = CommandKind.ProposeTreaty,
             ActorId = playerId,
@@ -351,8 +373,6 @@ internal static class FreshDiplomaticVictoryScenario
             EntityId = sourceCityId,
             Sequence = partnerCapital
         });
-        if (!result.Accepted && result.Code != "route_slots")
-            throw new InvalidOperationException("diplomatic strategy could not propose " + kind + " to partner " + partnerId + ": " + result.Code);
     }
 
     private static int CountRoutes(GameState state, int playerId)

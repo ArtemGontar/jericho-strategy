@@ -353,7 +353,7 @@ namespace Nasledie.Core
 
         private static bool DiplomaticSupportReady(GameState state, CivilizationState civ)
         {
-            if (state.Crisis == null || !state.Crisis.Resolved || !state.HasResolvedGlobalCrisis) return false;
+            if (!state.HasResolvedGlobalCrisis) return false;
             int participantCount = CountBits(state.ResolvedGlobalCrisisContributorMask);
             if (participantCount < 3 || (state.ResolvedGlobalCrisisContributorMask & (1 << civ.Id)) == 0) return false;
             int votes = 1;

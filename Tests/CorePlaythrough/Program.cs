@@ -463,6 +463,26 @@ internal static class Program
         player.KnownTechnologies = new[] { "international_assembly" };
         player.Relations[1] = 25; player.Relations[2] = 25;
         player.Trusts[1] = 50; player.Trusts[2] = 50;
+        player.DiplomaticCoalitionTurns = 2;
+        state.HasResolvedGlobalCrisis = true;
+        state.Crisis = new CrisisState { Kind = CrisisKind.FoodShortage, Resolved = false };
+        state.ResolvedGlobalCrisisContributorMask = (1 << 0) | (1 << 1) | (1 << 2);
+        state.Cities = new[] { VictoryCity(10, 0, "assembly"), VictoryCity(11, 1), VictoryCity(12, 2) };
+        state.Treaties = new[]
+        {
+            new TreatyState { Id = 1, Kind = TreatyKind.TradeRoute, FromCivilizationId = 0, ToCivilizationId = 1, RouteCityA = 10, RouteCityB = 11, Active = true },
+            new TreatyState { Id = 2, Kind = TreatyKind.TradeRoute, FromCivilizationId = 0, ToCivilizationId = 2, RouteCityA = 10, RouteCityB = 12, Active = true }
+        };
+        VictoryEvaluator.Check(state, new System.Collections.Generic.List<string>());
+        Assert(!state.IsFinished && player.DiplomaticCoalitionTurns == 1, "a later crisis must not erase completed crisis cooperation during the coalition hold");
+        VictoryEvaluator.Check(state, new System.Collections.Generic.List<string>());
+        Assert(state.IsFinished && state.WinningPath == VictoryPath.Diplomatic, "a later crisis must not prevent a supported diplomatic coalition from closing");
+
+        state = MinimalVictoryState();
+        player = state.Civilization(0);
+        player.KnownTechnologies = new[] { "international_assembly" };
+        player.Relations[1] = 25; player.Relations[2] = 25;
+        player.Trusts[1] = 50; player.Trusts[2] = 50;
         state.HasResolvedGlobalCrisis = true;
         state.Crisis = new CrisisState { Kind = CrisisKind.Epidemic, Resolved = true };
         state.ResolvedGlobalCrisisContributorMask = (1 << 0) | (1 << 1) | (1 << 2);
