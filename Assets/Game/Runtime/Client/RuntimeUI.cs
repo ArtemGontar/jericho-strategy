@@ -344,7 +344,7 @@ namespace Nasledie.Client
             public string Payload = string.Empty;
         }
 
-        private const int CurrentSaveVersion = 10;
+        private const int CurrentSaveVersion = 11;
         private static string DirectoryPath { get { return Path.Combine(Application.persistentDataPath, "NasledieSaves"); } }
         private static string AutoPath(int slot) { return Path.Combine(DirectoryPath, "autosave_" + slot + ".json"); }
         private static string ManualPath(int slot) { return Path.Combine(DirectoryPath, "manual_" + slot + ".json"); }
@@ -515,6 +515,7 @@ namespace Nasledie.Client
             if (state == null) throw new ArgumentNullException("state");
             Directory.CreateDirectory(DirectoryPath);
             state.SaveVersion = CurrentSaveVersion;
+            state.RulesVersion = Math.Max(state.RulesVersion, 2);
             string temporary = TemporaryPath(path);
             string backup = BackupPath(path);
             try
@@ -716,6 +717,18 @@ namespace Nasledie.Client
             {
                 if (state.TurnStateHashes == null) state.TurnStateHashes = Array.Empty<string>();
                 state.SaveVersion = 10;
+            }
+            if (state.SaveVersion <= 10)
+            {
+                if (state.Civilizations != null)
+                    for (int civilizationIndex = 0; civilizationIndex < state.Civilizations.Length; civilizationIndex++)
+                    {
+                        CivilizationState civ = state.Civilizations[civilizationIndex];
+                        if (civ == null) continue;
+                        RulesCatalog.MigrateTechnologyProgressFromSaveV10(civ);
+                    }
+                state.RulesVersion = Math.Max(state.RulesVersion, 2);
+                state.SaveVersion = 11;
             }
         }
 

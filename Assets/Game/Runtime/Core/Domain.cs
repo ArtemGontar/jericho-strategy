@@ -7,7 +7,17 @@ namespace Nasledie.Core
     public enum TerrainKind { Plains, Meadow, Forest, Hills, Mountain, River, Coast, Arid, Swamp, Water }
     public enum ResourceKind { None, Iron, Herbs, Salt, FertileSoil }
     public enum WorkerRole { Farmer, Artisan, Scholar, Merchant, Artist, CivilServant }
-    public enum UnitKind { Militia, FieldForce, SiegeTeam, SettlerWagon }
+    public enum UnitClass { Infantry, Ranged, Cavalry, Siege, Scout, Civilian }
+    // Keep the first four values stable: saves created before the era roster was added store these ids.
+    public enum UnitKind
+    {
+        Militia, FieldForce, SiegeTeam, SettlerWagon,
+        CommunitiesRanged, CommunitiesCavalry, CommunitiesScout,
+        CitiesInfantry, CitiesRanged, CitiesCavalry, CitiesSiege, CitiesScout,
+        ConnectedInfantry, ConnectedRanged, ConnectedCavalry, ConnectedSiege, ConnectedScout,
+        IndustryInfantry, IndustryRanged, IndustryCavalry, IndustrySiege, IndustryScout,
+        SynthesisInfantry, SynthesisRanged, SynthesisCavalry, SynthesisSiege, SynthesisScout
+    }
     public enum ImprovementKind { None, Farm, Forestry, Workshop, Road, Bridge, Market, Fishery, IrrigatedFarm, Park, Fortification }
     public enum ProjectKind { None, Building, Improvement, Recruitment, EraTransition, ScientificProject }
     public enum VictoryPath { None, Scientific, Cultural, QualityOfLife, Diplomatic, HeritageScore }
@@ -380,8 +390,8 @@ namespace Nasledie.Core
     [Serializable]
     public sealed class GameState
     {
-        public int SaveVersion = 10;
-        public int RulesVersion = 1;
+        public int SaveVersion = 11;
+        public int RulesVersion = 2;
         public string RulesetHash = string.Empty;
         public int Seed;
         public int Turn = 1;

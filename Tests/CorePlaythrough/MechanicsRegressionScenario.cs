@@ -10,6 +10,8 @@ internal static class MechanicsRegressionScenario
         CheckImprovementYields();
         CheckTerrainSpecializationYields();
         CheckWorkerCapacity();
+        CheckEraMilitaryRosterAndFactory();
+        CheckTechnologyProgressMigration();
         CheckIronUpgradeAndTreaties();
         CheckTreatyDurationsAndEmbargo();
         CheckPeaceNegotiations();
@@ -23,7 +25,75 @@ internal static class MechanicsRegressionScenario
         CheckSettlerWagonSafety();
         CheckSettlerInterceptionChoices();
         CheckBattlePrisonerCapture();
-        report("PASS: fair starts, terrain-specialized worker yields and capacities, coasts, salt/resource deals, humanitarian aid, treaty timing/embargo, mediation, park/fortification/iron/herb effects, peace demands/annexation, high-difficulty AI war initiative using observed forces, bridge movement, treaty breach consequences, civilian wagon evacuation/interception choices, and command journaling work.");
+        report("PASS: fair starts, terrain-specialized worker yields and capacities, five military roles per era, factory production/pollution, save-v10 research migration, coasts, salt/resource deals, humanitarian aid, treaty timing/embargo, mediation, park/fortification/iron/herb effects, peace demands/annexation, high-difficulty AI war initiative using observed forces, bridge movement, treaty breach consequences, civilian wagon evacuation/interception choices, and command journaling work.");
+    }
+
+    private static void CheckEraMilitaryRosterAndFactory()
+    {
+        Era[] eras = { Era.Communities, Era.Cities, Era.ConnectedLands, Era.Industry, Era.Synthesis };
+        UnitClass[] militaryRoles = { UnitClass.Infantry, UnitClass.Ranged, UnitClass.Cavalry, UnitClass.Siege, UnitClass.Scout };
+        for (int eraIndex = 0; eraIndex < eras.Length; eraIndex++)
+        {
+            int roleCount = 0;
+            for (int i = 0; i < RulesCatalog.Units.Length; i++)
+            {
+                UnitDefinition definition = RulesCatalog.Units[i];
+                if (definition.LegacyOnly || definition.Era != eras[eraIndex] || definition.Class == UnitClass.Civilian) continue;
+                roleCount++;
+                bool knownRole = false;
+                for (int roleIndex = 0; roleIndex < militaryRoles.Length; roleIndex++)
+                    if (definition.Class == militaryRoles[roleIndex]) knownRole = true;
+                Assert(knownRole, "every era unit must use a supported military role");
+            }
+            Assert(roleCount == militaryRoles.Length, "each era must define exactly five non-legacy military roles: " + eras[eraIndex]);
+        }
+
+        BuildingDefinition factory = RulesCatalog.Building("factory");
+        Assert(factory != null && factory.RequiredTechnology == "mechanization" && factory.WorkerPlaces == 3 && factory.ProductionPerArtisan == 1,
+            "mechanization must unlock a factory with three artisan jobs and production per assigned artisan");
+        Assert(RulesCatalog.Unit(UnitKind.IndustryInfantry).DefenseBonusPercent > 0 &&
+            RulesCatalog.Unit(UnitKind.IndustryRanged).AttackBonusPercent > 0 &&
+            RulesCatalog.Unit(UnitKind.IndustryCavalry).Movement >= 3 &&
+            RulesCatalog.Unit(UnitKind.IndustrySiege).AttackBonusPercent > RulesCatalog.Unit(UnitKind.IndustryInfantry).AttackBonusPercent &&
+            RulesCatalog.Unit(UnitKind.IndustryScout).Movement > RulesCatalog.Unit(UnitKind.IndustryInfantry).Movement,
+            "military roles must have different battle and movement characteristics");
+        GameState state = GameFactory.NewGame(9042, Difficulty.Standard);
+        CivilizationState civilization = state.Civilization(0);
+        CityState city = FirstCity(state, 0);
+        civilization.KnownTechnologies = new[] { "agriculture", "mechanization" };
+        city.EfficiencyBasisPoints = 10000;
+        city.Workers = new[] { 0, 3, 0, 0, 0, 0 };
+        int productionWithoutFactory = EconomyCalculator.Calculate(state, city).Production;
+        city.BuildingIds = new[] { "factory" };
+        city.BuildingLevels = new[] { 1 };
+        CityYield withFactory = EconomyCalculator.Calculate(state, city);
+        Assert(withFactory.Production - productionWithoutFactory == 3,
+            "three assigned artisans must gain three production from a level-one factory at full efficiency");
+        Assert(withFactory.EnvironmentChange == -2,
+            "an operating factory must lower city environment by two per turn before clean energy");
+        civilization.KnownTechnologies = new[] { "agriculture", "mechanization", "clean_energy" };
+        Assert(EconomyCalculator.Calculate(state, city).EnvironmentChange == 0,
+            "clean energy must remove the factory's environment penalty");
+    }
+
+    private static void CheckTechnologyProgressMigration()
+    {
+        CivilizationState civilization = new CivilizationState
+        {
+            TechnologyProgressTenths = new int[25],
+            ActiveResearchIndex = 15
+        };
+        civilization.TechnologyProgressTenths[5] = 37;
+        civilization.TechnologyProgressTenths[15] = 82;
+        RulesCatalog.MigrateTechnologyProgressFromSaveV10(civilization);
+        int irrigationIndex = RulesCatalog.TechnologyIndex("irrigation");
+        int mechanizationIndex = RulesCatalog.TechnologyIndex("mechanization");
+        Assert(civilization.TechnologyProgressTenths.Length == RulesCatalog.Technologies.Length,
+            "save-v10 research progress must resize to the current technology tree");
+        Assert(civilization.TechnologyProgressTenths[irrigationIndex] == 37 && civilization.TechnologyProgressTenths[mechanizationIndex] == 82,
+            "old research progress must follow technology IDs after new branches are inserted");
+        Assert(civilization.ActiveResearchIndex == mechanizationIndex,
+            "the active technology must stay selected after save-v10 migration");
     }
 
     private static void CheckCoastAndResources()

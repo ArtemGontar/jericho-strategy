@@ -420,8 +420,8 @@ namespace Nasledie.Core
                             CityState candidate = state.Cities[candidateIndex];
                             if (candidate.OwnerId != civ.Id || !VictoryEvaluator.CanStartScientificProgram(state, civ.Id, candidate.Id)) continue;
                             CityYield candidateYield = EconomyCalculator.Calculate(state, candidate);
-                            int production = candidateYield.Production + candidate.BuildingLevel("workshop") * 2;
-                            int currentProduction = bestProduction + projectCity.BuildingLevel("workshop") * 2;
+                            int production = candidateYield.Production;
+                            int currentProduction = bestProduction;
                             if (production > currentProduction)
                             {
                                 projectCity = candidate;
@@ -547,7 +547,15 @@ namespace Nasledie.Core
                     if (technologyId == "medicine" || technologyId == "public_health" || technologyId == "global_health") return 20;
                     break;
                 case "defense":
-                    if (technologyId == "stone" || technologyId == "roads" || technologyId == "engineering" || technologyId == "mechanization") return 45;
+                    if (technologyId == "stone" || technologyId == "roads" || technologyId == "engineering" || technologyId == "mechanization" ||
+                        technologyId == "slingcraft" || technologyId == "animal_husbandry" || technologyId == "fieldcraft" ||
+                        technologyId == "military_drill" || technologyId == "composite_bow" || technologyId == "horse_breeding" ||
+                        technologyId == "torsion_siege" || technologyId == "surveying" || technologyId == "steelworking" ||
+                        technologyId == "crossbow" || technologyId == "stirrups" || technologyId == "counterweight_siege" ||
+                        technologyId == "cartography" || technologyId == "firearms" || technologyId == "rifling" ||
+                        technologyId == "motorization" || technologyId == "field_artillery" || technologyId == "reconnaissance" ||
+                        technologyId == "networked_infantry" || technologyId == "precision_systems" || technologyId == "armored_mobility" ||
+                        technologyId == "smart_artillery" || technologyId == "autonomous_recon") return 45;
                     if (technologyId == "medicine" || technologyId == "public_health") return 20;
                     break;
                 case "expansion":
@@ -699,7 +707,7 @@ namespace Nasledie.Core
         private string AiBuildingChoice(GameState state, CivilizationState civ, CityState city)
         {
             string[] candidates = { "house", "granary", "clinic", "hospital", "council", "administration", "school", "university", "academy",
-                "cultural_house", "archive", "exchange_house", "market", "workshop", "road_services", "assembly", "barracks" };
+                "cultural_house", "archive", "exchange_house", "market", "workshop", "factory", "road_services", "assembly", "barracks" };
             string best = null;
             int bestScore = 0;
             for (int i = 0; i < candidates.Length; i++)
@@ -746,6 +754,13 @@ namespace Nasledie.Core
                 score = goal == "culture" ? 76 : goal == "quality" ? 38 : civ.CulturePrestige >= 100 ? 28 : 0;
             else if (id == "market") score = goal == "trade" ? 72 : civ.TreasuryTenths < 100 ? 58 : 0;
             else if (id == "workshop") score = goal == "expansion" || goal == "defense" ? 58 : city.BuildingLevel("workshop") == 0 && EconomyCalculator.Calculate(state, city).Production < 2 ? 24 : 0;
+            else if (id == "factory")
+            {
+                CityYield industrialYield = EconomyCalculator.Calculate(state, city);
+                score = city.BuildingLevel("factory") > 0 ? 0 : industrialYield.Production < 5 ? 72 : 42;
+                if (goal == "defense" || goal == "science") score += 18;
+                if (civ.TreasuryTenths < 100) score = Math.Min(score, 20);
+            }
             else if (id == "road_services") score = goal == "defense" || city.Safety < 55 ? 58 : 0;
             else if (id == "assembly") score = goal == "trade" ? 84 : civ.DiplomaticCoalitionTurns > 0 ? 40 : 0;
             else if (id == "barracks")
@@ -1251,15 +1266,23 @@ namespace Nasledie.Core
             bool atWar = AtWarWithAny(state, civ.Id);
             int pressure = AiDefensePressure(state, civ.Id);
             int units = 0;
+            bool hasCurrentEraUnit = false;
             for (int i = 0; i < state.Units.Length; i++)
-                if (state.Units[i].OwnerId == civ.Id && state.Units[i].Kind != UnitKind.SettlerWagon && state.Units[i].Strength > 0) units++;
+            {
+                UnitState unit = state.Units[i];
+                if (unit.OwnerId != civ.Id || unit.Kind == UnitKind.SettlerWagon || unit.Strength <= 0) continue;
+                units++;
+                UnitDefinition definition = RulesCatalog.Unit(unit.Kind);
+                if (definition != null && !definition.LegacyOnly && definition.Era == civ.Era) hasCurrentEraUnit = true;
+            }
             int desired = atWar ? Math.Min(3, 1 + (int)civ.Difficulty / 2 + CountOwnedCities(state, civ.Id) / 3 + (civ.Difficulty == Difficulty.Trial ? 1 : 0)) :
                 (civ.Difficulty == Difficulty.Trial && pressure >= 65 ? 2 : civ.Archetype == "Стратег безопасности" || pressure >= 65 ? 1 : 0);
             bool warPreparation = !atWar && civ.WarsStarted == 0 && state.Turn >= 16 &&
                 (civ.Archetype == "Стратег безопасности" || (civ.Difficulty == Difficulty.Trial && AiMilitaryPosture(state, civ.Id) < 20) ||
                  (civ.Difficulty == Difficulty.Strong && AiMilitaryPosture(state, civ.Id) < 12));
             if (warPreparation) desired = Math.Max(desired, 1);
-            if (units >= desired || civ.TreasuryTenths < 60) return;
+            bool refreshForCurrentEra = warPreparation || atWar;
+            if ((units >= desired && (hasCurrentEraUnit || !refreshForCurrentEra)) || civ.TreasuryTenths < 60) return;
 
             CityState city = null;
             for (int i = 0; i < state.Cities.Length; i++)
@@ -1269,8 +1292,30 @@ namespace Nasledie.Core
                     (state.Cities[i].BuildingLevel("barracks") == city.BuildingLevel("barracks") && state.Cities[i].AdministrativeLoad > city.AdministrativeLoad))) city = state.Cities[i];
             if (city == null || city.Project == null || city.Project.Kind != ProjectKind.None || city.PopulationTenths < 50) return;
 
-            UnitKind kind = civ.Knows("roads") && civ.TreasuryTenths >= 100 && city.BuildingLevel("barracks") > 0 ? UnitKind.FieldForce : UnitKind.Militia;
-            Recruit(state, civ, city, kind, false);
+            UnitDefinition choice = null;
+            int bestScore = int.MinValue;
+            for (int i = 0; i < RulesCatalog.Units.Length; i++)
+            {
+                UnitDefinition candidate = RulesCatalog.Units[i];
+                if (candidate == null || candidate.LegacyOnly || candidate.Class == UnitClass.Civilian ||
+                    candidate.Era != civ.Era || (candidate.RequiredTechnology != null && !civ.Knows(candidate.RequiredTechnology)) ||
+                    (candidate.RequiredBuilding != null && city.BuildingLevel(candidate.RequiredBuilding) <= 0) ||
+                    city.PopulationTenths < candidate.PopulationTenths + 40 || civ.TreasuryTenths < candidate.TreasuryCostTenths) continue;
+                int sameRole = 0;
+                for (int unitIndex = 0; unitIndex < state.Units.Length; unitIndex++)
+                {
+                    UnitState owned = state.Units[unitIndex];
+                    UnitDefinition ownedDefinition = RulesCatalog.Unit(owned.Kind);
+                    if (owned.OwnerId == civ.Id && ownedDefinition != null && ownedDefinition.Class == candidate.Class) sameRole++;
+                }
+                int score = candidate.Strength / 3 - candidate.ProductionCost / 2 - candidate.UpkeepTenths / 10 +
+                    ((int)candidate.Era == (int)civ.Era ? 42 : 0) + (sameRole == 0 ? 22 : -sameRole * 24);
+                if (atWar && candidate.Class == UnitClass.Siege) score += 26;
+                if (civ.Archetype == "Стратег безопасности" && candidate.Class == UnitClass.Infantry) score += 12;
+                score += StableAiChoiceNudge(state, civ, 100 + i);
+                if (score > bestScore) { bestScore = score; choice = candidate; }
+            }
+            if (choice != null) Recruit(state, civ, city, choice.Kind, false);
         }
 
         private static int AiMilitaryPosture(GameState state, int civilizationId)

@@ -38,6 +38,11 @@ namespace Nasledie.EditorTools
             "Militia", "FieldForce", "SiegeTeam", "Settler"
         };
 
+        private static readonly string[] UnitClasses =
+        {
+            "Infantry", "Ranged", "Cavalry", "Siege", "Scout"
+        };
+
         private static readonly string[] AchievementNames =
         {
             "Badge_Scroll", "Badge_Wheat", "Badge_City", "Badge_Book",
@@ -76,6 +81,8 @@ namespace Nasledie.EditorTools
                 SetAtlas(importer, UnitNames, 2, 2);
             else if (assetPath.EndsWith("UnitEraAtlas.png", StringComparison.OrdinalIgnoreCase))
                 SetAtlas(importer, EpochUnitNames(), 4, 5);
+            else if (assetPath.EndsWith("UnitRosterAtlas.png", StringComparison.OrdinalIgnoreCase))
+                SetAtlas(importer, RosterUnitNames(), 5, 5);
             else if (assetPath.EndsWith("AchievementAtlas.png", StringComparison.OrdinalIgnoreCase))
                 SetAtlas(importer, AchievementNames, 4, 3);
             else if (assetPath.EndsWith("WorkerActivities_Rural.png", StringComparison.OrdinalIgnoreCase))
@@ -128,6 +135,16 @@ namespace Nasledie.EditorTools
             for (int era = 0; era < Eras.Length; era++)
                 for (int unit = 0; unit < UnitKinds.Length; unit++)
                     result[index++] = "Unit_" + Eras[era] + "_" + UnitKinds[unit];
+            return result;
+        }
+
+        private static string[] RosterUnitNames()
+        {
+            var result = new string[Eras.Length * UnitClasses.Length];
+            int index = 0;
+            for (int era = 0; era < Eras.Length; era++)
+                for (int unitClass = 0; unitClass < UnitClasses.Length; unitClass++)
+                    result[index++] = "UnitRoster_" + Eras[era] + "_" + UnitClasses[unitClass];
             return result;
         }
 

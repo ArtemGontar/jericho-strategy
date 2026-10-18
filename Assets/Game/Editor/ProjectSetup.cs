@@ -89,6 +89,7 @@ namespace Nasledie.EditorTools
             RequireSprites("Art/WorldAtlas", 16);
             RequireSprites("Art/UnitAtlas", 4);
             RequireSprites("Art/UnitEraAtlas", 20);
+            RequireSprites("Art/UnitRosterAtlas", 25);
             RequireSprites("Art/AchievementAtlas", 12);
             RequireSprites("Art/Animations/WorkerActivities_Rural", 16);
             RequireSprites("Art/Animations/WorkerActivities_Civic", 16);
@@ -106,6 +107,7 @@ namespace Nasledie.EditorTools
             }
             if (Resources.Load<Sprite>("Art/Jericho_Logo") == null) throw new BuildFailedException("Не найден логотип JERICHO.");
             if (Resources.Load<Sprite>("Art/AppIcon_iOS") == null) throw new BuildFailedException("Не найдена иконка iOS.");
+            RequireSprite("Art/Building_Factory", "изображение индустриальной фабрики");
             string[] backgrounds = { "Menu_Background", "Settings_Background", "Tutorial_Background", "Campaign_Background",
                 "City_Background", "Research_Background", "Diplomacy_Background", "Events_Background", "Archive_Background",
                 "Victory_Background", "Defeat_Background" };

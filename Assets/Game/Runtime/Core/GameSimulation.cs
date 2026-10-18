@@ -529,6 +529,8 @@ namespace Nasledie.Core
                 if (feedback) AppendLog(state, city.Name + ": открыт набор поселенца; 6 еды внесены в обоз.");
                 return CommandResult.Ok("Поселенец поставлен в очередь.");
             }
+            if (!definition.LegacyOnly && (int)definition.Era > (int)actor.Era)
+                return CommandResult.Reject("unit_era", "Этот отряд доступен только в более поздней эпохе.");
             if (definition.RequiredTechnology != null && !actor.Knows(definition.RequiredTechnology)) return CommandResult.Reject("unit_technology", "Сначала изучите требуемую технологию.");
             if (definition.RequiredBuilding != null && city.BuildingLevel(definition.RequiredBuilding) <= 0) return CommandResult.Reject("unit_building", "Для этого отряда нужны казармы.");
             if (city.PopulationTenths < definition.PopulationTenths + 40) return CommandResult.Reject("unit_population", "Нужно оставить городу не менее 4 населения.");
@@ -546,15 +548,16 @@ namespace Nasledie.Core
                 ReservedPopulationTenths = definition.PopulationTenths,
                 TurnsActive = 0
             };
-            if (feedback) AppendLog(state, city.Name + ": мобилизованы " + (definition.PopulationTenths / 10.0).ToString("0.0") + " работника. Набор займёт минимум 2 хода.");
+            if (feedback) AppendLog(state, city.Name + ": мобилизованы " + (definition.PopulationTenths / 10.0).ToString("0.0") + " работника. Набор займёт минимум " + definition.RecruitTurns + " хода.");
             return CommandResult.Ok("Набор начат.");
         }
 
         private CommandResult UpgradeUnit(GameState state, CivilizationState actor, int unitId, bool feedback)
         {
             UnitState unit = FindUnit(state, unitId);
-            if (unit == null || unit.OwnerId != actor.Id || unit.Kind != UnitKind.FieldForce)
-                return CommandResult.Reject("unit_upgrade_target", "Железное снаряжение доступно только вашим полевым силам.");
+            UnitDefinition definition = unit == null ? null : RulesCatalog.Unit(unit.Kind);
+            if (unit == null || unit.OwnerId != actor.Id || definition == null || definition.Class == UnitClass.Civilian)
+                return CommandResult.Reject("unit_upgrade_target", "Железное снаряжение доступно только вашим боевым отрядам.");
             if (unit.IronEquipped) return CommandResult.Reject("unit_already_upgraded", "У этого отряда уже есть железное снаряжение.");
             if (!actor.Knows("engineering")) return CommandResult.Reject("unit_upgrade_technology", "Для усиления нужна технология «Инженерия».");
             CityState source = state.City(unit.CitySourceId);
@@ -573,8 +576,8 @@ namespace Nasledie.Core
             if (actor.TreasuryTenths < 50) return CommandResult.Reject("unit_upgrade_cost", "Для снаряжения нужны 5 казны.");
             actor.TreasuryTenths -= 50;
             unit.IronEquipped = true;
-            if (feedback) AppendLog(state, "Полевые силы получили железное снаряжение и усилили удар.");
-            return CommandResult.Ok("Полевые силы усилены железом.");
+            if (feedback) AppendLog(state, definition.NameRu + " получили железное снаряжение и усилили удар.");
+            return CommandResult.Ok("Отряд усилен железом.");
         }
 
         private CommandResult DeclareWar(GameState state, CivilizationState actor, int targetId, int q, int r, string legalGoal, bool feedback)

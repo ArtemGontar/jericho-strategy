@@ -111,6 +111,7 @@ namespace Nasledie.Core
             int academyLevel = city.BuildingLevel("academy");
             int marketLevel = city.BuildingLevel("market");
             int workshopLevel = city.BuildingLevel("workshop");
+            int factoryLevel = city.BuildingLevel("factory");
             int houseLevel = city.BuildingLevel("house") + city.BuildingLevel("residential_quarter");
             int culturalHouse = city.BuildingLevel("cultural_house");
             int archive = city.BuildingLevel("archive");
@@ -119,6 +120,9 @@ namespace Nasledie.Core
             int clinic = city.BuildingLevel("clinic");
 
             result.Production += artisanCount > 0 ? workshopLevel * 2 : 0;
+            BuildingDefinition factory = RulesCatalog.Building("factory");
+            if (factory != null && artisanCount > 0 && factoryLevel > 0)
+                result.Production += Scale(artisanCount * factoryLevel * factory.ProductionPerArtisan, efficiency);
             result.KnowledgeTenths += scholarCount > 0 ? schoolLevel * 20 + universityLevel * 40 + academyLevel * 50 : 0;
             result.TreasuryTenths += merchantCount > 0 ? marketLevel * 20 + marketTileBonus + fisheryTradeBonusTenths : 0;
             if (artistCount > 0)
@@ -166,6 +170,7 @@ namespace Nasledie.Core
             if (civilization.HasLaw("volunteer_service")) result.TreasuryTenths += 2;
 
             if (civilization.Knows("mechanization")) result.Production += artisanCount > 0 ? 1 : 0;
+            if (factoryLevel > 0 && artisanCount > 0 && !civilization.Knows("clean_energy")) result.EnvironmentChange -= factoryLevel * 2;
 
             int taxMultiplier = civilization.TaxRate == TaxRate.Low ? 7000 : civilization.TaxRate == TaxRate.High ? 13500 : 10000;
             result.TreasuryTenths = result.TreasuryTenths * taxMultiplier / 10000;

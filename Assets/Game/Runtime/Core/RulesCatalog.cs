@@ -47,6 +47,7 @@ namespace Nasledie.Core
         public int HealthPerTurn;
         public int EducationPerTurn;
         public int SafetyPerTurn;
+        public int ProductionPerArtisan;
         public bool UniqueEmpireBuilding;
         public bool CulturalObject;
     }
@@ -66,6 +67,8 @@ namespace Nasledie.Core
     public sealed class UnitDefinition
     {
         public UnitKind Kind;
+        public UnitClass Class;
+        public Era Era;
         public string NameRu;
         public string NameEn;
         public int ProductionCost;
@@ -77,6 +80,9 @@ namespace Nasledie.Core
         public string RequiredTechnology;
         public string RequiredBuilding;
         public int RecruitTurns = 2;
+        public int AttackBonusPercent;
+        public int DefenseBonusPercent;
+        public bool LegacyOnly;
     }
 
     [Serializable]
@@ -104,6 +110,15 @@ namespace Nasledie.Core
 
     public static class RulesCatalog
     {
+        private static readonly string[] SaveV10TechnologyOrder =
+        {
+            "agriculture", "pottery", "stone", "writing", "coastal_craft",
+            "irrigation", "roads", "coin_markets", "medicine", "civic_schools",
+            "engineering", "trade_league", "printing", "public_health", "university",
+            "mechanization", "electricity", "railways", "mass_education", "free_press",
+            "clean_energy", "computing_networks", "global_health", "open_science", "international_assembly"
+        };
+
         public static readonly TechnologyDefinition[] Technologies =
         {
             Tech("agriculture", "Земледелие", "Agriculture", Era.Communities, 8, null, "farms, stable growth"),
@@ -111,26 +126,49 @@ namespace Nasledie.Core
             Tech("stone", "Каменное строительство", "Stonework", Era.Communities, 8, null, "stone buildings, basic fortifications"),
             Tech("writing", "Письменность", "Writing", Era.Communities, 8, null, "council, treaties, saved knowledge"),
             Tech("coastal_craft", "Прибрежное ремесло", "Coastal Craft", Era.Communities, 8, new[] { "agriculture|pottery" }, "fishery, coastal trade"),
+            Tech("slingcraft", "Искусство пращи", "Slingcraft", Era.Communities, 8, new[] { "agriculture" }, "slingers and ranged units"),
+            Tech("animal_husbandry", "Скотоводство", "Animal Husbandry", Era.Communities, 8, new[] { "agriculture" }, "chariots and mounted units"),
+            Tech("fieldcraft", "Знание местности", "Fieldcraft", Era.Communities, 8, new[] { "writing" }, "scouts and reconnaissance"),
             Tech("irrigation", "Ирригация", "Irrigation", Era.Cities, 12, new[] { "agriculture" }, "arid land, aqueduct"),
             Tech("roads", "Дороги", "Roads", Era.Cities, 12, new[] { "stone" }, "roads and supply network"),
             Tech("coin_markets", "Монета и рынки", "Coin and Markets", Era.Cities, 12, new[] { "writing" }, "merchants, markets, resource trade"),
             Tech("medicine", "Медицина", "Medicine", Era.Cities, 12, new[] { "agriculture", "writing" }, "clinic, epidemic resilience"),
             Tech("civic_schools", "Гражданские школы", "Civic Schools", Era.Cities, 12, new[] { "writing" }, "schools, education"),
+            Tech("military_drill", "Военный строй", "Military Drill", Era.Cities, 12, new[] { "stone", "writing" }, "professional infantry formations"),
+            Tech("composite_bow", "Составной лук", "Composite Bow", Era.Cities, 12, new[] { "slingcraft" }, "composite bows and ranged units"),
+            Tech("horse_breeding", "Коневодство", "Horse Breeding", Era.Cities, 12, new[] { "animal_husbandry" }, "mounted cavalry"),
+            Tech("torsion_siege", "Торсионные машины", "Torsion Engines", Era.Cities, 12, new[] { "roads", "stone" }, "catapults and siege engines"),
+            Tech("surveying", "Землемерие", "Surveying", Era.Cities, 12, new[] { "roads" }, "scout routes and border maps"),
             Tech("engineering", "Инженерия", "Engineering", Era.ConnectedLands, 18, new[] { "stone", "roads" }, "bridges, improved fortification"),
             Tech("trade_league", "Торговая лига", "Trade League", Era.ConnectedLands, 18, new[] { "coin_markets" }, "international routes, joint projects"),
             Tech("printing", "Печать", "Printing", Era.ConnectedLands, 18, new[] { "civic_schools" }, "cultural influence"),
             Tech("public_health", "Общественное здоровье", "Public Health", Era.ConnectedLands, 18, new[] { "medicine", "irrigation" }, "hospital, sanitation"),
             Tech("university", "Университет", "University", Era.ConnectedLands, 18, new[] { "civic_schools" }, "university, science project"),
+            Tech("steelworking", "Обработка стали", "Steelworking", Era.ConnectedLands, 18, new[] { "engineering" }, "armored infantry"),
+            Tech("crossbow", "Арбалет", "Crossbow", Era.ConnectedLands, 18, new[] { "composite_bow" }, "crossbow formations"),
+            Tech("stirrups", "Стремена", "Stirrups", Era.ConnectedLands, 18, new[] { "horse_breeding", "engineering" }, "heavy cavalry"),
+            Tech("counterweight_siege", "Противовесные машины", "Counterweight Siege", Era.ConnectedLands, 18, new[] { "engineering" }, "trebuchets and siege crews"),
+            Tech("cartography", "Картография", "Cartography", Era.ConnectedLands, 18, new[] { "trade_league" }, "long-range reconnaissance"),
             Tech("mechanization", "Механизация", "Mechanization", Era.Industry, 25, new[] { "engineering" }, "factory, production"),
             Tech("electricity", "Электричество", "Electricity", Era.Industry, 25, new[] { "mechanization" }, "power grid"),
             Tech("railways", "Железные дороги", "Railways", Era.Industry, 25, new[] { "roads", "mechanization" }, "long distance trade and supply"),
             Tech("mass_education", "Массовое образование", "Mass Education", Era.Industry, 25, new[] { "university" }, "education growth"),
             Tech("free_press", "Свободная пресса", "Free Press", Era.Industry, 25, new[] { "printing" }, "cultural exchange"),
+            Tech("firearms", "Огнестрельное оружие", "Firearms", Era.Industry, 25, new[] { "mechanization" }, "industrial line infantry"),
+            Tech("rifling", "Нарезное оружие", "Rifling", Era.Industry, 25, new[] { "firearms" }, "rifle skirmishers"),
+            Tech("motorization", "Моторизация", "Motorization", Era.Industry, 25, new[] { "railways" }, "mobile cavalry and vehicles"),
+            Tech("field_artillery", "Полевая артиллерия", "Field Artillery", Era.Industry, 25, new[] { "mechanization" }, "modern artillery"),
+            Tech("reconnaissance", "Военная разведка", "Military Intelligence", Era.Industry, 25, new[] { "mass_education" }, "reconnaissance units"),
             Tech("clean_energy", "Чистая энергия", "Clean Energy", Era.Synthesis, 34, new[] { "electricity" }, "late production without pollution"),
             Tech("computing_networks", "Вычислительные сети", "Computing Networks", Era.Synthesis, 42, new[] { "electricity", "university" }, "final science project", true),
             Tech("global_health", "Глобальное здоровье", "Global Health", Era.Synthesis, 34, new[] { "public_health", "computing_networks" }, "health cooperation"),
             Tech("open_science", "Открытая наука", "Open Science", Era.Synthesis, 42, new[] { "mass_education", "computing_networks" }, "final science project", true),
-            Tech("international_assembly", "Международная ассамблея", "International Assembly", Era.Synthesis, 42, new[] { "trade_league", "free_press" }, "diplomatic victory", true)
+            Tech("international_assembly", "Международная ассамблея", "International Assembly", Era.Synthesis, 42, new[] { "trade_league", "free_press" }, "diplomatic victory", true),
+            Tech("networked_infantry", "Сетевая пехота", "Networked Infantry", Era.Synthesis, 34, new[] { "computing_networks" }, "networked infantry"),
+            Tech("precision_systems", "Высокоточные системы", "Precision Systems", Era.Synthesis, 34, new[] { "computing_networks" }, "precision ranged units"),
+            Tech("armored_mobility", "Бронированная мобильность", "Armored Mobility", Era.Synthesis, 34, new[] { "clean_energy" }, "armored cavalry"),
+            Tech("smart_artillery", "Умная артиллерия", "Smart Artillery", Era.Synthesis, 42, new[] { "precision_systems" }, "precision siege units"),
+            Tech("autonomous_recon", "Автономная разведка", "Autonomous Reconnaissance", Era.Synthesis, 34, new[] { "computing_networks" }, "autonomous scouts")
         };
 
         public static readonly BuildingDefinition[] Buildings =
@@ -139,6 +177,8 @@ namespace Nasledie.Core
             Building("house", "Дом", "House", 8, 5, null, housingTenths: 40),
             Building("residential_quarter", "Жилой квартал", "Residential Quarter", 18, 20, "engineering", housingTenths: 80),
             Building("workshop", "Мастерская", "Workshop", 12, 10, "stone", workerPlaceRole: (int)WorkerRole.Artisan, workerPlaces: 1),
+            Building("factory", "Фабрика", "Factory", 32, 40, "mechanization", workerPlaceRole: (int)WorkerRole.Artisan,
+                workerPlaces: 3, productionPerArtisan: 1, artKey: "Building_Factory"),
             Building("school", "Школа", "School", 12, 10, "civic_schools", knowledgePerScholar: 2, education: 5, workerPlaceRole: (int)WorkerRole.Scholar, workerPlaces: 1),
             Building("market", "Рынок", "Market", 12, 10, "coin_markets", treasuryPerMerchant: 2, workerPlaceRole: (int)WorkerRole.Merchant, workerPlaces: 1, tradeSlots: 1),
             Building("clinic", "Клиника", "Clinic", 14, 20, "medicine", health: 10, workerPlaceRole: (int)WorkerRole.CivilServant, workerPlaces: 1),
@@ -182,10 +222,43 @@ namespace Nasledie.Core
 
         public static readonly UnitDefinition[] Units =
         {
-            new UnitDefinition { Kind = UnitKind.Militia, NameRu = "Ополчение", NameEn = "Militia", ProductionCost = 8, TreasuryCostTenths = 30, PopulationTenths = 5, Strength = 70, Movement = 1, UpkeepTenths = 10, RecruitTurns = 2 },
-            new UnitDefinition { Kind = UnitKind.FieldForce, NameRu = "Полевые силы", NameEn = "Field Force", ProductionCost = 14, TreasuryCostTenths = 60, PopulationTenths = 10, Strength = 100, Movement = 2, UpkeepTenths = 20, RequiredTechnology = "roads", RequiredBuilding = "barracks", RecruitTurns = 2 },
-            new UnitDefinition { Kind = UnitKind.SiegeTeam, NameRu = "Осадная команда", NameEn = "Siege Team", ProductionCost = 16, TreasuryCostTenths = 50, PopulationTenths = 5, Strength = 55, Movement = 1, UpkeepTenths = 20, RequiredTechnology = "engineering", RequiredBuilding = "barracks", RecruitTurns = 2 },
-            new UnitDefinition { Kind = UnitKind.SettlerWagon, NameRu = "Поселенец", NameEn = "Settler", ProductionCost = 4, TreasuryCostTenths = 0, PopulationTenths = 20, Strength = 0, Movement = 2, UpkeepTenths = 0, RecruitTurns = 1 }
+            MilitaryUnit(UnitKind.Militia, UnitClass.Infantry, Era.Communities, "Ополчение", "Militia", 78, 8, 30, 50, 1, 10, null),
+            new UnitDefinition { Kind = UnitKind.FieldForce, Class = UnitClass.Infantry, Era = Era.Communities,
+                NameRu = "Полевые силы", NameEn = "Field Force", ProductionCost = 14, TreasuryCostTenths = 60,
+                PopulationTenths = 10, Strength = 100, Movement = 2, UpkeepTenths = 20, RequiredTechnology = "roads",
+                RequiredBuilding = "barracks", RecruitTurns = 2, LegacyOnly = true },
+            MilitaryUnit(UnitKind.SiegeTeam, UnitClass.Siege, Era.Communities, "Осадная команда", "Siege Team", 58, 16, 50, 50, 1, 20, "stone"),
+            MilitaryUnit(UnitKind.CommunitiesRanged, UnitClass.Ranged, Era.Communities, "Пращники", "Slingers", 68, 10, 35, 40, 1, 12, "slingcraft"),
+            MilitaryUnit(UnitKind.CommunitiesCavalry, UnitClass.Cavalry, Era.Communities, "Колесничие", "Chariots", 92, 18, 70, 80, 3, 28, "animal_husbandry"),
+            MilitaryUnit(UnitKind.CommunitiesScout, UnitClass.Scout, Era.Communities, "Следопыты", "Pathfinders", 52, 8, 25, 40, 3, 8, "fieldcraft"),
+
+            MilitaryUnit(UnitKind.CitiesInfantry, UnitClass.Infantry, Era.Cities, "Гоплиты", "Hoplites", 100, 13, 50, 70, 1, 18, "military_drill"),
+            MilitaryUnit(UnitKind.CitiesRanged, UnitClass.Ranged, Era.Cities, "Лучники", "Composite Archers", 86, 13, 45, 60, 1, 16, "composite_bow"),
+            MilitaryUnit(UnitKind.CitiesCavalry, UnitClass.Cavalry, Era.Cities, "Конница", "Cavalry", 112, 18, 75, 90, 3, 26, "horse_breeding"),
+            MilitaryUnit(UnitKind.CitiesSiege, UnitClass.Siege, Era.Cities, "Катапульты", "Catapults", 78, 18, 65, 50, 1, 25, "torsion_siege"),
+            MilitaryUnit(UnitKind.CitiesScout, UnitClass.Scout, Era.Cities, "Пограничные разведчики", "Border Scouts", 68, 12, 40, 40, 3, 12, "surveying"),
+
+            MilitaryUnit(UnitKind.ConnectedInfantry, UnitClass.Infantry, Era.ConnectedLands, "Профессиональная пехота", "Professional Infantry", 124, 20, 80, 80, 1, 24, "steelworking"),
+            MilitaryUnit(UnitKind.ConnectedRanged, UnitClass.Ranged, Era.ConnectedLands, "Арбалетчики", "Crossbowmen", 108, 20, 70, 60, 1, 21, "crossbow"),
+            MilitaryUnit(UnitKind.ConnectedCavalry, UnitClass.Cavalry, Era.ConnectedLands, "Рыцари", "Knights", 142, 25, 100, 100, 3, 34, "stirrups"),
+            MilitaryUnit(UnitKind.ConnectedSiege, UnitClass.Siege, Era.ConnectedLands, "Требушеты", "Trebuchets", 98, 24, 90, 60, 1, 32, "counterweight_siege"),
+            MilitaryUnit(UnitKind.ConnectedScout, UnitClass.Scout, Era.ConnectedLands, "Дальняя разведка", "Long-Range Scouts", 82, 16, 55, 50, 3, 15, "cartography"),
+
+            MilitaryUnit(UnitKind.IndustryInfantry, UnitClass.Infantry, Era.Industry, "Линейная пехота", "Line Infantry", 150, 28, 110, 80, 1, 34, "firearms"),
+            MilitaryUnit(UnitKind.IndustryRanged, UnitClass.Ranged, Era.Industry, "Стрелки", "Rifle Skirmishers", 136, 28, 100, 70, 1, 31, "rifling"),
+            MilitaryUnit(UnitKind.IndustryCavalry, UnitClass.Cavalry, Era.Industry, "Драгуны", "Dragoons", 168, 32, 130, 90, 3, 40, "motorization"),
+            MilitaryUnit(UnitKind.IndustrySiege, UnitClass.Siege, Era.Industry, "Полевые пушки", "Field Artillery", 116, 32, 125, 70, 1, 42, "field_artillery"),
+            MilitaryUnit(UnitKind.IndustryScout, UnitClass.Scout, Era.Industry, "Разведывательные отряды", "Reconnaissance Teams", 104, 24, 85, 50, 3, 24, "reconnaissance"),
+
+            MilitaryUnit(UnitKind.SynthesisInfantry, UnitClass.Infantry, Era.Synthesis, "Сетевая пехота", "Networked Infantry", 178, 38, 150, 80, 1, 42, "networked_infantry"),
+            MilitaryUnit(UnitKind.SynthesisRanged, UnitClass.Ranged, Era.Synthesis, "Точные стрелки", "Precision Marksmen", 160, 38, 140, 70, 1, 39, "precision_systems"),
+            MilitaryUnit(UnitKind.SynthesisCavalry, UnitClass.Cavalry, Era.Synthesis, "Бронегруппа", "Armored Cavalry", 196, 42, 170, 100, 3, 50, "armored_mobility"),
+            MilitaryUnit(UnitKind.SynthesisSiege, UnitClass.Siege, Era.Synthesis, "Самоходная артиллерия", "Self-Propelled Artillery", 142, 42, 160, 70, 2, 52, "smart_artillery"),
+            MilitaryUnit(UnitKind.SynthesisScout, UnitClass.Scout, Era.Synthesis, "Дроновая разведка", "Drone Reconnaissance", 122, 32, 120, 50, 4, 30, "autonomous_recon"),
+
+            new UnitDefinition { Kind = UnitKind.SettlerWagon, Class = UnitClass.Civilian, Era = Era.Communities,
+                NameRu = "Поселенец", NameEn = "Settler", ProductionCost = 4, TreasuryCostTenths = 0,
+                PopulationTenths = 20, Strength = 0, Movement = 2, UpkeepTenths = 0, RecruitTurns = 1 }
         };
 
         public static readonly LawDefinition[] Laws =
@@ -229,7 +302,8 @@ namespace Nasledie.Core
             int workerPlaceRole = -1, int workerPlaces = 0, int tradeSlots = 0, int defense = 0,
             bool unique = false, bool culturalObject = false, string requiredNationId = null, string artKey = null,
             int flatFoodTenths = 0, int flatKnowledgeTenths = 0, int flatTreasuryTenths = 0,
-            int flatCulturePrestige = 0, int healthPerTurn = 0, int educationPerTurn = 0, int safetyPerTurn = 0)
+            int flatCulturePrestige = 0, int healthPerTurn = 0, int educationPerTurn = 0, int safetyPerTurn = 0,
+            int productionPerArtisan = 0)
         {
             return new BuildingDefinition
             {
@@ -243,6 +317,7 @@ namespace Nasledie.Core
                 FlatKnowledgeTenths = flatKnowledgeTenths, FlatTreasuryTenths = flatTreasuryTenths,
                 FlatCulturePrestige = flatCulturePrestige, HealthPerTurn = healthPerTurn,
                 EducationPerTurn = educationPerTurn, SafetyPerTurn = safetyPerTurn,
+                ProductionPerArtisan = productionPerArtisan,
                 UniqueEmpireBuilding = unique, CulturalObject = culturalObject
             };
         }
@@ -280,10 +355,45 @@ namespace Nasledie.Core
             return null;
         }
 
+        private static UnitDefinition MilitaryUnit(UnitKind kind, UnitClass unitClass, Era era, string ru, string en,
+            int strength, int production, int treasury, int population, int movement, int upkeep, string technology)
+        {
+            int attackBonus = unitClass == UnitClass.Ranged ? 18 : unitClass == UnitClass.Cavalry ? 15 :
+                unitClass == UnitClass.Siege ? 25 : unitClass == UnitClass.Scout ? 8 : 0;
+            int defenseBonus = unitClass == UnitClass.Infantry ? 15 : unitClass == UnitClass.Ranged ? -5 :
+                unitClass == UnitClass.Cavalry ? -10 : unitClass == UnitClass.Siege ? -20 : -10;
+            return new UnitDefinition
+            {
+                Kind = kind, Class = unitClass, Era = era, NameRu = ru, NameEn = en,
+                ProductionCost = production, TreasuryCostTenths = treasury, PopulationTenths = population,
+                Strength = strength, Movement = movement, UpkeepTenths = upkeep,
+                RequiredTechnology = technology, RequiredBuilding = unitClass == UnitClass.Infantry && era == Era.Communities ? null : "barracks",
+                RecruitTurns = unitClass == UnitClass.Siege || unitClass == UnitClass.Cavalry ? 3 : 2,
+                AttackBonusPercent = attackBonus, DefenseBonusPercent = defenseBonus
+            };
+        }
+
         public static int TechnologyIndex(string id)
         {
             for (int i = 0; i < Technologies.Length; i++) if (Technologies[i].Id == id) return i;
             return -1;
+        }
+
+        public static void MigrateTechnologyProgressFromSaveV10(CivilizationState civilization)
+        {
+            if (civilization == null) return;
+            int[] previousProgress = civilization.TechnologyProgressTenths ?? Array.Empty<int>();
+            int previousResearchIndex = civilization.ActiveResearchIndex;
+            string activeTechnologyId = previousResearchIndex >= 0 && previousResearchIndex < SaveV10TechnologyOrder.Length
+                ? SaveV10TechnologyOrder[previousResearchIndex] : null;
+            int[] migratedProgress = new int[Technologies.Length];
+            for (int oldIndex = 0; oldIndex < previousProgress.Length && oldIndex < SaveV10TechnologyOrder.Length; oldIndex++)
+            {
+                int currentIndex = TechnologyIndex(SaveV10TechnologyOrder[oldIndex]);
+                if (currentIndex >= 0) migratedProgress[currentIndex] = previousProgress[oldIndex];
+            }
+            civilization.TechnologyProgressTenths = migratedProgress;
+            civilization.ActiveResearchIndex = activeTechnologyId == null ? -1 : TechnologyIndex(activeTechnologyId);
         }
 
         public static bool IsUnlockKnown(CivilizationState civilization, string unlock)

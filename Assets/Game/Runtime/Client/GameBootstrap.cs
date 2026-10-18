@@ -1080,7 +1080,7 @@ namespace Nasledie.Client
             {
                 "Art/BuildingAtlas", "Art/BuildingAtlas_Communities", "Art/BuildingAtlas_Cities",
                 "Art/BuildingAtlas_ConnectedLands", "Art/BuildingAtlas_Industry", "Art/BuildingAtlas_Synthesis",
-                "Art/WorldAtlas", "Art/UnitAtlas", "Art/UnitEraAtlas", "Art/AchievementAtlas",
+                "Art/WorldAtlas", "Art/UnitAtlas", "Art/UnitEraAtlas", "Art/UnitRosterAtlas", "Art/AchievementAtlas",
                 "Art/Animations/WorkerActivities_Rural", "Art/Animations/WorkerActivities_Civic"
             };
             for (int a = 0; a < atlases.Length; a++)
@@ -1174,6 +1174,13 @@ namespace Nasledie.Client
             if (building.HealthPerTurn > 0) effects.Add("+" + building.HealthPerTurn + " здоровья/ход");
             if (building.EducationPerTurn > 0) effects.Add("+" + building.EducationPerTurn + " образования/ход");
             if (building.SafetyPerTurn > 0) effects.Add("+" + building.SafetyPerTurn + " безопасности/ход");
+            if (building.ProductionPerArtisan > 0) effects.Add("+" + building.ProductionPerArtisan + " производства/ремесленника");
+            if (building.WorkerPlaces > 0)
+            {
+                string role = building.WorkerPlaceRole == (int)WorkerRole.Artisan ? "ремесленника" : "специалиста";
+                string placeWord = building.WorkerPlaces == 1 ? "место" : building.WorkerPlaces < 5 ? "места" : "мест";
+                effects.Add("+" + building.WorkerPlaces + " " + placeWord + " " + role);
+            }
             return effects.Count == 0 ? "особый культурный район" : string.Join(" · ", effects.ToArray());
         }
 
@@ -1185,7 +1192,7 @@ namespace Nasledie.Client
             {
                 "assembly", "academy", "university", "sumer_ziggurat_archive", "archive", "exchange_house", "cultural_house",
                 "jericho_spring_tower", "egypt_nilometer", "indus_great_bath",
-                "hospital", "administration", "market", "workshop", "barracks", "school", "council",
+                "hospital", "administration", "market", "factory", "workshop", "barracks", "school", "council",
                 "clinic", "granary", "residential_quarter", "house", "road_services"
             };
             for (int i = 0; i < visualPriority.Length; i++)
@@ -1256,20 +1263,17 @@ namespace Nasledie.Client
 
         private static string UnitArtwork(UnitKind kind)
         {
-            switch (kind)
-            {
-                case UnitKind.Militia: return "Unit_Militia";
-                case UnitKind.FieldForce: return "Unit_FieldForce";
-                case UnitKind.SiegeTeam: return "Unit_SiegeTeam";
-                case UnitKind.SettlerWagon: return "Unit_Settler";
-                default: return null;
-            }
+            return UnitArtwork(kind, Era.Communities);
         }
 
         private static string UnitArtwork(UnitKind kind, Era era)
         {
-            string artwork = UnitArtwork(kind);
-            return string.IsNullOrEmpty(artwork) ? null : "Unit_" + era + "_" + artwork.Substring("Unit_".Length);
+            UnitDefinition definition = RulesCatalog.Unit(kind);
+            if (definition == null) return null;
+            if (!definition.LegacyOnly && definition.Class != UnitClass.Civilian)
+                return "UnitRoster_" + definition.Era + "_" + definition.Class;
+            string oldName = kind == UnitKind.SettlerWagon ? "Settler" : kind == UnitKind.FieldForce ? "FieldForce" : null;
+            return string.IsNullOrEmpty(oldName) ? null : "Unit_" + era + "_" + oldName;
         }
 
         private static void AddButtonArtwork(Button button, string name)
@@ -2802,7 +2806,7 @@ namespace Nasledie.Client
                 if (selected.WoundedPopulationTenths > 0)
                     UiKit.Label(card.transform, "Раненые " + Format(selected.WoundedPopulationTenths) + " населения · восстановление через " + selected.WoundedTurns + " хода",
                         19, GamePalette.Rust, TextAnchor.MiddleLeft, false);
-                if (selected.Kind == UnitKind.FieldForce)
+                if (definition != null && definition.Class != UnitClass.Civilian)
                 {
                     bool canUpgrade = ownerHasEngineering() && HasImprovedIronFor(selected);
                     string upgradeLabel = selected.IronEquipped ? "ЖЕЛЕЗНОЕ СНАРЯЖЕНИЕ · +25% СИЛЫ" : "УСИЛИТЬ ЖЕЛЕЗОМ · 5 КАЗНЫ";
@@ -2828,7 +2832,7 @@ namespace Nasledie.Client
                 int id = unit.Id;
                 UiKit.Button(unitsCard.transform, "ВЫБРАТЬ ОТРЯД", delegate { selectedUnitId = id; selectedQ = unit.Q; selectedR = unit.R; RenderGame(); }, GamePalette.Ink, 52, 18);
             }
-            if (count == 0) UiKit.Label(unitsCard.transform, "Отрядов пока нет. Набор ополчения доступен в городе с казармами; обоз появляется при населении не менее 8.", 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            if (count == 0) UiKit.Label(unitsCard.transform, "Отрядов пока нет. Ополчение эпохи Общин доступно без казарм; остальные роли открываются технологиями и требуют казармы. Обоз появляется при достаточном запасе еды и населения.", 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
 
             bool ownerHasEngineering() { return simulation.State.Civilization(owner).Knows("engineering"); }
         }
@@ -3151,7 +3155,7 @@ namespace Nasledie.Client
                 bool unlocked = string.IsNullOrEmpty(building.RequiredTechnology) || owner.Knows(building.RequiredTechnology);
                 bool already = city.BuildingLevel(building.Id) > 0;
                 string label = DisplayBuildingName(building, owner.NationId) + " · " + building.ProductionCost + " ПП · содержание " + Format(building.UpkeepTenths) +
-                    (string.IsNullOrEmpty(building.RequiredNationId) ? "" : " · " + BuildingEffectSummary(building)) +
+                    (string.IsNullOrEmpty(building.RequiredNationId) && building.Id != "factory" ? "" : " · " + BuildingEffectSummary(building)) +
                     (unlocked ? "" : " · нужна технология «" + building.RequiredTechnology + "»") +
                     (already ? " · уже построено" : "");
                 Button button = UiKit.Button(card.transform, label,
@@ -3165,15 +3169,22 @@ namespace Nasledie.Client
 
         private void RenderRecruitChoices(Transform parent, CityState city, CivilizationState owner)
         {
-            GameObject card = UiKit.Card(parent, "Служба и расширение территории");
+            GameObject card = UiKit.Card(parent, "Войска эпохи «" + EraName(owner.Era) + "» · выберите роль отряда");
             for (int i = 0; i < RulesCatalog.Units.Length; i++)
             {
                 UnitDefinition unit = RulesCatalog.Units[i];
+                if (unit.LegacyOnly || (unit.Class != UnitClass.Civilian && unit.Era != owner.Era)) continue;
                 bool tech = string.IsNullOrEmpty(unit.RequiredTechnology) || owner.Knows(unit.RequiredTechnology);
                 bool building = string.IsNullOrEmpty(unit.RequiredBuilding) || city.BuildingLevel(unit.RequiredBuilding) > 0;
-                string label = unit.NameRu + " · " + unit.ProductionCost + " ПП · " + Format(unit.TreasuryCostTenths) + " казны · " + Format(unit.PopulationTenths) + " населения";
-                if (!tech) label += " · нужна технология " + unit.RequiredTechnology;
-                if (!building) label += " · нужны " + unit.RequiredBuilding;
+                string label = UnitClassName(unit.Class) + "  ·  " + unit.NameRu + "  ·  " + unit.Strength + " силы  ·  движение " + unit.Movement +
+                    "  ·  " + unit.ProductionCost + " ПП  ·  " + Format(unit.TreasuryCostTenths) + " казны  ·  " + Format(unit.PopulationTenths) + " населения";
+                TechnologyDefinition requiredTech = string.IsNullOrEmpty(unit.RequiredTechnology) ? null : RulesCatalog.Technology(unit.RequiredTechnology);
+                if (!tech) label += "  ·  изучите «" + (requiredTech == null ? unit.RequiredTechnology : requiredTech.NameRu) + "»";
+                if (!building)
+                {
+                    BuildingDefinition requiredBuilding = RulesCatalog.Building(unit.RequiredBuilding);
+                    label += "  ·  нужно здание «" + (requiredBuilding == null ? unit.RequiredBuilding : requiredBuilding.NameRu) + "»";
+                }
                 UnitKind kind = unit.Kind;
                 Button button = UiKit.Button(card.transform, label, delegate { Issue(CommandKind.Recruit, city.Id, value: (int)kind); }, unit.Kind == UnitKind.SettlerWagon ? GamePalette.Teal : GamePalette.Ink, 60, 18);
                 AddButtonArtwork(button, UnitArtwork(unit.Kind, owner.Era));
@@ -3181,7 +3192,21 @@ namespace Nasledie.Client
                     (unit.Kind != UnitKind.SettlerWagon || (city.PopulationTenths >= 80 && city.FoodTenths >= 60)) &&
                     (unit.Kind == UnitKind.SettlerWagon || (city.PopulationTenths >= unit.PopulationTenths + 40 && owner.TreasuryTenths >= unit.TreasuryCostTenths));
             }
-            UiKit.Label(card.transform, "Набор переводит жителей из экономики в войско, резервирует население на время подготовки и добавляет содержание. Обоз стоит 6 еды и 2 населения.", 19, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            UiKit.Label(card.transform, "В эпохе открываются пять боевых ролей: пехота, стрелки, конница, осадные части и разведка. Исследования и казармы открывают отдельные варианты. Набор резервирует жителей, занимает производство и добавляет содержание. Обоз стоит 6 еды и 2 населения.",
+                16, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+        }
+
+        private static string UnitClassName(UnitClass unitClass)
+        {
+            switch (unitClass)
+            {
+                case UnitClass.Infantry: return "ПЕХОТА";
+                case UnitClass.Ranged: return "СТРЕЛКИ";
+                case UnitClass.Cavalry: return "КОННИЦА";
+                case UnitClass.Siege: return "ОСАДНЫЕ";
+                case UnitClass.Scout: return "РАЗВЕДКА";
+                default: return "ЭКСПЕДИЦИЯ";
+            }
         }
 
         private void RenderImprovementChoices(Transform parent, CityState city, CivilizationState owner)

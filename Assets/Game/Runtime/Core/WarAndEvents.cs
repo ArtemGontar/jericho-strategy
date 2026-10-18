@@ -15,8 +15,6 @@ namespace Nasledie.Core
             UnitKind defenderKind = defender.Kind;
             int visibilityMask = (cell.VisibleToMask & (1 << state.HumanCivilizationId)) != 0
                 ? 1 << state.HumanCivilizationId : 0;
-            int attackPower = BattlePower(attacker);
-            int defensePower = BattlePower(defender);
             int terrainBonus = cell.Terrain == TerrainKind.Hills || cell.Terrain == TerrainKind.Forest ? 15 : 0;
             int fortifications = 0;
             for (int i = 0; i < state.Cells.Length; i++)
@@ -34,8 +32,15 @@ namespace Nasledie.Core
                     treaty.ToCivilizationId == defenderOwnerId ? treaty.FromCivilizationId : -1;
                 if (protectedSide >= 0 && protectedSide != attackerOwnerId) { terrainBonus += 10; break; }
             }
+            bool cityTarget = false;
             for (int i = 0; i < state.Cities.Length; i++)
-                if (state.Cities[i].Q == cell.Q && state.Cities[i].R == cell.R) terrainBonus += 10 + state.Cities[i].BuildingLevel("barracks") * 10;
+                if (state.Cities[i].Q == cell.Q && state.Cities[i].R == cell.R)
+                {
+                    cityTarget = true;
+                    terrainBonus += 10 + state.Cities[i].BuildingLevel("barracks") * 10;
+                }
+            int attackPower = BattlePower(attacker, true, cell.Terrain, cityTarget);
+            int defensePower = BattlePower(defender, false, cell.Terrain, cityTarget);
             defensePower = defensePower * (100 + terrainBonus) / 100;
             int attackLoss = Math.Min(attacker.Strength, Math.Max(8, attacker.Strength * (defensePower >= attackPower ? 35 : 22) / 100));
             int defenseLoss = Math.Min(defender.Strength, Math.Max(8, defender.Strength * (attackPower >= defensePower ? 42 : 26) / 100));
@@ -218,9 +223,19 @@ namespace Nasledie.Core
             return best;
         }
 
-        private int BattlePower(UnitState unit)
+        private int BattlePower(UnitState unit, bool attacking, TerrainKind terrain, bool cityTarget)
         {
             int power = Math.Max(1, unit.Strength) * Math.Max(30, unit.Readiness) * Math.Max(3000, unit.SupplyBasisPoints) / 1000000;
+            UnitDefinition definition = RulesCatalog.Unit(unit.Kind);
+            int roleBonus = definition == null ? 0 : attacking ? definition.AttackBonusPercent : definition.DefenseBonusPercent;
+            if (definition != null && definition.Class == UnitClass.Cavalry)
+            {
+                if (attacking && (terrain == TerrainKind.Plains || terrain == TerrainKind.Meadow || terrain == TerrainKind.River)) roleBonus += 12;
+                if (attacking && (terrain == TerrainKind.Hills || terrain == TerrainKind.Forest)) roleBonus -= 12;
+            }
+            if (definition != null && definition.Class == UnitClass.Siege && cityTarget)
+                roleBonus += attacking ? 18 : -10;
+            power = power * Math.Max(25, 100 + roleBonus) / 100;
             return unit.IronEquipped ? power * 125 / 100 : power;
         }
 
