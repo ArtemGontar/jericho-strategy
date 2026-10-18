@@ -344,65 +344,126 @@ namespace Nasledie.Client
             if (actionHost != null) actionHost.gameObject.SetActive(false);
             if (header != null) header.gameObject.SetActive(false);
 
-            GameObject shade = UiKit.CreateObject("MenuTextShade", menuHost);
-            Image shadeImage = shade.AddComponent<Image>();
-            shadeImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.76f);
-            shadeImage.raycastTarget = false;
-            UiKit.SetAnchors(UiKit.Rect(shade), Vector2.zero, new Vector2(0.50f, 1f), Vector2.zero, Vector2.zero);
+            UiKit.HorizontalFade(menuHost, "MenuTextFade", Vector2.zero, new Vector2(0.70f, 1f),
+                new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.42f),
+                new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0f));
 
             GameObject menu = UiKit.CreateObject("MainMenuContent", menuHost);
-            UiKit.SetAnchors(UiKit.Rect(menu), new Vector2(0.035f, 0.045f), new Vector2(0.475f, 0.955f), Vector2.zero, Vector2.zero);
-            UiKit.Vertical(menu, 6, 8);
+            UiKit.SetAnchors(UiKit.Rect(menu), new Vector2(0.045f, 0.11f), new Vector2(0.455f, 0.92f), Vector2.zero, Vector2.zero);
+            UiKit.Vertical(menu, 0, 7);
             GameObject brand = UiKit.CreateObject("MenuBrand", menu.transform);
             LayoutElement brandLayout = brand.AddComponent<LayoutElement>();
-            brandLayout.minHeight = 94f;
-            brandLayout.preferredHeight = 94f;
-            UiKit.Horizontal(brand, 0, 16);
-            AddArtwork(brand.transform, "Jericho_Logo", 88f);
-            Text brandTitle = UiKit.Label(brand.transform, "JERICHO", 48, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+            brandLayout.minHeight = 78f;
+            brandLayout.preferredHeight = 78f;
+            UiKit.Horizontal(brand, 0, 14);
+            AddArtwork(brand.transform, "Jericho_Logo", 72f);
+            Text brandTitle = UiKit.Label(brand.transform, "JERICHO", 44, GamePalette.Gold, TextAnchor.MiddleLeft, true);
             brandTitle.GetComponent<LayoutElement>().flexibleWidth = 1f;
             UiKit.Label(menu.transform, "От первого поселения — к цивилизации, которую выбирают строить.",
-                17, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                16, GamePalette.Paper, TextAnchor.MiddleLeft, false);
 
             if (simulation != null)
             {
-                UiKit.Button(menu.transform, "ПРОДОЛЖИТЬ КАМПАНИЮ", delegate { menuHost.gameObject.SetActive(false); RenderGame(); }, GamePalette.Gold, 60, 19);
-                AddMenuButtonRow(menu.transform, "СОХРАНИТЬ", SaveManual, "СОХРАНЕНИЯ", ShowSaves);
+                AddMenuPrimaryButton(menu.transform, "ПРОДОЛЖИТЬ  ·  ХОД " + simulation.State.Turn,
+                    delegate { menuHost.gameObject.SetActive(false); RenderGame(); });
+                AddMenuDivider(menu.transform);
                 AddMenuButtonRow(menu.transform, "НАСТРОЙКИ", ShowSettings, "КАК ИГРАТЬ", ShowTutorial);
                 AddMenuButtonRow(menu.transform, "ЭНЦИКЛОПЕДИЯ", ShowEncyclopedia, "ДОСТИЖЕНИЯ", ShowAchievements);
-                UiKit.Button(menu.transform, "ЗАВЕРШИТЬ ПАРТИЮ", delegate { simulation = null; ShowMenu(); }, GamePalette.InkSoft, 44, 14);
-                AddMenuProfile(menu.transform);
+                AddMenuDivider(menu.transform);
+                AddMenuButtonRow(menu.transform, "СОХРАНИТЬ", SaveManual, "СОХРАНЕНИЯ", ShowSaves);
+                AddMenuSoloLink(menu.transform, "ЗАВЕРШИТЬ ПАРТИЮ", delegate { simulation = null; ShowMenu(); });
+                AddMenuProfile(menuHost);
                 return;
             }
 
-            UiKit.Button(menu.transform, "НОВАЯ КАМПАНИЯ", StartNewCampaign, GamePalette.Gold, 60, 20);
-            Button continueButton = UiKit.Button(menu.transform, "ПРОДОЛЖИТЬ", LoadCampaign, GamePalette.InkSoft, 50, 17);
-            continueButton.interactable = SaveService.HasSave;
-            if (SaveService.HasSave) UiKit.Button(menu.transform, "СОХРАНЕНИЯ", ShowSaves, GamePalette.InkSoft, 44, 15);
+            AddMenuPrimaryButton(menu.transform, "НОВАЯ КАМПАНИЯ", StartNewCampaign);
+            if (SaveService.HasSave) AddMenuSoloLink(menu.transform, "ПРОДОЛЖИТЬ ПАРТИЮ", LoadCampaign);
+            AddMenuDivider(menu.transform);
             AddMenuButtonRow(menu.transform, "НАСТРОЙКИ", ShowSettings, "КАК ИГРАТЬ", ShowTutorial);
             AddMenuButtonRow(menu.transform, "ЭНЦИКЛОПЕДИЯ", ShowEncyclopedia, "ДОСТИЖЕНИЯ", ShowAchievements);
-            AddMenuProfile(menu.transform);
+            AddMenuProfile(menuHost);
         }
 
         private void AddMenuButtonRow(Transform parent, string leftLabel, Action leftAction, string rightLabel, Action rightAction)
         {
             GameObject row = UiKit.CreateObject("MenuActionRow", parent);
             UiKit.Horizontal(row, 0, 10);
-            Button left = UiKit.Button(row.transform, leftLabel, leftAction, GamePalette.InkSoft, 46, 14);
-            Button right = UiKit.Button(row.transform, rightLabel, rightAction, GamePalette.InkSoft, 46, 14);
+            Button left = UiKit.Button(row.transform, leftLabel, leftAction, GamePalette.Ink, 44, 14);
+            Button right = UiKit.Button(row.transform, rightLabel, rightAction, GamePalette.Ink, 44, 14);
+            StyleTextButton(left);
+            StyleTextButton(right);
             left.GetComponent<LayoutElement>().flexibleWidth = 1f;
             right.GetComponent<LayoutElement>().flexibleWidth = 1f;
+        }
+
+        private void AddMenuSoloLink(Transform parent, string label, Action action)
+        {
+            Button button = UiKit.Button(parent, label, action, GamePalette.Ink, 40, 13);
+            StyleTextButton(button);
+            Text buttonLabel = button.GetComponentInChildren<Text>();
+            if (buttonLabel != null)
+            {
+                buttonLabel.alignment = TextAnchor.MiddleLeft;
+                buttonLabel.rectTransform.offsetMin = new Vector2(3f, 5f);
+                buttonLabel.rectTransform.offsetMax = new Vector2(-10f, -5f);
+            }
+        }
+
+        private static void AddMenuDivider(Transform parent)
+        {
+            GameObject divider = UiKit.CreateObject("MenuDivider", parent);
+            Image image = divider.AddComponent<Image>();
+            image.color = new Color(GamePalette.Paper.r, GamePalette.Paper.g, GamePalette.Paper.b, 0.22f);
+            image.raycastTarget = false;
+            LayoutElement layout = divider.AddComponent<LayoutElement>();
+            layout.minHeight = 1f;
+            layout.preferredHeight = 1f;
+            layout.flexibleWidth = 1f;
+        }
+
+        private void AddMenuPrimaryButton(Transform parent, string label, Action action)
+        {
+            GameObject lane = UiKit.CreateObject("PrimaryActionLane", parent);
+            LayoutElement laneLayout = lane.AddComponent<LayoutElement>();
+            laneLayout.minHeight = 58f;
+            laneLayout.preferredHeight = 58f;
+            laneLayout.flexibleWidth = 1f;
+            UiKit.Horizontal(lane, 0, 0);
+            HorizontalLayoutGroup laneGroup = lane.GetComponent<HorizontalLayoutGroup>();
+            laneGroup.childForceExpandWidth = false;
+            Button primary = UiKit.Button(lane.transform, label, action, GamePalette.Gold, 58, 17);
+            float logicalWidth = Screen.width / Mathf.Max(0.1f, canvas.scaleFactor);
+            float buttonWidth = Mathf.Min(440f, logicalWidth * 0.36f);
+            LayoutElement buttonLayout = primary.GetComponent<LayoutElement>();
+            buttonLayout.flexibleWidth = 0f;
+            buttonLayout.minWidth = buttonWidth;
+            buttonLayout.preferredWidth = buttonWidth;
+        }
+
+        private static void StyleTextButton(Button button)
+        {
+            if (button == null) return;
+            ColorBlock colors = button.colors;
+            colors.normalColor = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.02f);
+            colors.highlightedColor = new Color(GamePalette.Gold.r, GamePalette.Gold.g, GamePalette.Gold.b, 0.15f);
+            colors.pressedColor = new Color(GamePalette.Gold.r, GamePalette.Gold.g, GamePalette.Gold.b, 0.30f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.disabledColor = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.02f);
+            button.colors = colors;
         }
 
         private void AddMenuProfile(Transform parent)
         {
             GameObject profile = UiKit.CreateObject("MenuProfile", parent);
-            LayoutElement layout = profile.AddComponent<LayoutElement>();
-            layout.minHeight = 38f;
-            layout.preferredHeight = 38f;
-            UiKit.Label(profile.transform, AchievementService.SelectedTitle + "  ·  " + AchievementService.Renown + " славы  ·  " +
-                AchievementService.UnlockedCount + "/" + AchievementService.Definitions.Length + " наград",
-                13, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+            UiKit.SetAnchors(UiKit.Rect(profile), new Vector2(0.045f, 0.035f), new Vector2(0.47f, 0.085f), Vector2.zero, Vector2.zero);
+            string summary = string.IsNullOrEmpty(AchievementService.SelectedTitle)
+                ? "ОДИНОЧНАЯ СТРАТЕГИЯ  ·  4 ДРЕВНИЕ КУЛЬТУРЫ"
+                : AchievementService.SelectedTitle;
+            summary += "  ·  " + AchievementService.Renown + " славы  ·  " +
+                AchievementService.UnlockedCount + "/" + AchievementService.Definitions.Length + " наград";
+            Text profileText = UiKit.Label(profile.transform, summary,
+                12, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+            UiKit.SetAnchors(profileText.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
         }
 
         private void InitializeSoundtrack()
@@ -587,43 +648,74 @@ namespace Nasledie.Client
         private void ShowSettings()
         {
             RememberUtilityReturn("settings");
-            PrepareUtilityOverlay("Backgrounds/Settings_Background");
+            PrepareUtilityOverlay("Backgrounds/Settings_Background", 0.38f);
             activeUtilityScreen = "settings";
-            GameObject panel = UtilityPanel("SettingsPanel", new Vector2(0.055f, 0.045f), new Vector2(0.945f, 0.955f));
-            UiKit.Vertical(panel, 10, 8);
+            GameObject panel = UtilityPanel("SettingsPanel", new Vector2(0.045f, 0.04f), new Vector2(0.955f, 0.96f));
+            UiKit.Vertical(panel, 8, 10);
             AddUtilityHeader(panel.transform, "Настройки", ReturnFromUtilityScreen);
 
             GameObject columns = UiKit.CreateObject("SettingsColumns", panel.transform);
             LayoutElement columnsLayout = columns.AddComponent<LayoutElement>();
             columnsLayout.flexibleHeight = 1f;
-            UiKit.Horizontal(columns, 0, 48);
+            UiKit.Horizontal(columns, 0, 54);
 
             GameObject sound = UtilityCard(columns.transform, "ЗВУК");
-            UiKit.Button(sound.transform, musicEnabled ? "МУЗЫКА  ·  ВКЛ." : "МУЗЫКА  ·  ВЫКЛ.", ToggleMusic,
-                musicEnabled ? GamePalette.Teal : GamePalette.InkSoft, 44, 15);
+            AddSettingToggle(sound.transform, "Музыка", musicEnabled, ToggleMusic);
             AddVolumeSlider(sound.transform, "Громкость музыки", true);
-            UiKit.Button(sound.transform, soundEffectsEnabled ? "ЭФФЕКТЫ  ·  ВКЛ." : "ЭФФЕКТЫ  ·  ВЫКЛ.", ToggleSoundEffects,
-                soundEffectsEnabled ? GamePalette.Teal : GamePalette.InkSoft, 44, 15);
+            AddSettingToggle(sound.transform, "Звуковые эффекты", soundEffectsEnabled, ToggleSoundEffects);
             AddVolumeSlider(sound.transform, "Громкость эффектов", false);
+            AddUtilityDivider(sound.transform);
+            UiKit.Label(sound.transform, "ВИБРООТКЛИК", 13, GamePalette.PaperDim, TextAnchor.MiddleLeft, true);
+            AddChoiceButtons(sound.transform, new[] { "ВЫКЛЮЧЕН", "ВКЛЮЧЁН" }, hapticsEnabled ? 1 : 0,
+                delegate(int value) { if (hapticsEnabled != (value == 1)) ToggleHaptics(); });
 
             GameObject access = UtilityCard(columns.transform, "ИЗОБРАЖЕНИЕ И ДОСТУПНОСТЬ");
             UiKit.Label(access.transform, "АНИМАЦИИ", 14, GamePalette.PaperDim, TextAnchor.MiddleLeft, true);
             AddChoiceButtons(access.transform, new[] { "ВЫКЛ.", "БЫСТРО", "ПОЛНО" }, animationMode, SetAnimationMode);
             UiKit.Label(access.transform, "РАЗМЕР ТЕКСТА", 14, GamePalette.PaperDim, TextAnchor.MiddleLeft, true);
             AddChoiceButtons(access.transform, new[] { "90%", "100%", "115%", "130%" }, textScaleIndex, SetTextScale);
-            UiKit.Button(access.transform, highContrast ? "ВЫСОКИЙ КОНТРАСТ  ·  ВКЛ." : "ВЫСОКИЙ КОНТРАСТ  ·  ВЫКЛ.",
-                ToggleHighContrast, highContrast ? GamePalette.Teal : GamePalette.InkSoft, 44, 14);
-            UiKit.Button(access.transform, hapticsEnabled ? "ВИБРООТКЛИК  ·  ВКЛ." : "ВИБРООТКЛИК  ·  ВЫКЛ.",
-                ToggleHaptics, hapticsEnabled ? GamePalette.Teal : GamePalette.InkSoft, 44, 14);
-            UiKit.Button(access.transform, "СБРОСИТЬ ДОСТУПНОСТЬ", ResetAccessibilitySettings, GamePalette.Ink, 40, 12);
-
-            GameObject options = UiKit.CreateObject("CampaignOptions", panel.transform);
-            UiKit.Horizontal(options, 0, 12);
-            Button pace = UiKit.Button(options.transform, "ТЕМП СЛЕДУЮЩЕЙ ПАРТИИ  ·  " + PaceName(selectedPace), CyclePace, GamePalette.InkSoft, 44, 14);
-            pace.GetComponent<LayoutElement>().flexibleWidth = 0.8f;
-            UiKit.Label(options.transform, "Альбомная ориентация  ·  безопасная область iPhone", 13,
+            AddSettingToggle(access.transform, "Высокий контраст", highContrast, ToggleHighContrast);
+            AddUtilityDivider(access.transform);
+            UiKit.Label(access.transform, "Альбомная ориентация · интерфейс учитывает безопасную область экрана", 13,
                 GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            Button reset = UiKit.Button(access.transform, "СБРОСИТЬ ДОСТУПНОСТЬ", ResetAccessibilitySettings, GamePalette.Ink, 38, 12);
+            StyleTextButton(reset);
+            Text resetText = reset.GetComponentInChildren<Text>();
+            if (resetText != null)
+            {
+                resetText.alignment = TextAnchor.MiddleLeft;
+                resetText.rectTransform.offsetMin = new Vector2(2f, 5f);
+                resetText.rectTransform.offsetMax = new Vector2(-10f, -5f);
+            }
             if (!string.IsNullOrEmpty(notice)) UiKit.Label(panel.transform, notice, 13, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+        }
+
+        private void AddSettingToggle(Transform parent, string label, bool value, Action action)
+        {
+            GameObject row = UiKit.CreateObject("SettingToggle_" + label, parent);
+            LayoutElement rowLayout = row.AddComponent<LayoutElement>();
+            rowLayout.minHeight = 46f;
+            rowLayout.preferredHeight = 46f;
+            UiKit.Horizontal(row, 0, 12);
+            Text name = UiKit.Label(row.transform, label, 16, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            name.GetComponent<LayoutElement>().flexibleWidth = 1f;
+            Button toggle = UiKit.Button(row.transform, value ? "ВКЛ." : "ВЫКЛ.", action,
+                value ? GamePalette.Teal : GamePalette.InkSoft, 38, 12);
+            LayoutElement toggleLayout = toggle.GetComponent<LayoutElement>();
+            toggleLayout.flexibleWidth = 0f;
+            toggleLayout.minWidth = 92f;
+            toggleLayout.preferredWidth = 92f;
+        }
+
+        private static void AddUtilityDivider(Transform parent)
+        {
+            GameObject divider = UiKit.CreateObject("SettingsDivider", parent);
+            Image image = divider.AddComponent<Image>();
+            image.color = new Color(GamePalette.Paper.r, GamePalette.Paper.g, GamePalette.Paper.b, 0.18f);
+            image.raycastTarget = false;
+            LayoutElement layout = divider.AddComponent<LayoutElement>();
+            layout.minHeight = 1f;
+            layout.preferredHeight = 1f;
         }
 
         private GameObject UtilityPanel(string name, Vector2 anchorMin, Vector2 anchorMax)
@@ -657,6 +749,7 @@ namespace Nasledie.Client
             Text titleLabel = UiKit.Label(row.transform, title, 32, GamePalette.Paper, TextAnchor.MiddleLeft, true);
             titleLabel.GetComponent<LayoutElement>().flexibleWidth = 1f;
             Button back = UiKit.Button(row.transform, exitLabel, backAction, GamePalette.Ink, 44, 14);
+            StyleTextButton(back);
             SetToolbarButtonWidth(back, 176f);
         }
 
@@ -1030,14 +1123,14 @@ namespace Nasledie.Client
             RenderGame();
         }
 
-        private void PrepareUtilityOverlay(string backgroundArtKey = "Backgrounds/Menu_Background")
+        private void PrepareUtilityOverlay(string backgroundArtKey = "Backgrounds/Menu_Background", float shadeAlpha = 0.32f)
         {
             DestroyChildren(menuHost);
             menuHost.gameObject.SetActive(true);
             SetUtilityBackground(backgroundArtKey);
             GameObject shade = UiKit.CreateObject("UtilityBackdropShade", menuHost);
             Image shadeImage = shade.AddComponent<Image>();
-            shadeImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.32f);
+            shadeImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, Mathf.Clamp01(shadeAlpha));
             shadeImage.raycastTarget = false;
             UiKit.SetAnchors(UiKit.Rect(shade), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             if (pageHost != null) pageHost.gameObject.SetActive(false);
@@ -1314,97 +1407,121 @@ namespace Nasledie.Client
         private void ShowGuidedTutorial()
         {
             RememberUtilityReturn("tutorial");
-            PrepareUtilityOverlay("Backgrounds/Tutorial_Background");
+            PrepareUtilityOverlay("Backgrounds/Tutorial_Background", 0.40f);
             activeUtilityScreen = "tutorial";
-            GameObject tutorialPanel = UiKit.CreateObject("TutorialPanel", menuHost);
-            Image tutorialPanelImage = tutorialPanel.AddComponent<Image>();
-            tutorialPanelImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.02f);
-            tutorialPanelImage.raycastTarget = false;
-            UiKit.SetAnchors(UiKit.Rect(tutorialPanel), new Vector2(0.035f, 0.045f), new Vector2(0.965f, 0.955f), Vector2.zero, Vector2.zero);
-            GameObject content = UiKit.CreateObject("GuidedTutorialContent", tutorialPanel.transform);
+            GameObject content = UiKit.CreateObject("GuidedTutorialContent", menuHost);
             UiKit.SetAnchors(UiKit.Rect(content), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            Text heading = UiKit.Label(content.transform, "КАК ИГРАТЬ", 30, GamePalette.Gold, TextAnchor.MiddleLeft, true);
-            UiKit.SetAnchors(heading.rectTransform, new Vector2(0.035f, 0.915f), new Vector2(0.68f, 0.985f), Vector2.zero, Vector2.zero);
+
+            string stepCount = tutorialStepIndex >= TutorialSteps.Length
+                ? TutorialSteps.Length.ToString("00") + " / " + TutorialSteps.Length
+                : (tutorialStepIndex + 1).ToString("00") + " / " + TutorialSteps.Length;
+            Text eyebrow = UiKit.Label(content.transform, "ОБУЧЕНИЕ  ·  " + stepCount,
+                14, GamePalette.Sage, TextAnchor.MiddleLeft, true);
+            UiKit.SetAnchors(eyebrow.rectTransform, new Vector2(0.055f, 0.948f), new Vector2(0.65f, 0.985f), Vector2.zero, Vector2.zero);
+            Text heading = UiKit.Label(content.transform, "Как играть", 32, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+            UiKit.SetAnchors(heading.rectTransform, new Vector2(0.055f, 0.88f), new Vector2(0.66f, 0.94f), Vector2.zero, Vector2.zero);
             Button close = UiKit.Button(content.transform, "ЗАКРЫТЬ", CloseGuidedTutorial, GamePalette.Ink, 44, 12);
-            UiKit.SetAnchors(UiKit.Rect(close.gameObject), new Vector2(0.93f, 0.915f), new Vector2(0.965f, 0.985f), Vector2.zero, Vector2.zero);
-            GameObject lesson = UiKit.CreateObject("TutorialLessonCard", content.transform);
-            Image lessonImage = lesson.AddComponent<Image>();
-            lessonImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.40f);
-            lessonImage.raycastTarget = false;
-            UiKit.SetAnchors(UiKit.Rect(lesson), new Vector2(0.035f, 0.265f), new Vector2(0.68f, 0.89f), Vector2.zero, Vector2.zero);
-            GameObject progress = UiKit.CreateObject("TutorialProgressCard", content.transform);
-            Image progressImage = progress.AddComponent<Image>();
-            progressImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.22f);
-            progressImage.raycastTarget = false;
-            UiKit.SetAnchors(UiKit.Rect(progress), new Vector2(0.72f, 0.20f), new Vector2(0.965f, 0.89f), Vector2.zero, Vector2.zero);
+            StyleTextButton(close);
+            UiKit.SetAnchors(UiKit.Rect(close.gameObject), new Vector2(0.89f, 0.918f), new Vector2(0.95f, 0.972f), Vector2.zero, Vector2.zero);
+
+            GameObject lesson = UiKit.CreateObject("TutorialLesson", content.transform);
+            UiKit.SetAnchors(UiKit.Rect(lesson), new Vector2(0.055f, 0.205f), new Vector2(0.685f, 0.84f), Vector2.zero, Vector2.zero);
+            GameObject lessonAccent = UiKit.CreateObject("LessonAccent", lesson.transform);
+            Image lessonAccentImage = lessonAccent.AddComponent<Image>();
+            lessonAccentImage.color = new Color(GamePalette.Gold.r, GamePalette.Gold.g, GamePalette.Gold.b, 0.82f);
+            lessonAccentImage.raycastTarget = false;
+            UiKit.SetAnchors(UiKit.Rect(lessonAccent), new Vector2(0f, 0.04f), new Vector2(0f, 0.96f), Vector2.zero, new Vector2(2f, 0f));
+
+            GameObject progress = UiKit.CreateObject("TutorialRoadmap", content.transform);
+            UiKit.SetAnchors(UiKit.Rect(progress), new Vector2(0.745f, 0.19f), new Vector2(0.95f, 0.84f), Vector2.zero, Vector2.zero);
+            GameObject roadmapRule = UiKit.CreateObject("RoadmapRule", content.transform);
+            Image roadmapRuleImage = roadmapRule.AddComponent<Image>();
+            roadmapRuleImage.color = new Color(GamePalette.Paper.r, GamePalette.Paper.g, GamePalette.Paper.b, 0.18f);
+            roadmapRuleImage.raycastTarget = false;
+            UiKit.SetAnchors(UiKit.Rect(roadmapRule), new Vector2(0.72f, 0.19f), new Vector2(0.72f, 0.84f), Vector2.zero, new Vector2(1f, 0f));
+
             if (tutorialStepIndex >= TutorialSteps.Length)
             {
-                Text complete = UiKit.Label(lesson.transform, "ПУТЕВОДИТЕЛЬ ПРОЙДЕН", 34, GamePalette.Gold, TextAnchor.MiddleCenter, true);
-                UiKit.SetAnchors(complete.rectTransform, new Vector2(0.08f, 0.55f), new Vector2(0.92f, 0.86f), Vector2.zero, Vector2.zero);
-                Text completeBody = UiKit.Label(lesson.transform, "Справочник всегда доступен в меню. Уроки можно пройти заново.",
-                    20, GamePalette.Paper, TextAnchor.MiddleCenter, false);
-                UiKit.SetAnchors(completeBody.rectTransform, new Vector2(0.08f, 0.25f), new Vector2(0.92f, 0.55f), Vector2.zero, Vector2.zero);
+                Text complete = UiKit.Label(lesson.transform, "ПУТЬ ЗАВЕРШЁН", 34, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+                UiKit.SetAnchors(complete.rectTransform, new Vector2(0.07f, 0.56f), new Vector2(0.95f, 0.78f), Vector2.zero, Vector2.zero);
+                Text completeBody = UiKit.Label(lesson.transform, "Основные системы освоены. Путь можно пройти ещё раз в любой момент.",
+                    18, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                UiKit.SetAnchors(completeBody.rectTransform, new Vector2(0.07f, 0.37f), new Vector2(0.95f, 0.53f), Vector2.zero, Vector2.zero);
             }
             else
             {
                 TutorialStep step = TutorialSteps[tutorialStepIndex];
-                Text stepNumber = UiKit.Label(lesson.transform, "ШАГ " + (tutorialStepIndex + 1) + "/" + TutorialSteps.Length +
-                    (simulation == null ? " · ДО НАЧАЛА КАМПАНИИ" : " · КАМПАНИЯ: ХОД " + simulation.State.Turn),
-                    16, GamePalette.Teal, TextAnchor.MiddleLeft, true);
-                UiKit.SetAnchors(stepNumber.rectTransform, new Vector2(0.045f, 0.865f), new Vector2(0.95f, 0.96f), Vector2.zero, Vector2.zero);
-                Text lessonTitle = UiKit.Label(lesson.transform, step.Title, 34, GamePalette.Paper, TextAnchor.MiddleLeft, true);
-                UiKit.SetAnchors(lessonTitle.rectTransform, new Vector2(0.045f, 0.735f), new Vector2(0.95f, 0.86f), Vector2.zero, Vector2.zero);
-                Text lessonBody = UiKit.Label(lesson.transform, step.Body, 21, GamePalette.PaperDim, TextAnchor.UpperLeft, false);
-                UiKit.SetAnchors(lessonBody.rectTransform, new Vector2(0.045f, 0.38f), new Vector2(0.95f, 0.70f), Vector2.zero, Vector2.zero);
+                Text stepNumber = UiKit.Label(lesson.transform, "УРОК " + (tutorialStepIndex + 1).ToString("00"), 14,
+                    GamePalette.Gold, TextAnchor.MiddleLeft, true);
+                UiKit.SetAnchors(stepNumber.rectTransform, new Vector2(0.07f, 0.86f), new Vector2(0.95f, 0.96f), Vector2.zero, Vector2.zero);
+                Text lessonTitle = UiKit.Label(lesson.transform, step.Title, 32, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                UiKit.SetAnchors(lessonTitle.rectTransform, new Vector2(0.07f, 0.73f), new Vector2(0.95f, 0.86f), Vector2.zero, Vector2.zero);
+                Text lessonBody = UiKit.Label(lesson.transform, step.Body, 19, GamePalette.PaperDim, TextAnchor.UpperLeft, false);
+                UiKit.SetAnchors(lessonBody.rectTransform, new Vector2(0.07f, 0.39f), new Vector2(0.95f, 0.68f), Vector2.zero, Vector2.zero);
                 bool completed = IsTutorialObjectiveComplete(step.Objective);
                 string objectiveStatus = completed
-                    ? "✓ Цель выполнена"
+                    ? "✓ ЦЕЛЬ ВЫПОЛНЕНА"
                     : simulation == null
-                        ? "Ознакомительный режим · задания выполняются в кампании"
-                        : "Цель: " + TutorialObjectiveLabel(step.Objective);
-                Text status = UiKit.Label(lesson.transform, objectiveStatus, 16, completed ? GamePalette.Success : GamePalette.Muted, TextAnchor.MiddleLeft, false);
-                UiKit.SetAnchors(status.rectTransform, new Vector2(0.045f, 0.17f), new Vector2(0.95f, 0.34f), Vector2.zero, Vector2.zero);
+                        ? "ПОДСКАЗКА  ·  " + TutorialObjectiveLabel(step.Objective)
+                        : "ЦЕЛЬ  ·  " + TutorialObjectiveLabel(step.Objective);
+                Text status = UiKit.Label(lesson.transform, objectiveStatus, 14,
+                    completed ? GamePalette.Success : GamePalette.Sage, TextAnchor.MiddleLeft, true);
+                UiKit.SetAnchors(status.rectTransform, new Vector2(0.07f, 0.13f), new Vector2(0.95f, 0.27f), Vector2.zero, Vector2.zero);
                 if (!string.IsNullOrEmpty(tutorialFeedback))
                 {
-                    Text feedback = UiKit.Label(lesson.transform, tutorialFeedback, 14, GamePalette.Gold, TextAnchor.MiddleLeft, true);
-                    UiKit.SetAnchors(feedback.rectTransform, new Vector2(0.045f, 0.04f), new Vector2(0.95f, 0.16f), Vector2.zero, Vector2.zero);
+                    Text feedback = UiKit.Label(lesson.transform, tutorialFeedback, 13, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+                    UiKit.SetAnchors(feedback.rectTransform, new Vector2(0.07f, 0.01f), new Vector2(0.95f, 0.12f), Vector2.zero, Vector2.zero);
                 }
             }
 
-            Text progressTitle = UiKit.Label(progress.transform, "ЭТАПЫ", 18, GamePalette.Gold, TextAnchor.MiddleLeft, true);
-            UiKit.SetAnchors(progressTitle.rectTransform, new Vector2(0.08f, 0.89f), new Vector2(0.92f, 0.98f), Vector2.zero, Vector2.zero);
+            Text progressTitle = UiKit.Label(progress.transform, "МАРШРУТ", 14, GamePalette.Sage, TextAnchor.MiddleLeft, true);
+            UiKit.SetAnchors(progressTitle.rectTransform, new Vector2(0.04f, 0.91f), new Vector2(0.96f, 0.99f), Vector2.zero, Vector2.zero);
+            int completedObjectives = 0;
             for (int i = 0; i < TutorialSteps.Length; i++)
             {
-                float rowTop = 0.85f - i * 0.078f;
-                float rowBottom = rowTop - 0.068f;
+                float rowTop = 0.82f - i * 0.074f;
+                float rowBottom = rowTop - 0.062f;
                 bool current = i == tutorialStepIndex;
-                bool done = i < tutorialStepIndex || (tutorialCompletedMask & (1 << (int)TutorialSteps[i].Objective)) != 0;
+                bool done = (tutorialCompletedMask & (1 << (int)TutorialSteps[i].Objective)) != 0;
+                if (done) completedObjectives++;
                 GameObject row = UiKit.CreateObject("TutorialStep_" + i, progress.transform);
                 UiKit.SetAnchors(UiKit.Rect(row), new Vector2(0.05f, rowBottom), new Vector2(0.95f, rowTop), Vector2.zero, Vector2.zero);
                 if (current)
                 {
                     GameObject accent = UiKit.CreateObject("CurrentStepAccent", row.transform);
                     Image rowImage = accent.AddComponent<Image>();
-                    rowImage.color = new Color(GamePalette.Gold.r, GamePalette.Gold.g, GamePalette.Gold.b, 0.75f);
+                    rowImage.color = new Color(GamePalette.Gold.r, GamePalette.Gold.g, GamePalette.Gold.b, 0.86f);
                     rowImage.raycastTarget = false;
-                    UiKit.SetAnchors(UiKit.Rect(accent), new Vector2(0f, 0.25f), new Vector2(0f, 0.75f), Vector2.zero, new Vector2(3f, 0f));
+                    UiKit.SetAnchors(UiKit.Rect(accent), new Vector2(0f, 0.15f), new Vector2(0f, 0.85f), Vector2.zero, new Vector2(2f, 0f));
                 }
                 Text rowLabel = UiKit.Label(row.transform, (done ? "✓  " : current ? "›  " : "·  ") + (i + 1) + ". " + TutorialSteps[i].Title,
-                    13, done ? GamePalette.Success : current ? GamePalette.Paper : GamePalette.PaperDim, TextAnchor.MiddleLeft, current || done);
-                UiKit.SetAnchors(rowLabel.rectTransform, new Vector2(0.05f, 0f), new Vector2(0.96f, 1f), Vector2.zero, Vector2.zero);
+                    14, done ? GamePalette.Success : current ? GamePalette.Paper : GamePalette.PaperDim, TextAnchor.MiddleLeft, current || done);
+                UiKit.SetAnchors(rowLabel.rectTransform, new Vector2(0.07f, 0f), new Vector2(0.96f, 1f), Vector2.zero, Vector2.zero);
             }
+            Text roadmapProgress = UiKit.Label(progress.transform, completedObjectives + " / " + TutorialSteps.Length + " целей",
+                13, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+            UiKit.SetAnchors(roadmapProgress.rectTransform, new Vector2(0.04f, 0.015f), new Vector2(0.96f, 0.075f), Vector2.zero, Vector2.zero);
 
             GameObject footer = UiKit.CreateObject("TutorialActions", content.transform);
             UiKit.Horizontal(footer, 0, 8);
-            UiKit.SetAnchors(UiKit.Rect(footer), new Vector2(0.035f, 0.06f), new Vector2(0.965f, 0.17f), Vector2.zero, Vector2.zero);
-            Button previous = UiKit.Button(footer.transform, "ПРЕДЫДУЩИЙ УРОК", PreviousTutorialStep, GamePalette.InkSoft, 54, 12);
-            previous.interactable = tutorialStepIndex > 0 && tutorialStepIndex < TutorialSteps.Length;
-            if (simulation != null)
-                UiKit.Button(footer.transform, "ОТКРЫТЬ РАЗДЕЛ", OpenTutorialDestination, GamePalette.InkSoft, 48, 13);
-            else
-                UiKit.Button(footer.transform, "ЭНЦИКЛОПЕДИЯ", ShowEncyclopedia, GamePalette.InkSoft, 48, 13);
-            if (tutorialStepIndex < TutorialSteps.Length && !IsTutorialObjectiveComplete(TutorialSteps[tutorialStepIndex].Objective))
-                UiKit.Button(footer.transform, "ПРОПУСТИТЬ", SkipTutorialStep, GamePalette.InkSoft, 48, 13);
+            HorizontalLayoutGroup footerLayout = footer.GetComponent<HorizontalLayoutGroup>();
+            footerLayout.childControlHeight = false;
+            footerLayout.childForceExpandHeight = false;
+            footerLayout.childAlignment = TextAnchor.MiddleLeft;
+            UiKit.SetAnchors(UiKit.Rect(footer), new Vector2(0.055f, 0.045f), new Vector2(0.685f, 0.145f), Vector2.zero, Vector2.zero);
+            Button previous = UiKit.Button(footer.transform, "←  НАЗАД", PreviousTutorialStep, GamePalette.Ink, 48, 12);
+            StyleTextButton(previous);
+            previous.interactable = tutorialStepIndex > 0;
+            if (!previous.interactable)
+            {
+                Text previousLabel = previous.GetComponentInChildren<Text>();
+                if (previousLabel != null) previousLabel.color = GamePalette.Muted;
+            }
+            Button destination = UiKit.Button(footer.transform,
+                simulation == null || tutorialStepIndex >= TutorialSteps.Length ? "СПРАВОЧНИК" : "ОТКРЫТЬ РАЗДЕЛ",
+                simulation == null || tutorialStepIndex >= TutorialSteps.Length ? (Action)ShowEncyclopedia : OpenTutorialDestination,
+                GamePalette.Ink, 48, 12);
+            StyleTextButton(destination);
             UiKit.Button(footer.transform, tutorialStepIndex >= TutorialSteps.Length ? "ПРОЙТИ ЗАНОВО" : "ДАЛЕЕ  →",
                 tutorialStepIndex >= TutorialSteps.Length ? (Action)ResetTutorial : AdvanceTutorial, GamePalette.Gold, 48, 14);
         }
@@ -1421,25 +1538,11 @@ namespace Nasledie.Client
         private void AdvanceTutorial()
         {
             if (tutorialStepIndex >= TutorialSteps.Length) return;
-            TutorialStep current = TutorialSteps[tutorialStepIndex];
-            if (simulation != null && !IsTutorialObjectiveComplete(current.Objective))
-            {
-                tutorialFeedback = "Сначала " + TutorialObjectiveLabel(current.Objective) + ". Откройте нужную вкладку или воспользуйтесь кнопкой «Пропустить этот шаг».";
-                ShowGuidedTutorial();
-                return;
-            }
             tutorialFeedback = "";
             tutorialStepIndex = Mathf.Clamp(tutorialStepIndex + 1, 0, TutorialSteps.Length);
             PlayerPrefs.SetInt("jericho.tutorial.step", tutorialStepIndex);
             PlayerPrefs.Save();
             ShowGuidedTutorial();
-        }
-
-        private void SkipTutorialStep()
-        {
-            if (tutorialStepIndex >= TutorialSteps.Length) return;
-            MarkTutorialObjective(TutorialSteps[tutorialStepIndex].Objective);
-            AdvanceTutorial();
         }
 
         private bool IsTutorialObjectiveComplete(TutorialObjective objective)

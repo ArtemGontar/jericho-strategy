@@ -85,6 +85,31 @@ namespace Nasledie.Client
         }
     }
 
+    public sealed class HorizontalFadeGraphic : Graphic
+    {
+        public Color LeftColor = new Color(0f, 0f, 0f, 0.8f);
+        public Color RightColor = new Color(0f, 0f, 0f, 0f);
+
+        protected override void OnPopulateMesh(VertexHelper helper)
+        {
+            helper.Clear();
+            Rect rect = GetPixelAdjustedRect();
+            UIVertex vertex = UIVertex.simpleVert;
+            vertex.position = new Vector3(rect.xMin, rect.yMin);
+            vertex.color = LeftColor;
+            helper.AddVert(vertex);
+            vertex.position = new Vector3(rect.xMin, rect.yMax);
+            helper.AddVert(vertex);
+            vertex.position = new Vector3(rect.xMax, rect.yMax);
+            vertex.color = RightColor;
+            helper.AddVert(vertex);
+            vertex.position = new Vector3(rect.xMax, rect.yMin);
+            helper.AddVert(vertex);
+            helper.AddTriangle(0, 1, 2);
+            helper.AddTriangle(2, 3, 0);
+        }
+    }
+
     public static class UiKit
     {
         private static Font runtimeFont;
@@ -119,6 +144,20 @@ namespace Nasledie.Client
             var go = new GameObject(name, typeof(RectTransform));
             go.transform.SetParent(parent, false);
             return go;
+        }
+
+        public static HorizontalFadeGraphic HorizontalFade(Transform parent, string name, Vector2 anchorMin,
+            Vector2 anchorMax, Color leftColor, Color rightColor)
+        {
+            GameObject go = CreateObject(name, parent);
+            HorizontalFadeGraphic graphic = go.AddComponent<HorizontalFadeGraphic>();
+            graphic.color = Color.white;
+            graphic.LeftColor = leftColor;
+            graphic.RightColor = rightColor;
+            graphic.raycastTarget = false;
+            SetAnchors(Rect(go), anchorMin, anchorMax, Vector2.zero, Vector2.zero);
+            graphic.SetVerticesDirty();
+            return graphic;
         }
 
         public static GameObject Panel(Transform parent, string name, Color color, float height = -1f)
