@@ -3051,7 +3051,25 @@ namespace Nasledie.Client
                 CityState capital = FirstCity(target.Id);
                 if (capital == null) continue;
                 int id = target.Id, q = capital.Q, r = capital.R;
-                Button declare = UiKit.Button(war.transform, "КРИЗИС МОБИЛИЗАЦИИ ПРОТИВ " + target.Name.ToUpperInvariant() + " · 8 КАЗНЫ",
+                bool breaksPact = false;
+                for (int treatyIndex = 0; treatyIndex < state.Treaties.Length; treatyIndex++)
+                {
+                    TreatyState treaty = state.Treaties[treatyIndex];
+                    if (treaty.Active && treaty.Kind == TreatyKind.NonAggression &&
+                        ((treaty.FromCivilizationId == player.Id && treaty.ToCivilizationId == target.Id) ||
+                         (treaty.FromCivilizationId == target.Id && treaty.ToCivilizationId == player.Id)))
+                    {
+                        breaksPact = true;
+                        break;
+                    }
+                }
+                if (breaksPact)
+                    UiKit.Label(war.transform, "Нарушение действующего пакта дополнительно снизит вашу репутацию на 20 и ухудшит отношения с соседом.",
+                        18, GamePalette.Rust, TextAnchor.MiddleLeft, true);
+                string declarationLabel = breaksPact
+                    ? "НАРУШИТЬ ПАКТ И НАЧАТЬ МОБИЛИЗАЦИЮ ПРОТИВ " + target.Name.ToUpperInvariant() + " · 8 КАЗНЫ"
+                    : "КРИЗИС МОБИЛИЗАЦИИ ПРОТИВ " + target.Name.ToUpperInvariant() + " · 8 КАЗНЫ";
+                Button declare = UiKit.Button(war.transform, declarationLabel,
                     delegate { Issue(CommandKind.DeclareWar, targetId: id, q: q, r: r, text: "международный пограничный спор"); }, GamePalette.Danger, 64, 17);
                 declare.interactable = player.TreasuryTenths >= 80;
             }

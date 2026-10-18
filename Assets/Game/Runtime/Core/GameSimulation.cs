@@ -361,8 +361,7 @@ namespace Nasledie.Core
             HexCell destination = state.Cell(q, r);
             if (destination == null || destination.Terrain == TerrainKind.Mountain || destination.Terrain == TerrainKind.Water)
                 return CommandResult.Reject("impassable", "На эту клетку нельзя пройти.");
-            int movementCost = destination.Terrain == TerrainKind.Hills || destination.Terrain == TerrainKind.Swamp ? 2 : 1;
-            if (destination.HasRoad && destination.Damage < 75) movementCost = 1;
+            int movementCost = MovementCost(destination);
             if (unit.MovementLeft < movementCost) return CommandResult.Reject("movement_spent", "На этот ход у отряда не осталось очков движения.");
             if (destination.OwnerId >= 0 && destination.OwnerId != actor.Id && !AtWar(state, actor.Id, destination.OwnerId) && !HasTreaty(state, TreatyKind.OpenBorders, actor.Id, destination.OwnerId))
                 return CommandResult.Reject("closed_border", "Нужны открытые границы или состояние войны.");
@@ -436,6 +435,17 @@ namespace Nasledie.Core
             if (AtWar(state, actor.Id, targetId)) return CommandResult.Reject("already_at_war", "Война с этой стороной уже идёт.");
             if (actor.TreasuryTenths < 80) return CommandResult.Reject("war_budget", "Для мобилизации требуется 8 казны.");
             if (string.IsNullOrEmpty(legalGoal)) return CommandResult.Reject("war_goal", "Перед объявлением войны выберите законную цель.");
+            bool breaksNonAggression = false;
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                TreatyState treaty = state.Treaties[i];
+                if (!treaty.Active || treaty.Kind != TreatyKind.NonAggression ||
+                    !((treaty.FromCivilizationId == actor.Id && treaty.ToCivilizationId == targetId) ||
+                      (treaty.FromCivilizationId == targetId && treaty.ToCivilizationId == actor.Id))) continue;
+                MarkTreatyBroken(state, treaty);
+                treaty.Active = false;
+                breaksNonAggression = true;
+            }
             actor.TreasuryTenths -= 80;
             var conflict = new ConflictState
             {
@@ -449,6 +459,15 @@ namespace Nasledie.Core
             actor.Trusts[targetId] = Math.Max(0, actor.Trusts[targetId] - 20);
             actor.CulturalInfluence[targetId] = Math.Max(0, actor.CulturalInfluence[targetId] - 15);
             target.CulturalInfluence[actor.Id] = Math.Max(0, target.CulturalInfluence[actor.Id] - 15);
+            if (breaksNonAggression)
+            {
+                actor.Reputation = Math.Max(0, actor.Reputation - 20);
+                actor.Relations[targetId] = Math.Max(-100, actor.Relations[targetId] - 15);
+                actor.Trusts[targetId] = Math.Max(0, actor.Trusts[targetId] - 15);
+                target.Relations[actor.Id] = Math.Max(-100, target.Relations[actor.Id] - 20);
+                target.Trusts[actor.Id] = Math.Max(0, target.Trusts[actor.Id] - 20);
+                if (feedback) AppendLog(state, "Нарушение пакта о ненападении: договор отмечен нарушенным, а репутационные и дипломатические потери увеличены.");
+            }
             if (feedback) AppendLog(state, actor.Name + " объявила кризисную мобилизацию против цивилизации «" + target.Name + "». Цель: " + legalGoal + ".");
             return CommandResult.Ok("Кризис начался. У стороны есть один ход на ответ и посредничество.");
         }

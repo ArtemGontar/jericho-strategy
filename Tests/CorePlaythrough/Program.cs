@@ -20,6 +20,7 @@ internal static class Program
             RunAiVictoryCommitmentAcceptance();
             RunAiDifficultyScalingAcceptance();
             RunFairStarterEconomyAcceptance();
+            MechanicsRegressionScenario.Run(Console.WriteLine);
             RunScienceFocusAssignmentAcceptance();
             RunInteractiveCampaignToCompletion();
             RunSaveResumeCampaign();

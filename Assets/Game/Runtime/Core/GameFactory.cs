@@ -237,6 +237,7 @@ namespace Nasledie.Core
                     int noise = rng.Range(0, 100);
                     TerrainKind terrain;
                     if (edge == 0 && noise < 48) terrain = TerrainKind.Water;
+                    else if (edge == 0) terrain = TerrainKind.Coast;
                     else if (noise < 8) terrain = TerrainKind.Mountain;
                     else if (noise < 23) terrain = TerrainKind.Hills;
                     else if (noise < 39) terrain = TerrainKind.Forest;

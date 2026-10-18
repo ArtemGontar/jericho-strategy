@@ -53,9 +53,12 @@ namespace Nasledie.Core
             int farmTileBonus = 0;
             int marketTileBonus = 0;
             int forestBonus = 0;
+            int workshopTileBonus = 0;
+            int fisheryFoodBonus = 0;
+            int fisheryTradeBonusTenths = 0;
             int resourceFoodBonus = 0;
             int resourceIndustryBonusPercent = 0;
-            int serviceBonus = 0;
+            int resourceHealthBonus = 0;
             for (int i = 0; i < state.Cells.Length; i++)
             {
                 HexCell cell = state.Cells[i];
@@ -63,15 +66,22 @@ namespace Nasledie.Core
                 if (cell.Damage < 75 && (cell.Improvement == ImprovementKind.Farm || cell.Improvement == ImprovementKind.IrrigatedFarm) && cell.ImprovementLevel > 0) farmTileBonus += 10 * cell.ImprovementLevel;
                 if (cell.Damage < 75 && cell.Improvement == ImprovementKind.Market) marketTileBonus += 10;
                 if (cell.Damage < 75 && cell.Improvement == ImprovementKind.Forestry) forestBonus += 1;
+                if (cell.Damage < 75 && cell.Improvement == ImprovementKind.Workshop) workshopTileBonus += 1;
+                if (cell.Damage < 75 && cell.Improvement == ImprovementKind.Fishery)
+                {
+                    fisheryFoodBonus += 20;
+                    fisheryTradeBonusTenths += 10;
+                }
                 if (cell.Damage < 75 && cell.Resource == ResourceKind.FertileSoil && (cell.Improvement == ImprovementKind.Farm || cell.Improvement == ImprovementKind.IrrigatedFarm)) resourceFoodBonus += 10;
                 if (cell.Damage < 75 && cell.Resource == ResourceKind.Iron && cell.Improvement != ImprovementKind.None) resourceIndustryBonusPercent += 10;
-                if (cell.Resource == ResourceKind.Herbs) serviceBonus += 5;
+                if (cell.Resource == ResourceKind.Herbs) resourceHealthBonus += 5;
             }
             result.FoodTenths += Scale(farmTileBonus, efficiency);
+            result.FoodTenths += Scale(fisheryFoodBonus, efficiency);
             result.FoodTenths += Scale(resourceFoodBonus, efficiency);
-            result.Production += forestBonus;
+            result.Production += forestBonus + workshopTileBonus;
             result.Production = result.Production * (100 + resourceIndustryBonusPercent) / 100;
-            result.ServiceCoverage += serviceBonus;
+            result.HealthChange += resourceHealthBonus;
 
             int schoolLevel = city.BuildingLevel("school");
             int universityLevel = city.BuildingLevel("university");
@@ -87,7 +97,7 @@ namespace Nasledie.Core
 
             result.Production += artisanCount > 0 ? workshopLevel * 2 : 0;
             result.KnowledgeTenths += scholarCount > 0 ? schoolLevel * 20 + universityLevel * 40 + academyLevel * 50 : 0;
-            result.TreasuryTenths += merchantCount > 0 ? marketLevel * 20 + marketTileBonus : 0;
+            result.TreasuryTenths += merchantCount > 0 ? marketLevel * 20 + marketTileBonus + fisheryTradeBonusTenths : 0;
             if (artistCount > 0)
             {
                 BuildingDefinition culturalHouseDefinition = RulesCatalog.Building("cultural_house");

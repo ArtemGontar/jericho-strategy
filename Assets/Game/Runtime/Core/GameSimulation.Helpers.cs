@@ -330,6 +330,16 @@ namespace Nasledie.Core
             return count;
         }
 
+        private static int MovementCost(HexCell destination)
+        {
+            if (destination == null) return int.MaxValue;
+            bool difficultTerrain = destination.Terrain == TerrainKind.Hills || destination.Terrain == TerrainKind.Swamp ||
+                                    (destination.Terrain == TerrainKind.River && destination.Improvement != ImprovementKind.Bridge);
+            int cost = difficultTerrain ? 2 : 1;
+            if (destination.HasRoad && destination.Damage < 75) cost = 1;
+            return cost;
+        }
+
         private static int TradeSlots(GameState state, int civilizationId)
         {
             int slots = 1;

@@ -328,6 +328,7 @@ namespace Nasledie.Core
                             int r = unit.R + HexGrid.Directions[d, 1];
                             HexCell cell = state.Cell(q, r);
                             if (cell == null || cell.Terrain == TerrainKind.Mountain || cell.Terrain == TerrainKind.Water ||
+                                MovementCost(cell) > unit.MovementLeft ||
                                 (cell.OwnerId >= 0 && cell.OwnerId != civ.Id && cell.OwnerId != targetOwner && !HasTreaty(state, TreatyKind.OpenBorders, civ.Id, cell.OwnerId))) continue;
                             int distance = HexGrid.Distance(q, r, targetCity.Q, targetCity.R);
                             if (distance < bestDistance) { bestDistance = distance; best = cell; }
