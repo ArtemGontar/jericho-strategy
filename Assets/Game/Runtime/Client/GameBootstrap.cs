@@ -1794,13 +1794,14 @@ namespace Nasledie.Client
         {
             CrisisState crisis = simulation.State.Crisis;
             if (crisis == null || crisis.Kind == CrisisKind.None || crisis.Resolved) return;
+            int usefulContribution = Math.Min(5, Math.Max(1, (crisis.Threat + 3) / 4));
             GameObject card = UiKit.Card(parent, "Мировой кризис · угроза " + crisis.Threat);
-            UiKit.Label(card.transform, crisis.PublicText + " Ход кризиса: " + crisis.TurnsActive + ". Любой вклад улучшает репутацию и снижает угрозу.", 22, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            UiKit.Label(card.transform, crisis.PublicText + " Ход кризиса: " + crisis.TurnsActive + ". Любой вклад улучшает репутацию и снижает угрозу; игра спишет только необходимое количество ресурса.", 22, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             GameObject row = UiKit.CreateObject("CrisisContributions", card.transform);
             UiKit.Horizontal(row, 0, 8);
-            AddActionButton(row.transform, "ЕДА · 5", delegate { Issue(CommandKind.ContributeToCrisis, text: "food", value: 5); }, GamePalette.Teal, 62);
-            AddActionButton(row.transform, "ЗНАНИЯ · 5", delegate { Issue(CommandKind.ContributeToCrisis, text: "knowledge", value: 5); }, GamePalette.Ink, 62);
-            AddActionButton(row.transform, "ВЛИЯНИЕ · 5", delegate { Issue(CommandKind.ContributeToCrisis, text: "influence", value: 5); }, GamePalette.Rust, 62);
+            AddActionButton(row.transform, "ЕДА · до " + usefulContribution, delegate { Issue(CommandKind.ContributeToCrisis, text: "food", value: 5); }, GamePalette.Teal, 62);
+            AddActionButton(row.transform, "ЗНАНИЯ · до " + usefulContribution, delegate { Issue(CommandKind.ContributeToCrisis, text: "knowledge", value: 5); }, GamePalette.Ink, 62);
+            AddActionButton(row.transform, "ВЛИЯНИЕ · до " + usefulContribution, delegate { Issue(CommandKind.ContributeToCrisis, text: "influence", value: 5); }, GamePalette.Rust, 62);
         }
 
         private void RenderUnits(Transform parent)
@@ -2250,7 +2251,7 @@ namespace Nasledie.Client
                 TargetId = targetId, Value = value, Text = text, Q = q, R = r, Sequence = sequence
             });
             notice = result.Message;
-            if (result.Success) PlayCommandSound(kind, value);
+            if (result.Accepted) PlayCommandSound(kind, value);
             RenderGame();
         }
 
@@ -3141,13 +3142,14 @@ namespace Nasledie.Client
             GameObject crisis = UiKit.Card(parent, "Общие кризисы");
             if (state.Crisis != null && state.Crisis.Kind != CrisisKind.None && !state.Crisis.Resolved)
             {
+                int usefulContribution = Math.Min(5, Math.Max(1, (state.Crisis.Threat + 3) / 4));
                 UiKit.Label(crisis.transform, state.Crisis.PublicText + " · угроза " + state.Crisis.Threat + " · ход " + state.Crisis.TurnsActive,
                     21, GamePalette.Paper, TextAnchor.MiddleLeft, false);
                 GameObject row = UiKit.CreateObject("CrisisResources", crisis.transform);
                 UiKit.Horizontal(row, 0, 8);
-                AddActionButton(row.transform, "ВНЕСТИ 5 ЕДЫ", delegate { Issue(CommandKind.ContributeToCrisis, text: "food", value: 5); }, GamePalette.Teal, 58);
-                AddActionButton(row.transform, "ВНЕСТИ 5 ЗНАНИЙ", delegate { Issue(CommandKind.ContributeToCrisis, text: "knowledge", value: 5); }, GamePalette.Ink, 58);
-                AddActionButton(row.transform, "ВНЕСТИ 5 ВЛИЯНИЯ", delegate { Issue(CommandKind.ContributeToCrisis, text: "influence", value: 5); }, GamePalette.Rust, 58);
+                AddActionButton(row.transform, "ВНЕСТИ ДО " + usefulContribution + " ЕДЫ", delegate { Issue(CommandKind.ContributeToCrisis, text: "food", value: 5); }, GamePalette.Teal, 58);
+                AddActionButton(row.transform, "ВНЕСТИ ДО " + usefulContribution + " ЗНАНИЙ", delegate { Issue(CommandKind.ContributeToCrisis, text: "knowledge", value: 5); }, GamePalette.Ink, 58);
+                AddActionButton(row.transform, "ВНЕСТИ ДО " + usefulContribution + " ВЛИЯНИЯ", delegate { Issue(CommandKind.ContributeToCrisis, text: "influence", value: 5); }, GamePalette.Rust, 58);
             }
             else UiKit.Label(crisis.transform, state.HasResolvedGlobalCrisis ? "Последний мировой кризис преодолён. Совместная помощь укрепила репутацию участвовавших цивилизаций." : "Мирового кризиса сейчас нет. Новые кризисы могут затронуть еду, здоровье и торговые пути.",
                 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
@@ -3170,7 +3172,7 @@ namespace Nasledie.Client
                 {
                     string choice = active.Choices[c];
                     Button button = UiKit.Button(card.transform, ChoiceName(choice), delegate { Issue(CommandKind.EventChoice, active.Id, text: choice); }, GamePalette.Ink, 58, 18);
-                    button.interactable = ChoiceAvailable(active, choice, player, city);
+                    button.interactable = ChoiceAvailable(state, active, choice, player, city);
                 }
             }
             if (pending == 0)
@@ -3218,10 +3220,10 @@ namespace Nasledie.Client
                 case "Experiment": return "Проверить новую программу · 2 влияния";
                 case "KeepBudget": return "Оставить бюджет без изменений";
                 case "Negotiate": return "Начать переговоры";
-                case "ExchangeLand": return "Обменяться землями · 2 влияния";
+                case "ExchangeLand": return "Обменять свободные приграничные земли · 2 влияния";
                 case "Ultimatum": return "Выдвинуть ультиматум соседу";
                 case "EmergencyStock": return "Открыть резервы · 6 казны";
-                case "NewRoute": return "Искать новые торговые связи";
+                case "NewRoute": return "Открыть торговый маршрут · 1 влияние";
                 case "DomesticSupply": return "Начать строительство амбара";
                 case "Festival": return "Провести фестиваль · 4 казны";
                 case "JointMuseum": return "Поддержать общий музей · 2 влияния";
@@ -3236,7 +3238,7 @@ namespace Nasledie.Client
             }
         }
 
-        private static bool ChoiceAvailable(ActiveEventState active, string choice, CivilizationState player, CityState city)
+        private static bool ChoiceAvailable(GameState state, ActiveEventState active, string choice, CivilizationState player, CityState city)
         {
             if (choice == "BuyFood") return player.TreasuryTenths >= 50;
             if (choice == "OpenClinic") return player.TreasuryTenths >= 100;
@@ -3245,12 +3247,14 @@ namespace Nasledie.Client
             if (choice == "OpenCorridor" || choice == "Audit" || choice == "Experiment" || choice == "JointMuseum") return player.InfluenceTenths >= 20;
             if (choice == "Investigate") return player.TreasuryTenths >= 50;
             if (choice == "FundSchools") return player.TreasuryTenths >= 80;
-            if (choice == "ExchangeLand") return player.InfluenceTenths >= 20;
+            if (choice == "ExchangeLand") return player.InfluenceTenths >= 20 && GameSimulation.CanExchangeLand(state, active.TargetCityId, player.Id, active.OtherCivilizationId);
             if (choice == "EmergencyStock" || choice == "Festival") return player.TreasuryTenths >= (choice == "Festival" ? 40 : 60);
             if (choice == "PaySupport") return player.TreasuryTenths >= 80;
             if (choice == "JointProject") return player.KnowledgeTenths >= 100;
             if (choice == "ShareKnowledge") return player.KnowledgeTenths >= 50;
-            if (choice == "DomesticSupply") return city != null && city.Project != null && city.Project.Kind == ProjectKind.None;
+            if (choice == "NewRoute") return GameSimulation.CanStartTradeRouteFromEvent(state, player.Id);
+            if (choice == "DomesticSupply") return GameSimulation.CanStartDomesticSupply(state, city);
+            if (choice == "LocalTruce") return GameSimulation.HasLocalTruceOption(state, player.Id);
             return true;
         }
 

@@ -339,6 +339,154 @@ namespace Nasledie.Core
             return slots;
         }
 
+        public static bool CanStartTradeRouteFromEvent(GameState state, int civilizationId)
+        {
+            CityState origin;
+            CityState destination;
+            int partnerId;
+            return TryFindEventTradeRoute(state, civilizationId, out origin, out destination, out partnerId);
+        }
+
+        private static bool TryFindEventTradeRoute(GameState state, int civilizationId, out CityState origin, out CityState destination, out int partnerId)
+        {
+            origin = null;
+            destination = null;
+            partnerId = -1;
+            CivilizationState actor = state == null ? null : state.Civilization(civilizationId);
+            int cost = TreatyCost(TreatyKind.TradeRoute);
+            if (actor == null || actor.IsDefeated || actor.InfluenceTenths < cost || CountRoutes(state, civilizationId) >= TradeSlots(state, civilizationId)) return false;
+
+            int bestScore = int.MinValue;
+            int bestDistance = int.MaxValue;
+            for (int c = 0; c < state.Civilizations.Length; c++)
+            {
+                CivilizationState target = state.Civilizations[c];
+                if (target == null || target.Id == civilizationId || target.IsDefeated || AtWar(state, civilizationId, target.Id)) continue;
+                if (CountRoutes(state, target.Id) >= TradeSlots(state, target.Id) || HasTradeRouteRecord(state, civilizationId, target.Id)) continue;
+                int acceptance = TradeAcceptance(actor, target, TreatyKind.TradeRoute);
+                if (acceptance < 25) continue;
+
+                for (int i = 0; i < state.Cities.Length; i++)
+                {
+                    CityState first = state.Cities[i];
+                    if (first == null || first.OwnerId != civilizationId) continue;
+                    for (int j = 0; j < state.Cities.Length; j++)
+                    {
+                        CityState second = state.Cities[j];
+                        if (second == null || second.OwnerId != target.Id || !RouteExists(state, first, second)) continue;
+                        int distance = HexGrid.Distance(first.Q, first.R, second.Q, second.R);
+                        if (acceptance > bestScore || (acceptance == bestScore && distance < bestDistance))
+                        {
+                            bestScore = acceptance;
+                            bestDistance = distance;
+                            origin = first;
+                            destination = second;
+                            partnerId = target.Id;
+                        }
+                    }
+                }
+            }
+            return origin != null && destination != null;
+        }
+
+        private static bool HasTradeRouteRecord(GameState state, int first, int second)
+        {
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                TreatyState treaty = state.Treaties[i];
+                if (treaty.Kind != TreatyKind.TradeRoute || (!treaty.Active && !treaty.Pending)) continue;
+                if ((treaty.FromCivilizationId == first && treaty.ToCivilizationId == second) ||
+                    (treaty.FromCivilizationId == second && treaty.ToCivilizationId == first)) return true;
+            }
+            return false;
+        }
+
+        public static bool CanExchangeLand(GameState state, int eventCityId, int actorId, int otherId)
+        {
+            CityState eventCity = state == null ? null : state.City(eventCityId);
+            HexCell actorCell;
+            HexCell otherCell;
+            return TryFindLandExchange(state, eventCity, actorId, otherId, out actorCell, out otherCell);
+        }
+
+        private static bool TryFindLandExchange(GameState state, CityState eventCity, int actorId, int otherId, out HexCell actorCell, out HexCell otherCell)
+        {
+            actorCell = null;
+            otherCell = null;
+            if (state == null || eventCity == null || eventCity.OwnerId != actorId || otherId < 0 || otherId >= state.Civilizations.Length || otherId == actorId) return false;
+
+            CityState otherCity = null;
+            int nearestDistance = int.MaxValue;
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityState candidate = state.Cities[i];
+                if (candidate == null || candidate.OwnerId != otherId) continue;
+                int distance = HexGrid.Distance(eventCity.Q, eventCity.R, candidate.Q, candidate.R);
+                if (distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    otherCity = candidate;
+                }
+            }
+            if (otherCity == null) return false;
+
+            int bestScore = int.MaxValue;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell first = state.Cells[i];
+                if (!CanExchangeCell(state, first, actorId) || HexGrid.Distance(first.Q, first.R, eventCity.Q, eventCity.R) > 3) continue;
+                for (int j = 0; j < state.Cells.Length; j++)
+                {
+                    HexCell second = state.Cells[j];
+                    if (!CanExchangeCell(state, second, otherId) || HexGrid.Distance(second.Q, second.R, otherCity.Q, otherCity.R) > 3) continue;
+                    int score = HexGrid.Distance(first.Q, first.R, eventCity.Q, eventCity.R) +
+                                HexGrid.Distance(second.Q, second.R, otherCity.Q, otherCity.R);
+                    if (score < bestScore)
+                    {
+                        bestScore = score;
+                        actorCell = first;
+                        otherCell = second;
+                    }
+                }
+            }
+            return actorCell != null && otherCell != null;
+        }
+
+        private static bool CanExchangeCell(GameState state, HexCell cell, int ownerId)
+        {
+            if (cell == null || cell.OwnerId != ownerId || cell.Terrain == TerrainKind.Water || cell.Terrain == TerrainKind.Mountain ||
+                cell.DistrictCityId >= 0 || !string.IsNullOrEmpty(cell.DistrictBuildingId) || cell.Improvement != ImprovementKind.None ||
+                cell.HasRoad || cell.Damage > 0) return false;
+            for (int i = 0; i < state.Cities.Length; i++)
+                if (state.Cities[i] != null && state.Cities[i].Q == cell.Q && state.Cities[i].R == cell.R) return false;
+            for (int i = 0; i < state.Units.Length; i++)
+                if (state.Units[i] != null && state.Units[i].Q == cell.Q && state.Units[i].R == cell.R) return false;
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityProject project = state.Cities[i] == null ? null : state.Cities[i].Project;
+                if (project != null && project.DistrictPlotReserved && project.TargetQ == cell.Q && project.TargetR == cell.R) return false;
+            }
+            return true;
+        }
+
+        public static bool CanStartDomesticSupply(GameState state, CityState city)
+        {
+            return state != null && city != null && city.Project != null && city.Project.Kind == ProjectKind.None &&
+                   city.BuildingLevel("granary") == 0 && FindDistrictCell(state, city, null) != null;
+        }
+
+        public static bool HasLocalTruceOption(GameState state, int civilizationId)
+        {
+            if (state == null) return false;
+            for (int i = 0; i < state.Conflicts.Length; i++)
+            {
+                ConflictState conflict = state.Conflicts[i];
+                if (conflict != null && conflict.Active && conflict.Phase >= 1 && conflict.Phase <= 2 &&
+                    (conflict.AggressorId == civilizationId || conflict.DefenderId == civilizationId)) return true;
+            }
+            return false;
+        }
+
         private static bool AtWar(GameState state, int first, int second)
         {
             ConflictState conflict = FindConflict(state, first, second);
