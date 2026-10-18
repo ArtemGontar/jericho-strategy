@@ -20,6 +20,38 @@ namespace Nasledie.Core
         {
             State = state ?? throw new ArgumentNullException("state");
             RestoreNationAndDistrictData(State);
+            NormalizeTreaties(State);
+            if (State.Civilizations != null)
+                for (int i = 0; i < State.Civilizations.Length; i++)
+                {
+                    CivilizationState civilization = State.Civilizations[i];
+                    if (civilization.PrisonersHeldByCivilizationTenths == null) civilization.PrisonersHeldByCivilizationTenths = new int[State.Civilizations.Length];
+                    else if (civilization.PrisonersHeldByCivilizationTenths.Length != State.Civilizations.Length)
+                        Array.Resize(ref civilization.PrisonersHeldByCivilizationTenths, State.Civilizations.Length);
+                }
+            if (State.Cities != null)
+                for (int i = 0; i < State.Cities.Length; i++)
+                    EconomyCalculator.NormalizeWorkerAssignments(State, State.Cities[i]);
+            NormalizeUnitPopulationData(State);
+        }
+
+        private static void NormalizeTreaties(GameState state)
+        {
+            if (state.Treaties == null) return;
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                TreatyState treaty = state.Treaties[i];
+                if (treaty == null || (!treaty.Active && !treaty.Pending)) continue;
+                int duration = TreatyDuration(treaty.Kind);
+                if (treaty.Kind == TreatyKind.TradeRoute) treaty.TurnsRemaining = 0;
+                else if (duration > 0 && treaty.TurnsRemaining > duration) treaty.TurnsRemaining = duration;
+                else if (duration == 0 && treaty.Kind != TreatyKind.TradeRoute)
+                {
+                    treaty.Active = false;
+                    treaty.Pending = false;
+                    treaty.Fulfilled = true;
+                }
+            }
         }
 
         public static GameSimulation NewCampaign(int seed, Difficulty difficulty)
@@ -50,6 +82,7 @@ namespace Nasledie.Core
                 CommandResult result = ApplyCommand(State, command, true);
                 LastMessage = result.Message;
                 LastResolvedBattles = battleCapture.ToArray();
+                if (result.Accepted) RecordPlayerCommand(State, command);
                 return result;
             }
             finally { battleCapture = null; }
@@ -90,9 +123,15 @@ namespace Nasledie.Core
             for (int i = 0; i < State.Cities.Length; i++)
                 if (State.Cities[i].OwnerId == civilizationId) total += State.Cities[i].PopulationTenths;
             for (int i = 0; i < State.Units.Length; i++)
-                if (State.Units[i].OwnerId == civilizationId) total += State.Units[i].PopulationTenths;
+                if (State.Units[i].OwnerId == civilizationId)
+                    total += State.Units[i].PopulationTenths + Math.Max(0, State.Units[i].WoundedPopulationTenths);
             CivilizationState civ = State.Civilization(civilizationId);
             if (civ != null) total += civ.RefugeePopulationTenths;
+            for (int i = 0; i < State.Civilizations.Length; i++)
+            {
+                int[] held = State.Civilizations[i].PrisonersHeldByCivilizationTenths;
+                if (held != null && civilizationId >= 0 && civilizationId < held.Length) total += Math.Max(0, held[civilizationId]);
+            }
             return total;
         }
 
@@ -135,7 +174,7 @@ namespace Nasledie.Core
                 case CommandKind.AcceptTreaty:
                     return AcceptTreaty(state, actor, command.EntityId, playerFacing);
                 case CommandKind.MakePeace:
-                    return MakePeace(state, actor, command.TargetId, playerFacing);
+                    return MakePeace(state, actor, command.TargetId, (PeaceTermKind)command.Value, playerFacing);
                 case CommandKind.SetTax:
                     actor.TaxRate = (TaxRate)command.Value;
                     AppendLog(state, actor.Name + " изменяет налоговую ставку.");
@@ -152,6 +191,8 @@ namespace Nasledie.Core
                     return BeginVictoryProject(state, actor, city, (VictoryPath)command.Value, playerFacing);
                 case CommandKind.Repair:
                     return Repair(state, actor, city, command.Q, command.R, playerFacing);
+                case CommandKind.UpgradeUnit:
+                    return UpgradeUnit(state, actor, command.EntityId, playerFacing);
                 default:
                     return CommandResult.Reject("unknown_command", "Неизвестное действие.");
             }
@@ -164,7 +205,10 @@ namespace Nasledie.Core
             int current = 0;
             for (int i = 0; i < city.Workers.Length; i++) current += city.Workers[i];
             int next = current - city.Workers[roleValue] + count;
-            if (next > city.WorkerCount) return CommandResult.Reject("too_many_workers", "В городе нет столько свободных работников.");
+            if (count > EconomyCalculator.WorkerRoleCapacity(state, city, (WorkerRole)roleValue))
+                return CommandResult.Reject("worker_role_capacity", "Для этой роли в городе нет столько рабочих мест. Откройте подходящие клетки или постройте профильный район.");
+            if (next > city.WorkerCount || next > EconomyCalculator.WorkerCapacity(state, city))
+                return CommandResult.Reject("too_many_workers", "Нет столько жителей или доступных рабочих мест. Расширьте город или уменьшите назначение.");
             city.Workers[roleValue] = count;
             if (feedback) AppendLog(state, city.Name + ": назначение работников изменено.");
             return CommandResult.Ok("Назначение работников сохранено.");
@@ -357,6 +401,10 @@ namespace Nasledie.Core
         {
             UnitState unit = FindUnit(state, unitId);
             if (unit == null || unit.OwnerId != actor.Id) return CommandResult.Reject("unit_not_owned", "Отряд не найден или принадлежит другой стороне.");
+            if (unit.Kind == UnitKind.SettlerWagon)
+                for (int i = 0; i < state.Events.Length; i++)
+                    if (!state.Events[i].IsResolved && state.Events[i].Kind == EventKind.SettlerInterception && state.Events[i].TargetUnitId == unit.Id)
+                        return CommandResult.Reject("settler_decision_pending", "Сначала решите судьбу перехваченного обоза в панели событий.");
             if (HexGrid.Distance(unit.Q, unit.R, q, r) != 1) return CommandResult.Reject("not_adjacent", "За один приказ отряд движется на соседний гекс.");
             HexCell destination = state.Cell(q, r);
             if (destination == null || destination.Terrain == TerrainKind.Mountain || destination.Terrain == TerrainKind.Water)
@@ -376,9 +424,14 @@ namespace Nasledie.Core
                 if (defender.Kind == UnitKind.SettlerWagon)
                 {
                     unit.MovementLeft = 0;
-                    EvacuateSettlerWagon(state, defender, feedback);
+                    if (defender.OwnerId == state.HumanCivilizationId)
+                        QueueSettlerInterception(state, defender, unit, feedback);
+                    else
+                        EvacuateSettlerWagon(state, defender, feedback);
                     GameFactory.RebuildVisibility(state);
-                    return CommandResult.Ok("Гражданский обоз эвакуирован из зоны боя.");
+                    return CommandResult.Ok(defender.OwnerId == state.HumanCivilizationId
+                        ? "Обоз перехвачен. Выберите его дальнейшую судьбу в панели событий."
+                        : "Обоз противника предупредил угрозу и отступил в безопасное место.");
                 }
                 ResolveBattle(state, unit, defender, destination, feedback);
                 return CommandResult.Ok("Сражение разрешено.");
@@ -401,6 +454,22 @@ namespace Nasledie.Core
             }
             GameFactory.RebuildVisibility(state);
             return CommandResult.Ok("Отряд перемещён.");
+        }
+
+        private static void QueueSettlerInterception(GameState state, UnitState wagon, UnitState attacker, bool feedback)
+        {
+            if (wagon == null || attacker == null) return;
+            for (int i = 0; i < state.Events.Length; i++)
+                if (!state.Events[i].IsResolved && state.Events[i].Kind == EventKind.SettlerInterception &&
+                    state.Events[i].TargetUnitId == wagon.Id) return;
+            wagon.MovementLeft = 0;
+            Append(ref state.Events, new ActiveEventState
+            {
+                Id = state.NextEntityId++, Kind = EventKind.SettlerInterception, TargetUnitId = wagon.Id,
+                TargetCivilizationId = wagon.OwnerId, OtherCivilizationId = attacker.OwnerId,
+                TurnsRemaining = 1, Severity = 1, Choices = new[] { "Retreat", "Internment", "ContinueJourney" }
+            });
+            AppendLog(state, "Военный отряд остановил гражданский обоз. Жители ждут решения: отступить, переждать интернирование или рискнуть прорывом.");
         }
 
         private static void EvacuateSettlerWagon(GameState state, UnitState wagon, bool feedback)
@@ -456,6 +525,7 @@ namespace Nasledie.Core
                 city.FoodTenths -= 60;
                 city.Project = new CityProject { Kind = ProjectKind.Recruitment, TargetId = kind.ToString(), Cost = 4, ReservedFoodTenths = 0, ReservedPopulationTenths = 20, TurnsActive = 1 };
                 city.ReservedPopulationTenths += 20;
+                EconomyCalculator.NormalizeWorkerAssignments(state, city);
                 if (feedback) AppendLog(state, city.Name + ": открыт набор поселенца; 6 еды внесены в обоз.");
                 return CommandResult.Ok("Поселенец поставлен в очередь.");
             }
@@ -465,6 +535,7 @@ namespace Nasledie.Core
             if (actor.TreasuryTenths < definition.TreasuryCostTenths) return CommandResult.Reject("unit_treasury", "Не хватает казны для начала набора.");
             actor.TreasuryTenths -= definition.TreasuryCostTenths;
             city.ReservedPopulationTenths += definition.PopulationTenths;
+            EconomyCalculator.NormalizeWorkerAssignments(state, city);
             if (actor.HasLaw("limited_conscription") && AtWarWithAny(state, actor.Id)) city.Trust = Math.Max(0, city.Trust - 10);
             city.Project = new CityProject
             {
@@ -479,14 +550,46 @@ namespace Nasledie.Core
             return CommandResult.Ok("Набор начат.");
         }
 
+        private CommandResult UpgradeUnit(GameState state, CivilizationState actor, int unitId, bool feedback)
+        {
+            UnitState unit = FindUnit(state, unitId);
+            if (unit == null || unit.OwnerId != actor.Id || unit.Kind != UnitKind.FieldForce)
+                return CommandResult.Reject("unit_upgrade_target", "Железное снаряжение доступно только вашим полевым силам.");
+            if (unit.IronEquipped) return CommandResult.Reject("unit_already_upgraded", "У этого отряда уже есть железное снаряжение.");
+            if (!actor.Knows("engineering")) return CommandResult.Reject("unit_upgrade_technology", "Для усиления нужна технология «Инженерия».");
+            CityState source = state.City(unit.CitySourceId);
+            bool ironAccess = false;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell cell = state.Cells[i];
+                if (cell.OwnerId == actor.Id && cell.Resource == ResourceKind.Iron && cell.Improvement != ImprovementKind.None &&
+                    cell.Damage < 75 && (source == null || HexGrid.Distance(source.Q, source.R, cell.Q, cell.R) <= 3))
+                {
+                    ironAccess = true;
+                    break;
+                }
+            }
+            if (!ironAccess) return CommandResult.Reject("unit_upgrade_iron", "Нужно улучшенное месторождение железа рядом с городом набора.");
+            if (actor.TreasuryTenths < 50) return CommandResult.Reject("unit_upgrade_cost", "Для снаряжения нужны 5 казны.");
+            actor.TreasuryTenths -= 50;
+            unit.IronEquipped = true;
+            if (feedback) AppendLog(state, "Полевые силы получили железное снаряжение и усилили удар.");
+            return CommandResult.Ok("Полевые силы усилены железом.");
+        }
+
         private CommandResult DeclareWar(GameState state, CivilizationState actor, int targetId, int q, int r, string legalGoal, bool feedback)
         {
             CivilizationState target = state.Civilization(targetId);
             if (target == null || targetId == actor.Id || target.IsDefeated) return CommandResult.Reject("invalid_target", "Невозможно объявить войну этой стороне.");
             if (AtWar(state, actor.Id, targetId)) return CommandResult.Reject("already_at_war", "Война с этой стороной уже идёт.");
+            ConflictState priorConflict = FindConflict(state, actor.Id, targetId);
+            if (priorConflict != null && priorConflict.Phase <= 1) return CommandResult.Reject("crisis_already_active", "Между сторонами уже идёт кризис или мобилизация.");
             if (actor.TreasuryTenths < 80) return CommandResult.Reject("war_budget", "Для мобилизации требуется 8 казны.");
             if (string.IsNullOrEmpty(legalGoal)) return CommandResult.Reject("war_goal", "Перед объявлением войны выберите законную цель.");
             bool breaksNonAggression = false;
+            bool breaksTruce = priorConflict != null &&
+                ((priorConflict.Phase == 3 && priorConflict.TruceTurns > 0) ||
+                 (priorConflict.Phase == 4 && HasTreaty(state, TreatyKind.NonAggression, actor.Id, targetId)));
             for (int i = 0; i < state.Treaties.Length; i++)
             {
                 TreatyState treaty = state.Treaties[i];
@@ -497,6 +600,19 @@ namespace Nasledie.Core
                 treaty.Active = false;
                 breaksNonAggression = true;
             }
+            var guarantors = new List<int>();
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                TreatyState guarantee = state.Treaties[i];
+                if (!guarantee.Active || guarantee.Kind != TreatyKind.Guarantee) continue;
+                int guarantorId = guarantee.FromCivilizationId == targetId ? guarantee.ToCivilizationId :
+                    guarantee.ToCivilizationId == targetId ? guarantee.FromCivilizationId : -1;
+                if (guarantorId < 0 || guarantorId == actor.Id) continue;
+                MarkTreatyBroken(state, guarantee);
+                guarantee.Active = false;
+                if (!guarantors.Contains(guarantorId)) guarantors.Add(guarantorId);
+            }
+            if (priorConflict != null) priorConflict.Active = false;
             actor.TreasuryTenths -= 80;
             var conflict = new ConflictState
             {
@@ -519,6 +635,29 @@ namespace Nasledie.Core
                 target.Trusts[actor.Id] = Math.Max(0, target.Trusts[actor.Id] - 20);
                 if (feedback) AppendLog(state, "Нарушение пакта о ненападении: договор отмечен нарушенным, а репутационные и дипломатические потери увеличены.");
             }
+            if (breaksTruce && !breaksNonAggression)
+            {
+                actor.Reputation = Math.Max(0, actor.Reputation - 20);
+                if (feedback) AppendLog(state, "Повторное нападение во время перемирия: нарушен пятитуровый послевоенный пакт.");
+            }
+            if (guarantors.Count > 0)
+            {
+                actor.Reputation = Math.Max(0, actor.Reputation - 10);
+                for (int i = 0; i < guarantors.Count; i++)
+                {
+                    CivilizationState guarantor = state.Civilization(guarantors[i]);
+                    if (guarantor == null) continue;
+                    guarantor.Threats[actor.Id] = Math.Min(100, guarantor.Threats[actor.Id] + 25);
+                    guarantor.Relations[actor.Id] = Math.Max(-100, guarantor.Relations[actor.Id] - 20);
+                    guarantor.Trusts[actor.Id] = Math.Max(0, guarantor.Trusts[actor.Id] - 25);
+                    actor.Threats[guarantor.Id] = Math.Min(100, actor.Threats[guarantor.Id] + 15);
+                }
+                for (int i = 0; i < state.Civilizations.Length; i++)
+                    if (state.Civilizations[i].Id != actor.Id && state.Civilizations[i].Id != targetId &&
+                        !guarantors.Contains(state.Civilizations[i].Id))
+                        state.Civilizations[i].Threats[actor.Id] = Math.Min(100, state.Civilizations[i].Threats[actor.Id] + 10);
+                if (feedback) AppendLog(state, "Война нарушила гарантию безопасности: гарант повысил угрозу агрессору и снизил доверие.");
+            }
             if (feedback) AppendLog(state, actor.Name + " объявила кризисную мобилизацию против цивилизации «" + target.Name + "». Цель: " + legalGoal + ".");
             return CommandResult.Ok("Кризис начался. У стороны есть один ход на ответ и посредничество.");
         }
@@ -527,17 +666,62 @@ namespace Nasledie.Core
         {
             CivilizationState target = state.Civilization(targetId);
             if (target == null || target.Id == actor.Id || target.IsDefeated) return CommandResult.Reject("invalid_target", "Сторона для договора недоступна.");
-            if (AtWar(state, actor.Id, targetId) && kind != TreatyKind.Peace) return CommandResult.Reject("war_treaty_only", "Во время войны можно предложить только перемирие.");
+            if (AtWar(state, actor.Id, targetId) && kind != TreatyKind.Peace && kind != TreatyKind.Mediation)
+                return CommandResult.Reject("war_treaty_only", "Во время войны можно предложить только мир или посредничество третьей стороны.");
             int cost = TreatyCost(kind);
             if (actor.InfluenceTenths < cost) return CommandResult.Reject("insufficient_influence", "Не хватает влияния.");
-            if (kind == TreatyKind.TradeRoute)
+            if (kind == TreatyKind.TradeRoute || kind == TreatyKind.HumanitarianAid)
             {
                 CityState first = state.City(cityA);
                 CityState second = state.City(cityB);
                 if (first == null || second == null || first.OwnerId != actor.Id || second.OwnerId != targetId)
-                    return CommandResult.Reject("route_cities", "Маршруту нужны ваши города и город партнёра.");
+                    return CommandResult.Reject("route_cities", "Договору нужны ваш город и город партнёра.");
                 if (!RouteExists(state, first, second)) return CommandResult.Reject("route_blocked", "Между городами нет безопасного пути.");
-                if (CountRoutes(state, actor.Id) >= TradeSlots(state, actor.Id)) return CommandResult.Reject("route_slots", "Нет свободного торгового слота.");
+                if (HasActiveEmbargo(state, first.Id, second.Id)) return CommandResult.Reject("route_embargoed", "Выбранный маршрут закрыт действующим эмбарго.");
+                if (kind == TreatyKind.TradeRoute && CountRoutes(state, actor.Id) >= TradeSlots(state, actor.Id)) return CommandResult.Reject("route_slots", "Нет свободного торгового слота.");
+                if (kind == TreatyKind.HumanitarianAid && (actor.TreasuryTenths < 50 || first.FoodTenths < first.PopulationTenths * 2 + 20))
+                    return CommandResult.Reject("aid_resources", "Для помощи нужны 5 казны и 2 еды сверх городского запаса.");
+            }
+            ResourceKind exportedResource = ResourceKind.None;
+            if (kind == TreatyKind.ResourceExport)
+            {
+                CityState first = state.City(cityA);
+                CityState second = state.City(cityB);
+                if (first == null || second == null || first.OwnerId != actor.Id || second.OwnerId != targetId || !RouteExists(state, first, second))
+                    return CommandResult.Reject("export_route", "Экспорт требует безопасный путь между городами обеих сторон.");
+                if (HasActiveEmbargo(state, first.Id, second.Id)) return CommandResult.Reject("route_embargoed", "Выбранный маршрут закрыт действующим эмбарго.");
+                bool hasSalt = false;
+                for (int i = 0; i < state.Cells.Length; i++)
+                    if (state.Cells[i].OwnerId == actor.Id && state.Cells[i].Resource == ResourceKind.Salt) { hasSalt = true; break; }
+                if (!hasSalt) return CommandResult.Reject("export_resource", "У вашей цивилизации нет соляного месторождения для экспорта.");
+                exportedResource = ResourceKind.Salt;
+            }
+            if (kind == TreatyKind.Embargo)
+            {
+                CityState first = state.City(cityA);
+                CityState second = state.City(cityB);
+                if (first == null || second == null || first.OwnerId != actor.Id || second.OwnerId != targetId)
+                    return CommandResult.Reject("embargo_route", "Выберите свой город и город партнёра, соединённые торговым маршрутом.");
+                if (!HasRecognizedEmbargoCrisis(state, actor.Id, targetId))
+                    return CommandResult.Reject("embargo_crisis", "Эмбарго требует признанного кризиса: открытой мобилизации или угрозы не ниже 60 при существующем договоре.");
+                bool routeExists = false;
+                for (int i = 0; i < state.Treaties.Length; i++)
+                    if (state.Treaties[i].Active && (state.Treaties[i].Kind == TreatyKind.TradeRoute || state.Treaties[i].Kind == TreatyKind.ResourceExport) &&
+                        RouteCitiesMatch(state.Treaties[i], first.Id, second.Id)) { routeExists = true; break; }
+                if (!routeExists) return CommandResult.Reject("embargo_route_missing", "На выбранной паре городов нет действующего маршрута для эмбарго.");
+            }
+            if (kind == TreatyKind.Mediation)
+            {
+                bool mediableConflict = false;
+                for (int i = 0; i < state.Conflicts.Length; i++)
+                {
+                    ConflictState conflict = state.Conflicts[i];
+                    if (conflict.Active && conflict.Phase <= 2 &&
+                        (conflict.AggressorId == targetId || conflict.DefenderId == targetId) &&
+                        conflict.AggressorId != actor.Id && conflict.DefenderId != actor.Id)
+                    { mediableConflict = true; break; }
+                }
+                if (!mediableConflict) return CommandResult.Reject("mediation_unavailable", "Нужно активное противостояние между двумя другими сторонами.");
             }
             actor.InfluenceTenths -= cost;
             int acceptance = target.Trusts[actor.Id] + target.Relations[actor.Id] / 2 - target.Threats[actor.Id] / 2;
@@ -549,7 +733,8 @@ namespace Nasledie.Core
             {
                 Id = state.NextEntityId++, Kind = kind, FromCivilizationId = actor.Id, ToCivilizationId = targetId,
                 TurnsRemaining = TreatyDuration(kind), RouteCityA = cityA, RouteCityB = cityB,
-                TreasuryPerTurnTenths = kind == TreatyKind.TradeRoute ? 20 : 0,
+                TreasuryPerTurnTenths = kind == TreatyKind.TradeRoute ? 20 : kind == TreatyKind.ResourceExport ? 10 : 0,
+                ExportedResource = exportedResource,
                 Active = accepted, Pending = !accepted
             };
             Append(ref state.Treaties, treaty);
@@ -565,6 +750,15 @@ namespace Nasledie.Core
             {
                 TreatyState treaty = state.Treaties[i];
                 if (treaty.Id != treatyId || !treaty.Pending || treaty.ToCivilizationId != actor.Id) continue;
+                if (treaty.Kind == TreatyKind.Embargo && !HasRecognizedEmbargoCrisis(state, treaty.FromCivilizationId, treaty.ToCivilizationId))
+                    return CommandResult.Reject("embargo_crisis", "Кризис для эмбарго завершился; предложение больше нельзя принять.");
+                if (treaty.Kind == TreatyKind.TradeRoute || treaty.Kind == TreatyKind.ResourceExport || treaty.Kind == TreatyKind.HumanitarianAid)
+                {
+                    CityState first = state.City(treaty.RouteCityA);
+                    CityState second = state.City(treaty.RouteCityB);
+                    if (first == null || second == null || !RouteExists(state, first, second) || HasActiveEmbargo(state, first.Id, second.Id))
+                        return CommandResult.Reject("route_blocked", "Путь договора больше не доступен или закрыт эмбарго.");
+                }
                 treaty.Active = true;
                 treaty.Pending = false;
                 ApplyTreatyEffect(state, treaty);
@@ -574,18 +768,129 @@ namespace Nasledie.Core
             return CommandResult.Reject("treaty_missing", "Нет такого предложения.");
         }
 
-        private CommandResult MakePeace(GameState state, CivilizationState actor, int targetId, bool feedback)
+        private CommandResult MakePeace(GameState state, CivilizationState actor, int targetId, PeaceTermKind terms, bool feedback)
         {
             ConflictState conflict = FindConflict(state, actor.Id, targetId);
             if (conflict == null || conflict.Phase < 0 || conflict.Phase > 2)
                 return CommandResult.Reject("no_active_conflict", "Активного конфликта нет.");
+            if (actor.Id != conflict.AggressorId && actor.Id != conflict.DefenderId)
+                return CommandResult.Reject("peace_not_party", "Мир может предложить только участник конфликта.");
+            CivilizationState target = state.Civilization(targetId);
+            if (terms < PeaceTermKind.StatusQuo || terms > PeaceTermKind.PrisonerExchange)
+                return CommandResult.Reject("peace_term_invalid", "Недопустимые условия мира.");
+            int actorStrength = MilitaryStrength(state, actor.Id);
+            int targetStrength = MilitaryStrength(state, targetId);
+            CityState heldCity = state.City(conflict.OccupationCityId);
+            bool leverage = actorStrength >= targetStrength || target.WarStrain >= 50 || conflict.WarTurn >= 3 ||
+                            (heldCity != null && heldCity.OccupiedById == actor.Id);
+            UnitState disarmTarget = WeakestMilitaryUnit(state, targetId);
+            HexCell claimedCell = state.Cell(conflict.TargetQ, conflict.TargetR);
+            string declaredGoal = (conflict.LegalGoal ?? "").ToLowerInvariant();
+            bool isCityCell = false;
+            for (int i = 0; i < state.Cities.Length; i++)
+                if (state.Cities[i].Q == conflict.TargetQ && state.Cities[i].R == conflict.TargetR) { isCityCell = true; break; }
+            CityState cityToAnnex = null;
+            if (terms == PeaceTermKind.AnnexOccupiedCity)
+                for (int i = 0; i < state.Cities.Length; i++)
+                    if (state.Cities[i].OwnerId == targetId && state.Cities[i].OccupiedById == actor.Id) { cityToAnnex = state.Cities[i]; break; }
+
+            if (terms == PeaceTermKind.Reparations && (!leverage || target.TreasuryTenths < 50))
+                return CommandResult.Reject("peace_reparations_rejected", "Сторона противника отвергла компенсацию: у неё достаточно сил или нет средств для выплаты.");
+            if (terms == PeaceTermKind.Demobilization && (!leverage || disarmTarget == null))
+                return CommandResult.Reject("peace_demobilization_rejected", "Противник отверг демобилизацию: требование превышает вашу переговорную силу.");
+            if (terms == PeaceTermKind.BorderAdjustment &&
+                (!leverage || claimedCell == null || claimedCell.OwnerId != targetId || isCityCell ||
+                 (!declaredGoal.Contains("границ") && !declaredGoal.Contains("спор"))))
+                return CommandResult.Reject("peace_border_rejected", "Нет спорной пограничной клетки, которую можно передать по заявленной цели войны.");
+            if (terms == PeaceTermKind.AnnexOccupiedCity &&
+                (!leverage || cityToAnnex == null || (!declaredGoal.Contains("город") && !declaredGoal.Contains("территор"))))
+                return CommandResult.Reject("peace_annex_rejected", "Для аннексии нужен занятый вами город и соответствующая территориальная цель войны.");
+            if (terms == PeaceTermKind.AnnexOccupiedCity && CountOwnedCities(state, actor.Id) >= actor.AdministrativeCapacity)
+                return CommandResult.Reject("peace_admin_capacity", "Нет свободного места в административной ёмкости для аннексии.");
+            if (terms == PeaceTermKind.AnnexOccupiedCity && (actor.InfluenceTenths < 150 || actor.TreasuryTenths < 50))
+                return CommandResult.Reject("peace_annex_cost", "Аннексия требует 15 влияния и 5 казны на мирное соглашение.");
+            if (terms == PeaceTermKind.PrisonerExchange && !HasPrisonersHeld(state, actor.Id, targetId))
+                return CommandResult.Reject("peace_prisoners_missing", "Стороны не удерживают военнопленных для обмена.");
+
             if (actor.TreasuryTenths >= 50) actor.TreasuryTenths -= 50;
             else actor.Reputation = Math.Max(0, actor.Reputation - 8);
+            if (terms == PeaceTermKind.Reparations)
+            {
+                int payment = Math.Min(100, target.TreasuryTenths);
+                target.TreasuryTenths -= payment;
+                actor.TreasuryTenths += payment;
+            }
+            else if (terms == PeaceTermKind.Demobilization)
+            {
+                RetireMilitarySurvivors(state, disarmTarget);
+                RemoveUnit(state, disarmTarget.Id);
+            }
+            else if (terms == PeaceTermKind.BorderAdjustment)
+            {
+                claimedCell.OwnerId = actor.Id;
+                claimedCell.VisibleToMask |= (1 << actor.Id) | (1 << targetId);
+                claimedCell.ExploredByMask |= (1 << actor.Id) | (1 << targetId);
+            }
+            else if (terms == PeaceTermKind.AnnexOccupiedCity)
+            {
+                actor.InfluenceTenths -= 150;
+                cityToAnnex.OwnerId = actor.Id;
+                cityToAnnex.OccupiedById = -1;
+                cityToAnnex.IntegrationTurns = 5;
+                cityToAnnex.Trust = actor.HasLaw("local_councils") ? 45 : 35;
+                cityToAnnex.Attraction = Math.Max(0, cityToAnnex.Attraction - 15);
+                cityToAnnex.WarDamageTurns = Math.Max(cityToAnnex.WarDamageTurns, 5);
+                for (int i = 0; i < state.Cells.Length; i++)
+                {
+                    HexCell cityCell = state.Cells[i];
+                    if ((cityCell.Q == cityToAnnex.Q && cityCell.R == cityToAnnex.R) || cityCell.DistrictCityId == cityToAnnex.Id)
+                    {
+                        cityCell.OwnerId = actor.Id;
+                        cityCell.VisibleToMask |= (1 << actor.Id) | (1 << targetId);
+                        cityCell.ExploredByMask |= (1 << actor.Id) | (1 << targetId);
+                    }
+                }
+                target.Reputation = Math.Max(0, target.Reputation - 8);
+                actor.Reputation = Math.Max(0, actor.Reputation - 4);
+            }
+            else if (terms == PeaceTermKind.PrisonerExchange)
+            {
+                ReleasePrisoners(state, actor.Id, targetId);
+            }
+
+            // Peace stops occupation at signature time. The recovery timer governs
+            // economic healing; it must not leave soldiers in foreign territory.
+            ReleaseOccupation(state, conflict);
             conflict.Phase = 3;
-            conflict.TruceTurns = 2;
+            conflict.TruceTurns = 3;
+            conflict.AgreedPeaceTerm = terms;
+            conflict.PeaceRequesterId = actor.Id;
+            Append(ref state.Treaties, new TreatyState
+            {
+                Id = state.NextEntityId++, Kind = TreatyKind.NonAggression,
+                FromCivilizationId = actor.Id, ToCivilizationId = targetId, TurnsRemaining = 5, Active = true
+            });
             actor.Relations[targetId] = Math.Min(100, actor.Relations[targetId] + 5);
-            if (feedback) AppendLog(state, "Подписано двухходовое перемирие. Затем начнутся пять ходов восстановления.");
-            return CommandResult.Ok("Перемирие заключено.");
+            target.Relations[actor.Id] = Math.Min(100, target.Relations[actor.Id] + 3);
+            string goal = (conflict.LegalGoal ?? "").ToLowerInvariant();
+            if (goal.Contains("блокад") || goal.Contains("маршрут")) RestoreRouteAfterPeace(state, conflict.AggressorId, conflict.DefenderId);
+            if (goal.Contains("демилитар") && terms != PeaceTermKind.Demobilization && disarmTarget != null)
+            {
+                RetireMilitarySurvivors(state, disarmTarget);
+                RemoveUnit(state, disarmTarget.Id);
+            }
+            if (goal.Contains("защит") || goal.Contains("граждан"))
+            {
+                actor.Reputation = Math.Min(100, actor.Reputation + 4);
+                target.WarStrain = Math.Max(0, target.WarStrain - 5);
+            }
+            string termName = terms == PeaceTermKind.Reparations ? "мир с компенсацией" :
+                terms == PeaceTermKind.Demobilization ? "мир с демобилизацией" :
+                terms == PeaceTermKind.BorderAdjustment ? "мир с передачей пограничной клетки" :
+                terms == PeaceTermKind.AnnexOccupiedCity ? "мир с аннексией занятого города" :
+                terms == PeaceTermKind.PrisonerExchange ? "мир с обменом пленными" : "мир без территориальных уступок";
+            if (feedback) AppendLog(state, "Стороны приняли условия: " + termName + ". Действуют два хода перемирия и пять ходов восстановления.");
+            return CommandResult.Ok("Заключён " + termName + ".");
         }
 
         private CommandResult SetSpending(CivilizationState actor, CityState city, int service, int funding, bool feedback)
@@ -644,6 +949,58 @@ namespace Nasledie.Core
             string resolutionMessage = "Решение события применено.";
             switch (activeEvent.Kind)
             {
+                case EventKind.NeutralMediation:
+                    ConflictState mediationConflict = FindConflict(state, actor.Id, activeEvent.OtherCivilizationId);
+                    if (mediationConflict == null || mediationConflict.Phase != 2)
+                        return CommandResult.Reject("mediation_conflict_missing", "На фронте больше нет активной войны для посредничества.");
+                    CivilizationState mediationOther = state.Civilization(activeEvent.OtherCivilizationId);
+                    if (choice == "AcceptMediation")
+                    {
+                        mediationConflict.Phase = 3;
+                        mediationConflict.TruceTurns = 3;
+                        CivilizationState mediationAggressor = state.Civilization(mediationConflict.AggressorId);
+                        CivilizationState mediationDefender = state.Civilization(mediationConflict.DefenderId);
+                        if (mediationAggressor != null) mediationAggressor.WarStrain = Math.Max(0, mediationAggressor.WarStrain - 10);
+                        if (mediationDefender != null) mediationDefender.WarStrain = Math.Max(0, mediationDefender.WarStrain - 10);
+                        ReleaseOccupation(state, mediationConflict);
+                        resolutionMessage = "Предложение принято. Стороны заключили двухходовое перемирие и начали восстановление.";
+                    }
+                    else if (choice == "RejectMediation")
+                    {
+                        actor.WarStrain = Math.Min(100, actor.WarStrain + 8);
+                        if (mediationOther != null) mediationOther.WarStrain = Math.Min(100, mediationOther.WarStrain + 5);
+                        actor.Reputation = Math.Max(0, actor.Reputation - 2);
+                        resolutionMessage = "Предложение отклонено. Война продолжается, напряжение сторон выросло.";
+                    }
+                    else return CommandResult.Reject("event_choice_invalid", "Выберите принятие или отказ от посредничества.");
+                    break;
+                case EventKind.SettlerInterception:
+                    UnitState interceptedWagon = FindUnit(state, activeEvent.TargetUnitId);
+                    if (interceptedWagon == null || interceptedWagon.Kind != UnitKind.SettlerWagon || interceptedWagon.OwnerId != actor.Id)
+                        return CommandResult.Reject("settler_event_target", "Гражданский обоз уже не находится под угрозой.");
+                    if (choice == "Retreat")
+                    {
+                        EvacuateSettlerWagon(state, interceptedWagon, feedback);
+                        resolutionMessage = "Обоз отступил к ближайшей безопасной территории.";
+                    }
+                    else if (choice == "Internment")
+                    {
+                        interceptedWagon.MovementLeft = 0;
+                        resolutionMessage = "Обоз интернирован до конца текущего хода; со следующего сможет продолжить путь.";
+                    }
+                    else if (choice == "ContinueJourney")
+                    {
+                        int loss = Math.Max(1, interceptedWagon.PopulationTenths / 5);
+                        interceptedWagon.PopulationTenths = Math.Max(0, interceptedWagon.PopulationTenths - loss);
+                        interceptedWagon.InitialPopulationTenths = Math.Max(interceptedWagon.PopulationTenths, interceptedWagon.InitialPopulationTenths - loss);
+                        interceptedWagon.MovementLeft = 0;
+                        if (interceptedWagon.PopulationTenths <= 0) RemoveUnit(state, interceptedWagon.Id);
+                        resolutionMessage = interceptedWagon.PopulationTenths <= 0
+                            ? "Попытка прорыва сорвалась: обоз потерян вместе с его жителями."
+                            : "Обоз продолжит путь со следующего хода, потеряв часть жителей при прорыве.";
+                    }
+                    else return CommandResult.Reject("event_choice_invalid", "Выберите отступление, интернирование или прорыв.");
+                    break;
                 case EventKind.Drought:
                     if (choice == "BuyFood" && actor.TreasuryTenths >= 50) { actor.TreasuryTenths -= 50; if (city != null) city.FoodTenths += 40; }
                     else if (choice == "ReassignWorkers" && city != null) { Array.Clear(city.Workers, 0, city.Workers.Length); city.Workers[(int)WorkerRole.Farmer] = Math.Min(4, city.WorkerCount); }
@@ -651,7 +1008,11 @@ namespace Nasledie.Core
                     else return CommandResult.Reject("event_choice_invalid", "Этот ответ сейчас недоступен.");
                     break;
                 case EventKind.Epidemic:
-                    if (choice == "OpenClinic" && actor.TreasuryTenths >= 100) { actor.TreasuryTenths -= 100; if (city != null) city.Health = Math.Min(100, city.Health + 10); }
+                    if (choice == "OpenClinic" && city != null && actor.TreasuryTenths >= (EconomyCalculator.HasNearbyResource(state, city, ResourceKind.Herbs) ? 90 : 100))
+                    {
+                        actor.TreasuryTenths -= EconomyCalculator.HasNearbyResource(state, city, ResourceKind.Herbs) ? 90 : 100;
+                        city.Health = Math.Min(100, city.Health + 10);
+                    }
                     else if (choice == "Quarantine" && city != null) { city.Health = Math.Min(100, city.Health + 12); city.Attraction = Math.Max(0, city.Attraction - 10); CloseTradeRoutes(state, actor.Id, activeEvent.TargetCivilizationId); }
                     else if (choice == "RequestAid") { actor.Reputation = Math.Min(100, actor.Reputation + 3); if (city != null) city.Health = Math.Min(100, city.Health + 5); }
                     else return CommandResult.Reject("event_choice_invalid", "Этот ответ сейчас недоступен.");

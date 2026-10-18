@@ -12,6 +12,7 @@ namespace Nasledie.Core
         {
             TurnReport report = new TurnReport { Turn = state.Turn, Entries = Array.Empty<string>() };
             var lines = new List<string>();
+            ResolveWoundedUnits(state, lines);
             int[] populationBefore = new int[state.Civilizations.Length];
             int[] treasuryBefore = new int[state.Civilizations.Length];
             int[] foodBefore = new int[state.Civilizations.Length];
@@ -84,8 +85,6 @@ namespace Nasledie.Core
                 UnitDefinition definition = RulesCatalog.Unit(state.Units[i].Kind);
                 state.Units[i].MovementLeft = definition == null ? 0 : definition.Movement;
                 state.Units[i].Readiness = Math.Min(120, state.Units[i].Readiness + (state.Units[i].SupplyBasisPoints >= 7000 ? 8 : -10));
-                state.Units[i].IsWounded = state.Units[i].WoundedTurns > 0;
-                if (state.Units[i].WoundedTurns > 0) state.Units[i].WoundedTurns--;
             }
             for (int i = 0; i < state.Civilizations.Length; i++)
             {
@@ -95,6 +94,26 @@ namespace Nasledie.Core
             GameFactory.RebuildVisibility(state);
             for (int i = lines.Count - 1; i >= 0; i--) AppendLog(state, lines[i]);
             AppendLog(state, "Ход " + (state.Turn - 1) + " завершён. Откройте отчёт, чтобы увидеть источники изменений.");
+        }
+
+        private void ResolveWoundedUnits(GameState state, List<string> lines)
+        {
+            for (int i = 0; i < state.Units.Length; i++)
+            {
+                UnitState unit = state.Units[i];
+                if (unit.WoundedTurns > 0) unit.WoundedTurns--;
+                if (unit.WoundedTurns <= 0 && unit.WoundedPopulationTenths > 0)
+                {
+                    unit.PopulationTenths += unit.WoundedPopulationTenths;
+                    unit.Strength = Math.Min(unit.InitialStrength, unit.Strength + unit.WoundedStrength);
+                    lines.Add("Отряд из города " + unit.CitySourceId + " восстановил " + FormatPopulation(unit.WoundedPopulationTenths) +
+                        " раненых и " + unit.WoundedStrength + " силы.");
+                    unit.WoundedPopulationTenths = 0;
+                    unit.WoundedStrength = 0;
+                    unit.WoundedTurns = 0;
+                }
+                unit.IsWounded = unit.WoundedTurns > 0 || unit.WoundedPopulationTenths > 0;
+            }
         }
 
         private void PlanAndResolveAiOrders(GameState state, List<string> lines)
@@ -119,7 +138,7 @@ namespace Nasledie.Core
                     CityState city = state.Cities[i];
                     if (city.OwnerId != civ.Id) continue;
                     CityYield yield = EconomyCalculator.Calculate(state, city);
-                    if (city.FoodTenths + yield.FoodTenths < city.PopulationTenths * 2)
+                    if (city.FoodTenths + yield.FoodTenths <= city.PopulationTenths * 2)
                         EconomyCalculator.AutoAssign(state, city, "food");
                     else EconomyCalculator.AutoAssign(state, city, AiCityFocus(state, civ, city));
 
@@ -294,6 +313,7 @@ namespace Nasledie.Core
         private int AiVictoryInfluenceReserve(GameState state, CivilizationState civ)
         {
             int reserve = 0;
+            if (CanReserveEraTransitionInfluence(state, civ)) reserve = 100;
             if ((int)civ.Difficulty >= (int)Difficulty.Strong)
             {
                 string pursuit = AiVictoryDoctrine(state, civ);
@@ -309,6 +329,20 @@ namespace Nasledie.Core
                 if (city.OwnerId == civ.Id && city.Project == null && VictoryEvaluator.CanStartDiplomaticCoalition(state, civ.Id, city.Id)) reserve = Math.Max(reserve, 200);
             }
             return reserve;
+        }
+
+        private bool CanReserveEraTransitionInfluence(GameState state, CivilizationState civ)
+        {
+            if ((int)civ.Era >= 4 || CountOwnedBuilding(state, civ.Id, "council") == 0) return false;
+            for (int i = 0; i < state.Cities.Length; i++)
+                if (state.Cities[i].OwnerId == civ.Id && state.Cities[i].Project != null && state.Cities[i].Project.Kind == ProjectKind.EraTransition) return false;
+            int eraKnowledge = 0;
+            for (int i = 0; i < civ.KnownTechnologies.Length; i++)
+            {
+                TechnologyDefinition tech = RulesCatalog.Technology(civ.KnownTechnologies[i]);
+                if (tech != null && tech.Era == civ.Era) eraKnowledge++;
+            }
+            return eraKnowledge >= 3;
         }
 
         private bool HasCriticalFoodProblem(GameState state, int civilizationId)
@@ -1166,6 +1200,9 @@ namespace Nasledie.Core
                 if (target.Archetype == "Торговец" && kind == TreatyKind.TradeRoute) acceptance += 25;
                 if (target.Archetype == "Попечитель" && (kind == TreatyKind.OpenBorders || kind == TreatyKind.NonAggression)) acceptance += 15;
                 if (kind == TreatyKind.TradeRoute) acceptance += 15;
+                if (kind == TreatyKind.ResourceExport && target.Archetype == "Торговец") acceptance += 20;
+                if (kind == TreatyKind.HumanitarianAid) acceptance += 25;
+                if (kind == TreatyKind.Mediation) acceptance += 15;
                 if (acceptance < 25) continue;
                 int score = acceptance;
                 if (civ.StrategicGoal == "defense") score += civ.Threats[target.Id] * 2;
@@ -1197,16 +1234,31 @@ namespace Nasledie.Core
                 if (state.Units[i].OwnerId == civ.Id && state.Units[i].Kind != UnitKind.SettlerWagon && state.Units[i].Strength > 0) units++;
             int desired = atWar ? Math.Min(3, 1 + (int)civ.Difficulty / 2 + CountOwnedCities(state, civ.Id) / 3 + (civ.Difficulty == Difficulty.Trial ? 1 : 0)) :
                 (civ.Difficulty == Difficulty.Trial && pressure >= 65 ? 2 : civ.Archetype == "Стратег безопасности" || pressure >= 65 ? 1 : 0);
+            bool warPreparation = !atWar && civ.WarsStarted == 0 && state.Turn >= 16 &&
+                (civ.Archetype == "Стратег безопасности" || (civ.Difficulty == Difficulty.Trial && AiMilitaryPosture(state, civ.Id) < 20) ||
+                 (civ.Difficulty == Difficulty.Strong && AiMilitaryPosture(state, civ.Id) < 12));
+            if (warPreparation) desired = Math.Max(desired, 1);
             if (units >= desired || civ.TreasuryTenths < 60) return;
 
             CityState city = null;
             for (int i = 0; i < state.Cities.Length; i++)
-                if (state.Cities[i].OwnerId == civ.Id && state.Cities[i].BuildingLevel("barracks") > 0 &&
-                    (city == null || state.Cities[i].AdministrativeLoad > city.AdministrativeLoad)) city = state.Cities[i];
+                if (state.Cities[i].OwnerId == civ.Id && state.Cities[i].Project != null && state.Cities[i].Project.Kind == ProjectKind.None &&
+                    state.Cities[i].PopulationTenths >= 50 && (city == null ||
+                    (state.Cities[i].BuildingLevel("barracks") > city.BuildingLevel("barracks")) ||
+                    (state.Cities[i].BuildingLevel("barracks") == city.BuildingLevel("barracks") && state.Cities[i].AdministrativeLoad > city.AdministrativeLoad))) city = state.Cities[i];
             if (city == null || city.Project == null || city.Project.Kind != ProjectKind.None || city.PopulationTenths < 50) return;
 
-            UnitKind kind = civ.Knows("roads") && civ.TreasuryTenths >= 100 ? UnitKind.FieldForce : UnitKind.Militia;
+            UnitKind kind = civ.Knows("roads") && civ.TreasuryTenths >= 100 && city.BuildingLevel("barracks") > 0 ? UnitKind.FieldForce : UnitKind.Militia;
             Recruit(state, civ, city, kind, false);
+        }
+
+        private static int AiMilitaryPosture(GameState state, int civilizationId)
+        {
+            unchecked
+            {
+                int value = state.Seed * 31 + civilizationId * 131 + 977;
+                return (value & 0x7fffffff) % 100;
+            }
         }
 
         private void ResolveCityProductionAndResearch(GameState state, TurnReport report, List<string> lines)
@@ -1221,10 +1273,10 @@ namespace Nasledie.Core
                 CityYield yield = EconomyCalculator.Calculate(state, city);
                 turnYields[city.Id] = yield;
                 CivilizationState civ = state.Civilization(city.OwnerId);
-                if (civ.Knows("mechanization") && city.BuildingLevel("workshop") > 0)
-                    city.Environment = Math.Max(0, city.Environment - 1);
-                if (civ.Knows("clean_energy") && city.Environment < 100)
-                    city.Environment = Math.Min(100, city.Environment + 1);
+                int environmentChange = yield.EnvironmentChange;
+                if (civ.Knows("mechanization") && city.BuildingLevel("workshop") > 0) environmentChange--;
+                if (civ.Knows("clean_energy")) environmentChange++;
+                city.Environment = Math.Max(0, Math.Min(100, city.Environment + environmentChange));
                 civ.TreasuryTenths += yield.TreasuryTenths;
                 knowledgeProduced[civ.Id] += yield.KnowledgeTenths;
                 cultureProduced[civ.Id] += yield.CulturePrestige;
@@ -1325,7 +1377,40 @@ namespace Nasledie.Core
             for (int i = 0; i < state.Treaties.Length; i++)
             {
                 TreatyState treaty = state.Treaties[i];
-                if (!treaty.Active || treaty.Kind != TreatyKind.TradeRoute) continue;
+                if (!treaty.Active) continue;
+                if (treaty.Kind == TreatyKind.ResourceExport)
+                {
+                    if (AtWar(state, treaty.FromCivilizationId, treaty.ToCivilizationId))
+                    {
+                        MarkTreatyBroken(state, treaty);
+                        treaty.Active = false;
+                        lines.Add("Война остановила экспорт соли.");
+                        continue;
+                    }
+                    CivilizationState exporter = state.Civilization(treaty.FromCivilizationId);
+                    CivilizationState importer = state.Civilization(treaty.ToCivilizationId);
+                    CityState origin = state.City(treaty.RouteCityA);
+                    CityState exportDestination = state.City(treaty.RouteCityB);
+                    bool hasResource = false;
+                    for (int cellIndex = 0; cellIndex < state.Cells.Length; cellIndex++)
+                        if (state.Cells[cellIndex].OwnerId == treaty.FromCivilizationId && state.Cells[cellIndex].Resource == ResourceKind.Salt)
+                        { hasResource = true; break; }
+                    if (exporter == null || importer == null || !hasResource || origin == null || exportDestination == null || !RouteExists(state, origin, exportDestination))
+                    {
+                        MarkTreatyBroken(state, treaty);
+                        treaty.Active = false;
+                        lines.Add("Экспорт соли прекращён: месторождение или безопасный маршрут потеряны.");
+                        continue;
+                    }
+                    int payment = treaty.TreasuryPerTurnTenths > 0 ? treaty.TreasuryPerTurnTenths : 10;
+                    exporter.TreasuryTenths += payment;
+                    importer.TreasuryTenths -= payment;
+                    exporter.TradeDependency[importer.Id] = Math.Min(100, exporter.TradeDependency[importer.Id] + 1);
+                    importer.TradeDependency[exporter.Id] = Math.Min(100, importer.TradeDependency[exporter.Id] + 1);
+                    IncreaseCulturalExchange(state, exporter.Id, importer.Id);
+                    continue;
+                }
+                if (treaty.Kind != TreatyKind.TradeRoute) continue;
                 if (AtWar(state, treaty.FromCivilizationId, treaty.ToCivilizationId))
                 {
                     MarkTreatyBroken(state, treaty);
@@ -1395,6 +1480,7 @@ namespace Nasledie.Core
                         {
                             Id = state.NextEntityId++, OwnerId = city.OwnerId, CitySourceId = city.Id,
                             Kind = UnitKind.SettlerWagon, Q = q, R = r, PopulationTenths = 20,
+                            InitialPopulationTenths = 20,
                             FoodCargoTenths = 40, Strength = 0, MovementLeft = 2
                         });
                         lines.Add(city.Name + ": гражданский обоз отправлен основать город.");
@@ -1408,6 +1494,7 @@ namespace Nasledie.Core
                             Id = state.NextEntityId++, OwnerId = city.OwnerId, CitySourceId = city.Id,
                             Kind = kind, Q = city.Q, R = city.R,
                             Strength = definition.Strength, PopulationTenths = definition.PopulationTenths,
+                            InitialStrength = definition.Strength, InitialPopulationTenths = definition.PopulationTenths,
                             Readiness = 80, SupplyBasisPoints = 10000, MovementLeft = 0
                         });
                         lines.Add(city.Name + ": подготовлен отряд «" + definition.NameRu + "». Работники переведены на службу.");
@@ -1599,9 +1686,11 @@ namespace Nasledie.Core
                 int healthChange = currentYield == null ? 0 : currentYield.HealthChange;
                 int safetyChange = currentYield == null ? 0 : currentYield.SafetyChange;
                 int educationChange = currentYield == null ? 0 : currentYield.EducationChange;
+                int attractionChange = currentYield == null ? 0 : currentYield.AttractionChange;
                 city.Health = Math.Min(100, city.Health + healthChange + coverage / 100);
                 city.Safety = Math.Min(100, city.Safety + safetyChange);
                 city.Education = Math.Min(100, city.Education + educationChange);
+                city.Attraction = Math.Min(100, city.Attraction + attractionChange);
                 if (city.Safety < 25) city.Trust = Math.Max(0, city.Trust - 1);
                 else if (city.Safety > 70 && !AtWarWithAny(state, city.OwnerId)) city.Trust = Math.Min(100, city.Trust + 1);
                 CivilizationState cityOwner = state.Civilization(city.OwnerId);

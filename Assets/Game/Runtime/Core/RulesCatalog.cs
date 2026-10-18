@@ -137,19 +137,22 @@ namespace Nasledie.Core
         {
             Building("granary", "Амбар", "Granary", 10, 10, "pottery", foodStorageTurns: 2),
             Building("house", "Дом", "House", 8, 5, null, housingTenths: 40),
-            Building("residential_quarter", "Жилой квартал", "Residential Quarter", 18, 20, "engineering", housingTenths: 80, workerPlaceRole: (int)WorkerRole.CivilServant, workerPlaces: 1),
+            Building("residential_quarter", "Жилой квартал", "Residential Quarter", 18, 20, "engineering", housingTenths: 80),
             Building("workshop", "Мастерская", "Workshop", 12, 10, "stone", workerPlaceRole: (int)WorkerRole.Artisan, workerPlaces: 1),
             Building("school", "Школа", "School", 12, 10, "civic_schools", knowledgePerScholar: 2, education: 5, workerPlaceRole: (int)WorkerRole.Scholar, workerPlaces: 1),
             Building("market", "Рынок", "Market", 12, 10, "coin_markets", treasuryPerMerchant: 2, workerPlaceRole: (int)WorkerRole.Merchant, workerPlaces: 1, tradeSlots: 1),
             Building("clinic", "Клиника", "Clinic", 14, 20, "medicine", health: 10, workerPlaceRole: (int)WorkerRole.CivilServant, workerPlaces: 1),
             Building("cultural_house", "Культурный дом", "Cultural House", 12, 10, "writing", culturePerArtist: 3, workerPlaceRole: (int)WorkerRole.Artist, workerPlaces: 1, culturalObject: true),
-            Building("council", "Совет", "Council", 10, 10, "writing", adminCapacity: 1, workerPlaceRole: (int)WorkerRole.CivilServant, workerPlaces: 1, unique: true),
+            Building("council", "Совет", "Council", 10, 10, "writing", adminCapacity: 1, unique: true),
             Building("administration", "Администрация", "Administration", 16, 20, "engineering", adminCapacity: 2, unique: true),
-            Building("road_services", "Дорожная служба", "Road Services", 14, 20, "roads", safety: 5),
+            Building("road_services", "Дорожная служба", "Road Services", 14, 20, "roads", safety: 5,
+                workerPlaceRole: (int)WorkerRole.CivilServant, workerPlaces: 1),
             Building("university", "Университет", "University", 20, 30, "university", knowledgePerScholar: 4, education: 10, workerPlaceRole: (int)WorkerRole.Scholar, workerPlaces: 2),
-            Building("hospital", "Больница", "Hospital", 20, 30, "public_health", health: 15, workerPlaceRole: (int)WorkerRole.CivilServant, workerPlaces: 2),
-            Building("archive", "Архив и музей", "Archive and Museum", 18, 20, "printing", culturePerArtist: 5, culturalObject: true),
-            Building("exchange_house", "Дом обмена", "House of Exchange", 20, 20, "trade_league", culturePerArtist: 4, culturalObject: true),
+            Building("hospital", "Больница", "Hospital", 20, 30, "public_health", health: 15, workerPlaceRole: (int)WorkerRole.CivilServant, workerPlaces: 1),
+            Building("archive", "Архив и музей", "Archive and Museum", 18, 20, "printing", culturePerArtist: 5,
+                workerPlaceRole: (int)WorkerRole.Artist, workerPlaces: 1, culturalObject: true),
+            Building("exchange_house", "Дом обмена", "House of Exchange", 20, 20, "trade_league", culturePerArtist: 4,
+                workerPlaceRole: (int)WorkerRole.Artist, workerPlaces: 1, culturalObject: true),
             Building("academy", "Академия", "Academy", 16, 30, "computing_networks", knowledgePerScholar: 5, education: 15, workerPlaceRole: (int)WorkerRole.Scholar, workerPlaces: 2),
             Building("barracks", "Казармы", "Barracks", 14, 15, "stone", defense: 10),
             Building("assembly", "Ассамблея", "Assembly", 26, 25, "international_assembly", adminCapacity: 1, unique: true),
@@ -172,7 +175,9 @@ namespace Nasledie.Core
             Improvement(ImprovementKind.Bridge, "Мост", "Bridge", 8, "engineering", TerrainKind.River),
             Improvement(ImprovementKind.Market, "Рынок", "Market", 8, "coin_markets", TerrainKind.Plains, TerrainKind.Meadow),
             Improvement(ImprovementKind.Fishery, "Рыбный причал", "Fishery", 8, "coastal_craft", TerrainKind.Coast),
-            Improvement(ImprovementKind.IrrigatedFarm, "Ирригационная ферма", "Irrigated Farm", 10, "irrigation", TerrainKind.Arid)
+            Improvement(ImprovementKind.IrrigatedFarm, "Ирригационная ферма", "Irrigated Farm", 10, "irrigation", TerrainKind.Arid),
+            Improvement(ImprovementKind.Park, "Парк и заповедник", "Park and Reserve", 7, "writing", TerrainKind.Meadow, TerrainKind.Plains, TerrainKind.Forest),
+            Improvement(ImprovementKind.Fortification, "Укрепление", "Fortification", 10, "stone", TerrainKind.Plains, TerrainKind.Meadow, TerrainKind.Hills)
         };
 
         public static readonly UnitDefinition[] Units =
@@ -208,7 +213,9 @@ namespace Nasledie.Core
             Event(EventKind.TradeShortage, "Торговый дефицит", "Trade Shortage", "Потерян ключевой маршрут.", "EmergencyStock", "NewRoute", "DomesticSupply"),
             Event(EventKind.CulturalExchange, "Культурный обмен", "Cultural Exchange", "Открытые границы и два центра культуры.", "Festival", "JointMuseum", "CloseExchange"),
             Event(EventKind.MobilizationFatigue, "Усталость от мобилизации", "Mobilization Fatigue", "Военная нагрузка достигла 75.", "PaySupport", "LocalTruce", "Continue"),
-            Event(EventKind.SharedResearch, "Общее исследование", "Shared Research", "Научный обмен минимум двух сторон.", "JointProject", "NationalProject", "ShareKnowledge")
+            Event(EventKind.SharedResearch, "Общее исследование", "Shared Research", "Научный обмен минимум двух сторон.", "JointProject", "NationalProject", "ShareKnowledge"),
+            Event(EventKind.SettlerInterception, "Перехват гражданского обоза", "Civilian Convoy Intercepted", "Военный отряд угрожает обозу. Выберите путь для жителей: безопасное отступление, интернирование на один ход или рискованный прорыв с потерями.", "Retreat", "Internment", "ContinueJourney"),
+            Event(EventKind.NeutralMediation, "Предложение нейтрального посредника", "Neutral Mediation Proposal", "После восьми ходов без контроля над городом нейтральная сторона предлагает переговоры. Перемирие остановит боевые потери; отказ сохранит войну, но повысит напряжение.", "AcceptMediation", "RejectMediation")
         };
 
         private static TechnologyDefinition Tech(string id, string ru, string en, Era era, int cost, string[] prerequisites, string unlock, bool key = false)

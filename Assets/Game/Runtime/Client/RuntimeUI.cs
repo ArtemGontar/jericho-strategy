@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -294,10 +296,21 @@ namespace Nasledie.Client
 
     public static class SaveService
     {
-        private const int CurrentSaveVersion = 4;
+        [Serializable]
+        private sealed class SaveEnvelope
+        {
+            public int EnvelopeVersion = 1;
+            public string BuildVersion = string.Empty;
+            public int RulesVersion;
+            public string Checksum = string.Empty;
+            public string Payload = string.Empty;
+        }
+
+        private const int CurrentSaveVersion = 8;
         private static string DirectoryPath { get { return Path.Combine(Application.persistentDataPath, "NasledieSaves"); } }
         private static string AutoPath(int slot) { return Path.Combine(DirectoryPath, "autosave_" + slot + ".json"); }
-        private static string ManualPath { get { return Path.Combine(DirectoryPath, "campaign.json"); } }
+        private static string ManualPath(int slot) { return Path.Combine(DirectoryPath, "manual_" + slot + ".json"); }
+        private static string LegacyManualPath { get { return Path.Combine(DirectoryPath, "campaign.json"); } }
         private static string BackupPath(string path) { return path + ".bak"; }
         private static string TemporaryPath(string path) { return path + ".tmp"; }
 
@@ -339,10 +352,16 @@ namespace Nasledie.Client
 
         public static bool SaveManual(GameState state)
         {
+            return SaveManual(state, 0);
+        }
+
+        public static bool SaveManual(GameState state, int slot)
+        {
+            if (slot < 0 || slot > 2) return false;
             try
             {
                 Directory.CreateDirectory(DirectoryPath);
-                Write(ManualPath, state);
+                Write(ManualPath(slot), state);
                 return true;
             }
             catch (Exception exception)
@@ -356,7 +375,7 @@ namespace Nasledie.Client
         {
             GameState latest = null;
             DateTime latestTime = DateTime.MinValue;
-            string[] paths = { ManualPath, AutoPath(0), AutoPath(1), AutoPath(2) };
+            string[] paths = { ManualPath(0), ManualPath(1), ManualPath(2), LegacyManualPath, AutoPath(0), AutoPath(1), AutoPath(2) };
             for (int i = 0; i < paths.Length; i++)
             {
                 string[] candidates = { paths[i], BackupPath(paths[i]) };
@@ -374,9 +393,24 @@ namespace Nasledie.Client
             return latest;
         }
 
-        public static GameState LoadManual() { return Read(ManualPath); }
+        public static GameState LoadManual() { return LoadManual(0); }
+        public static GameState LoadManual(int slot)
+        {
+            if (slot < 0 || slot > 2) return null;
+            GameState saved = Read(ManualPath(slot));
+            return saved ?? (slot == 0 ? Read(LegacyManualPath) : null);
+        }
         public static GameState LoadAuto(int slot) { return slot < 0 || slot > 2 ? null : Read(AutoPath(slot)); }
-        public static bool HasManualSave { get { return File.Exists(ManualPath) || File.Exists(BackupPath(ManualPath)); } }
+        public static bool HasManualSave
+        {
+            get { return HasManualSaveSlot(0) || HasManualSaveSlot(1) || HasManualSaveSlot(2) || File.Exists(LegacyManualPath) || File.Exists(BackupPath(LegacyManualPath)); }
+        }
+        public static bool HasManualSaveSlot(int slot)
+        {
+            if (slot < 0 || slot > 2) return false;
+            if (File.Exists(ManualPath(slot)) || File.Exists(BackupPath(ManualPath(slot)))) return true;
+            return slot == 0 && (File.Exists(LegacyManualPath) || File.Exists(BackupPath(LegacyManualPath)));
+        }
         public static bool HasAutoSave(int slot) { return slot >= 0 && slot <= 2 && (File.Exists(AutoPath(slot)) || File.Exists(BackupPath(AutoPath(slot)))); }
 
         public static bool HasSave
@@ -394,7 +428,15 @@ namespace Nasledie.Client
             try
             {
                 if (File.Exists(temporary)) File.Delete(temporary);
-                File.WriteAllText(temporary, JsonUtility.ToJson(state, true));
+                string payload = JsonUtility.ToJson(state, true);
+                SaveEnvelope envelope = new SaveEnvelope
+                {
+                    BuildVersion = Application.version,
+                    RulesVersion = state.RulesVersion,
+                    Payload = payload
+                };
+                envelope.Checksum = CalculateChecksum(envelope);
+                File.WriteAllText(temporary, JsonUtility.ToJson(envelope, true));
                 GameState staged = ReadSingle(temporary);
                 if (staged == null || staged.Turn != state.Turn || staged.Seed != state.Seed)
                     throw new IOException("Сохранение не прошло проверку после записи.");
@@ -448,7 +490,15 @@ namespace Nasledie.Client
                 if (!File.Exists(path)) return null;
                 string json = File.ReadAllText(path);
                 if (string.IsNullOrEmpty(json)) return null;
-                GameState state = JsonUtility.FromJson<GameState>(json);
+                string payload = json;
+                SaveEnvelope envelope = JsonUtility.FromJson<SaveEnvelope>(json);
+                if (envelope != null && !string.IsNullOrEmpty(envelope.Payload))
+                {
+                    if (envelope.EnvelopeVersion != 1 || string.IsNullOrEmpty(envelope.Checksum) ||
+                        !string.Equals(envelope.Checksum, CalculateChecksum(envelope), StringComparison.Ordinal)) return null;
+                    payload = envelope.Payload;
+                }
+                GameState state = JsonUtility.FromJson<GameState>(payload);
                 if (state == null || state.SaveVersion < 1 || state.SaveVersion > CurrentSaveVersion || state.Civilizations == null || state.Cities == null || state.Cells == null) return null;
                 Migrate(state);
                 state.SelectedMapOffset = state.SelectedMapOffset ?? new int[2];
@@ -459,6 +509,7 @@ namespace Nasledie.Client
                 state.Events = state.Events ?? Array.Empty<ActiveEventState>();
                 state.Reports = state.Reports ?? Array.Empty<TurnReport>();
                 state.EventLog = state.EventLog ?? Array.Empty<string>();
+                state.CommandJournal = state.CommandJournal ?? Array.Empty<string>();
                 state.Crisis = state.Crisis ?? new CrisisState();
                 for (int i = 0; i < state.Cities.Length; i++)
                 {
@@ -535,6 +586,48 @@ namespace Nasledie.Client
             }
             if (state.SaveVersion <= 3)
                 state.SaveVersion = 4;
+            if (state.SaveVersion <= 4)
+            {
+                state.CommandJournal = state.CommandJournal ?? Array.Empty<string>();
+                state.SaveVersion = 5;
+            }
+            if (state.SaveVersion <= 5)
+            {
+                state.SaveVersion = 6;
+            }
+            if (state.SaveVersion <= 6)
+            {
+                if (state.Events != null)
+                    for (int i = 0; i < state.Events.Length; i++)
+                        if (state.Events[i].TargetUnitId == 0) state.Events[i].TargetUnitId = -1;
+                state.SaveVersion = 7;
+            }
+            if (state.SaveVersion <= 7)
+            {
+                if (state.Civilizations != null)
+                    for (int i = 0; i < state.Civilizations.Length; i++)
+                    {
+                        CivilizationState civ = state.Civilizations[i];
+                        if (civ.PrisonersHeldByCivilizationTenths == null)
+                            civ.PrisonersHeldByCivilizationTenths = new int[state.Civilizations.Length];
+                        else if (civ.PrisonersHeldByCivilizationTenths.Length != state.Civilizations.Length)
+                            Array.Resize(ref civ.PrisonersHeldByCivilizationTenths, state.Civilizations.Length);
+                    }
+                state.SaveVersion = 8;
+            }
+        }
+
+        private static string CalculateChecksum(SaveEnvelope envelope)
+        {
+            string content = envelope.EnvelopeVersion + "|" + (envelope.BuildVersion ?? string.Empty) + "|" +
+                envelope.RulesVersion + "|" + (envelope.Payload ?? string.Empty);
+            using (SHA256 sha = SHA256.Create())
+            {
+                byte[] digest = sha.ComputeHash(Encoding.UTF8.GetBytes(content));
+                StringBuilder result = new StringBuilder(digest.Length * 2);
+                for (int i = 0; i < digest.Length; i++) result.Append(digest[i].ToString("x2"));
+                return result.ToString();
+            }
         }
     }
 }

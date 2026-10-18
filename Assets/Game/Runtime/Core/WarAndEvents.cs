@@ -18,11 +18,29 @@ namespace Nasledie.Core
             int attackPower = BattlePower(attacker);
             int defensePower = BattlePower(defender);
             int terrainBonus = cell.Terrain == TerrainKind.Hills || cell.Terrain == TerrainKind.Forest ? 15 : 0;
+            int fortifications = 0;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell fort = state.Cells[i];
+                if (fort.OwnerId == defenderOwnerId && fort.Improvement == ImprovementKind.Fortification && fort.Damage < 75 &&
+                    HexGrid.Distance(fort.Q, fort.R, defender.Q, defender.R) <= 1) fortifications++;
+            }
+            terrainBonus += Math.Min(30, fortifications * 15);
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                TreatyState treaty = state.Treaties[i];
+                if (!treaty.Active || treaty.Kind != TreatyKind.Guarantee) continue;
+                int protectedSide = treaty.FromCivilizationId == defenderOwnerId ? treaty.ToCivilizationId :
+                    treaty.ToCivilizationId == defenderOwnerId ? treaty.FromCivilizationId : -1;
+                if (protectedSide >= 0 && protectedSide != attackerOwnerId) { terrainBonus += 10; break; }
+            }
             for (int i = 0; i < state.Cities.Length; i++)
                 if (state.Cities[i].Q == cell.Q && state.Cities[i].R == cell.R) terrainBonus += 10 + state.Cities[i].BuildingLevel("barracks") * 10;
             defensePower = defensePower * (100 + terrainBonus) / 100;
-            int attackLoss = Math.Max(8, attacker.Strength * (defensePower >= attackPower ? 35 : 22) / 100);
-            int defenseLoss = Math.Max(8, defender.Strength * (attackPower >= defensePower ? 42 : 26) / 100);
+            int attackLoss = Math.Min(attacker.Strength, Math.Max(8, attacker.Strength * (defensePower >= attackPower ? 35 : 22) / 100));
+            int defenseLoss = Math.Min(defender.Strength, Math.Max(8, defender.Strength * (attackPower >= defensePower ? 42 : 26) / 100));
+            ApplyBattleCasualties(state, attacker, attackLoss, out int attackerDeaths, out int attackerWounded);
+            ApplyBattleCasualties(state, defender, defenseLoss, out int defenderDeaths, out int defenderWounded);
             attacker.Strength = Math.Max(0, attacker.Strength - attackLoss);
             defender.Strength = Math.Max(0, defender.Strength - defenseLoss);
             attacker.Readiness = Math.Max(30, attacker.Readiness - 25);
@@ -32,6 +50,10 @@ namespace Nasledie.Core
             CivilizationState attackerCiv = state.Civilization(attacker.OwnerId);
             CivilizationState defenderCiv = state.Civilization(defender.OwnerId);
             bool won = attacker.Strength > 0 && (defender.Strength == 0 || attackPower > defensePower * 12 / 10);
+            HexCell retreatCell = won && defender.Strength > 0 ? FindBattleRetreatCell(state, defender, cell) : null;
+            bool defenderDestroyed = won && (defender.Strength <= 0 || retreatCell == null);
+            int defenderPrisoners = defenderDestroyed ? CaptureMilitarySurvivors(state, defender, attackerOwnerId) : 0;
+            int attackerPrisoners = !won && attacker.Strength <= 0 ? CaptureMilitarySurvivors(state, attacker, defenderOwnerId) : 0;
             if (battleCapture != null)
                 battleCapture.Add(new BattleResolutionEvent
                 {
@@ -43,35 +65,163 @@ namespace Nasledie.Core
                     DefenderKind = defenderKind,
                     CellQ = cell.Q,
                     CellR = cell.R,
+                    RetreatQ = retreatCell == null ? cell.Q : retreatCell.Q,
+                    RetreatR = retreatCell == null ? cell.R : retreatCell.R,
                     AttackerLoss = attackLoss,
                     DefenderLoss = defenseLoss,
+                    AttackerDeathsTenths = attackerDeaths,
+                    DefenderDeathsTenths = defenderDeaths,
+                    AttackerWoundedTenths = attackerWounded,
+                    DefenderWoundedTenths = defenderWounded,
+                    AttackerPrisonersTenths = attackerPrisoners,
+                    DefenderPrisonersTenths = defenderPrisoners,
                     HumanVisibilityMask = visibilityMask,
                     AttackerWon = won,
+                    DefenderRetreated = retreatCell != null,
+                    DefenderDestroyed = defenderDestroyed,
                     PlayerFacing = playerFacing
                 });
-            string result;
+            string result = "";
             if (won)
             {
                 attacker.Q = cell.Q;
                 attacker.R = cell.R;
-                RemoveUnit(state, defender.Id);
-                result = attackerCiv.Name + " одержала дорогую тактическую победу над отрядом " + defenderCiv.Name + ".";
+                if (defenderDestroyed)
+                {
+                    RetireMilitarySurvivors(state, defender);
+                    RemoveUnit(state, defender.Id);
+                }
+                else
+                {
+                    defender.Q = retreatCell.Q;
+                    defender.R = retreatCell.R;
+                    result = attackerCiv.Name + " одержала дорогую тактическую победу; отряд " + defenderCiv.Name + " отступил на безопасную клетку.";
+                }
+                if (defenderDestroyed) result = attackerCiv.Name + " одержала дорогую тактическую победу и окружила отряд " + defenderCiv.Name + ".";
                 DamageNearbyInfrastructure(state, cell.Q, cell.R, attacker.OwnerId);
             }
             else
             {
-                if (attacker.Strength == 0) RemoveUnit(state, attacker.Id);
+                if (attacker.Strength == 0)
+                {
+                    RetireMilitarySurvivors(state, attacker);
+                    RemoveUnit(state, attacker.Id);
+                }
                 result = defenderCiv.Name + " удержала позицию; обе стороны понесли потери.";
             }
             if (attackerCiv != null) { attackerCiv.WarStrain = Math.Min(100, attackerCiv.WarStrain + 8); attackerCiv.Reputation = Math.Max(0, attackerCiv.Reputation - 1); }
             if (defenderCiv != null) { defenderCiv.WarStrain = Math.Min(100, defenderCiv.WarStrain + 5); defenderCiv.Reputation = Math.Max(0, defenderCiv.Reputation - 1); }
-            AppendLog(state, "Сражение: " + result + " Потери сил: " + attackLoss + " / " + defenseLoss + ". Боеспособность и готовность снижены.");
+            AppendLog(state, "Сражение: " + result + " Потери сил: " + attackLoss + " / " + defenseLoss +
+                "; погибшие: " + FormatPopulation(attackerDeaths + defenderDeaths) + "; раненые: " + FormatPopulation(attackerWounded + defenderWounded) +
+                (attackerPrisoners + defenderPrisoners > 0 ? "; взято в плен: " + FormatPopulation(attackerPrisoners + defenderPrisoners) : "") +
+                ". Сила и готовность отрядов снижены.");
             GameFactory.RebuildVisibility(state);
+        }
+
+        private static void ApplyBattleCasualties(GameState state, UnitState unit, int strengthLoss, out int deathsTenths, out int woundedTenths)
+        {
+            deathsTenths = 0;
+            woundedTenths = 0;
+            if (unit == null || strengthLoss <= 0 || unit.Kind == UnitKind.SettlerWagon) return;
+            UnitDefinition definition = RulesCatalog.Unit(unit.Kind);
+            int initialStrength = Math.Max(1, unit.InitialStrength > 0 ? unit.InitialStrength : (definition == null ? unit.Strength : definition.Strength));
+            int initialPopulation = Math.Max(0, unit.InitialPopulationTenths > 0 ? unit.InitialPopulationTenths :
+                (definition == null ? unit.PopulationTenths : definition.PopulationTenths));
+            int totalLoss = Math.Min(unit.PopulationTenths, (initialPopulation * strengthLoss + initialStrength / 2) / initialStrength);
+            if (totalLoss <= 0) return;
+
+            CityState source = state.City(unit.CitySourceId);
+            bool medicalSupport = source != null && (source.BuildingLevel("clinic") > 0 || source.BuildingLevel("hospital") > 0);
+            int woundPercent = medicalSupport ? 60 : 30;
+            woundedTenths = Math.Min(totalLoss, (totalLoss * woundPercent + 50) / 100);
+            if (woundedTenths > 0)
+            {
+                unit.WoundedPopulationTenths += woundedTenths;
+                int woundedStrength = (strengthLoss * woundPercent + 50) / 100;
+                unit.WoundedStrength += Math.Max(1, woundedStrength);
+                unit.WoundedTurns = Math.Max(unit.WoundedTurns, medicalSupport ? 3 : 5);
+                unit.IsWounded = true;
+            }
+            unit.PopulationTenths = Math.Max(0, unit.PopulationTenths - totalLoss);
+            deathsTenths = totalLoss - woundedTenths;
+        }
+
+        private static void RetireMilitarySurvivors(GameState state, UnitState unit)
+        {
+            if (unit == null || unit.Kind == UnitKind.SettlerWagon) return;
+            int survivors = Math.Max(0, unit.PopulationTenths) + Math.Max(0, unit.WoundedPopulationTenths);
+            if (survivors <= 0) return;
+            CivilizationState owner = state.Civilization(unit.OwnerId);
+            CityState source = state.City(unit.CitySourceId);
+            if (owner == null) return;
+            if (source != null && source.OwnerId == unit.OwnerId && source.OccupiedById < 0)
+            {
+                int returned = Math.Min(survivors, Math.Max(0, source.HousingTenths - source.PopulationTenths));
+                source.PopulationTenths += returned;
+                survivors -= returned;
+            }
+            if (survivors > 0) owner.RefugeePopulationTenths += survivors;
+            unit.PopulationTenths = 0;
+            unit.WoundedPopulationTenths = 0;
+            unit.WoundedStrength = 0;
+            unit.WoundedTurns = 0;
+            unit.IsWounded = false;
+        }
+
+        private static int CaptureMilitarySurvivors(GameState state, UnitState unit, int captorId)
+        {
+            if (state == null || unit == null || unit.Kind == UnitKind.SettlerWagon) return 0;
+            CivilizationState captor = state.Civilization(captorId);
+            if (captor == null || captor.PrisonersHeldByCivilizationTenths == null || unit.OwnerId < 0 ||
+                unit.OwnerId >= captor.PrisonersHeldByCivilizationTenths.Length) return 0;
+            int survivors = Math.Max(0, unit.PopulationTenths) + Math.Max(0, unit.WoundedPopulationTenths);
+            int captured = survivors / 2;
+            if (captured <= 0) return 0;
+            int healthy = Math.Min(unit.PopulationTenths, captured);
+            unit.PopulationTenths -= healthy;
+            int remaining = captured - healthy;
+            if (remaining > 0) unit.WoundedPopulationTenths = Math.Max(0, unit.WoundedPopulationTenths - remaining);
+            captor.PrisonersHeldByCivilizationTenths[unit.OwnerId] += captured;
+            return captured;
+        }
+
+        private static HexCell FindBattleRetreatCell(GameState state, UnitState retreating, HexCell battleCell)
+        {
+            HexCell best = null;
+            int bestOwnership = int.MaxValue;
+            int bestDistance = int.MaxValue;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell candidate = state.Cells[i];
+                if (candidate == null || candidate.Terrain == TerrainKind.Water || candidate.Terrain == TerrainKind.Mountain ||
+                    candidate.Q == battleCell.Q && candidate.R == battleCell.R ||
+                    candidate.OwnerId != retreating.OwnerId && candidate.OwnerId >= 0) continue;
+                bool occupied = false;
+                for (int u = 0; u < state.Units.Length; u++)
+                {
+                    UnitState other = state.Units[u];
+                    if (other != null && other.Id != retreating.Id && other.Q == candidate.Q && other.R == candidate.R)
+                    { occupied = true; break; }
+                }
+                if (occupied) continue;
+                int ownershipRank = candidate.OwnerId == retreating.OwnerId ? 0 : 1;
+                int distance = HexGrid.Distance(candidate.Q, candidate.R, battleCell.Q, battleCell.R);
+                if (ownershipRank < bestOwnership || (ownershipRank == bestOwnership &&
+                    (distance < bestDistance || (distance == bestDistance && (best == null || candidate.Q < best.Q ||
+                     (candidate.Q == best.Q && candidate.R < best.R))))))
+                {
+                    best = candidate;
+                    bestOwnership = ownershipRank;
+                    bestDistance = distance;
+                }
+            }
+            return best;
         }
 
         private int BattlePower(UnitState unit)
         {
-            return Math.Max(1, unit.Strength) * Math.Max(30, unit.Readiness) * Math.Max(3000, unit.SupplyBasisPoints) / 1000000;
+            int power = Math.Max(1, unit.Strength) * Math.Max(30, unit.Readiness) * Math.Max(3000, unit.SupplyBasisPoints) / 1000000;
+            return unit.IronEquipped ? power * 125 / 100 : power;
         }
 
         private static void RemoveUnit(GameState state, int id)
@@ -184,21 +334,50 @@ namespace Nasledie.Core
                     ApplyWarTurnDamage(state, conflict);
                     int occupationHold = 0;
                     for (int c = 0; c < state.Cities.Length; c++)
-                        if (state.Cities[c].OwnerId == defender.Id && state.Cities[c].OccupiedById == aggressor.Id) occupationHold++;
-                    if (occupationHold > 0) conflict.OccupationCityId = FirstOccupiedCity(state, defender.Id, aggressor.Id);
+                        if ((state.Cities[c].OwnerId == defender.Id && state.Cities[c].OccupiedById == aggressor.Id) ||
+                            (state.Cities[c].OwnerId == aggressor.Id && state.Cities[c].OccupiedById == defender.Id)) occupationHold++;
+                    if (occupationHold > 0)
+                    {
+                        int aggressorOccupation = FirstOccupiedCity(state, defender.Id, aggressor.Id);
+                        conflict.OccupationCityId = aggressorOccupation >= 0 ? aggressorOccupation : FirstOccupiedCity(state, aggressor.Id, defender.Id);
+                    }
                     if (occupationHold > 0 && conflict.WarTurn >= 3)
                     {
                         conflict.Phase = 3;
                         conflict.TruceTurns = 2;
                         aggressor.Reputation = Math.Max(0, aggressor.Reputation - 8);
-                        lines.Add("Международное давление вынуждает стороны к перемирию после оккупации. Города требуют восстановления.");
+                        lines.Add("Международное давление вынуждает стороны к перемирию после оккупации города. Города требуют восстановления.");
                     }
-                    else if (conflict.WarTurn >= 6)
+                    else if (conflict.WarTurn >= 8 && !conflict.MediationOffered)
+                    {
+                        conflict.MediationOffered = true;
+                        if (aggressor.IsHuman || defender.IsHuman)
+                        {
+                            int humanId = state.HumanCivilizationId;
+                            int otherId = aggressor.IsHuman ? defender.Id : aggressor.Id;
+                            Append(ref state.Events, new ActiveEventState
+                            {
+                                Id = state.NextEntityId++, Kind = EventKind.NeutralMediation,
+                                TargetCivilizationId = humanId, OtherCivilizationId = otherId, TurnsRemaining = 1,
+                                Severity = 1, Choices = new[] { "AcceptMediation", "RejectMediation" }
+                            });
+                            lines.Add("Восьмой ход противостояния без захвата городов: нейтральный посредник направил сторонам предложение.");
+                        }
+                        else if (aggressor.WarStrain >= 40 && defender.WarStrain >= 40)
+                        {
+                            conflict.Phase = 3;
+                            conflict.TruceTurns = 2;
+                            ReleaseOccupation(state, conflict);
+                            lines.Add("Нейтральное посредничество убедило истощённые стороны принять перемирие.");
+                        }
+                        else lines.Add("Нейтральный посредник предложил перемирие, но стороны пока отказались.");
+                    }
+                    else if (conflict.WarTurn >= 10)
                     {
                         conflict.Phase = 3;
                         conflict.TruceTurns = 2;
                         aggressor.Reputation = Math.Max(0, aggressor.Reputation - 8);
-                        lines.Add("Истощение и дипломатическое давление остановили войну. Ни одна сторона не получила надёжной выгоды.");
+                        lines.Add("Истощение и дипломатическое давление остановили затяжную войну. Ни одна сторона не получила надёжной выгоды.");
                     }
                     continue;
                 }
@@ -337,6 +516,102 @@ namespace Nasledie.Core
                     }
                 }
             }
+            PlanAiWarInitiative(state, lines);
+        }
+
+        private void PlanAiWarInitiative(GameState state, List<string> lines)
+        {
+            if (state.Turn < 16) return;
+            for (int c = 0; c < state.Civilizations.Length; c++)
+            {
+                CivilizationState aggressor = state.Civilizations[c];
+                if (aggressor.IsHuman || aggressor.IsDefeated || aggressor.WarsStarted > 0 ||
+                    (aggressor.Difficulty != Difficulty.Strong && aggressor.Difficulty != Difficulty.Trial) ||
+                    aggressor.TreasuryTenths < 120 || aggressor.Reputation < 30 || aggressor.WarStrain >= 40 ||
+                    AtWarWithAny(state, aggressor.Id) ||
+                    (aggressor.Difficulty == Difficulty.Trial ? state.Turn % 4 != aggressor.Id % 4 : state.Turn % 6 != aggressor.Id % 6)) continue;
+                int ownStrength = MilitaryStrength(state, aggressor.Id);
+                int minimumStrength = 70;
+                if (ownStrength < minimumStrength) continue;
+
+                CivilizationState chosenTarget = null;
+                CityState chosenTargetCity = null;
+                HexCell chosenClaim = null;
+                int bestScore = int.MinValue;
+                for (int t = 0; t < state.Civilizations.Length; t++)
+                {
+                    CivilizationState target = state.Civilizations[t];
+                    if (target.Id == aggressor.Id || target.IsDefeated || AtWarWithAny(state, target.Id) ||
+                        HasTreaty(state, TreatyKind.NonAggression, aggressor.Id, target.Id) || IsProtectedByGuarantee(state, target.Id, aggressor.Id)) continue;
+                    CityState aggressorCity = null;
+                    CityState targetCity = null;
+                    int borderDistance = int.MaxValue;
+                    for (int a = 0; a < state.Cities.Length; a++)
+                    {
+                        CityState own = state.Cities[a];
+                        if (own.OwnerId != aggressor.Id) continue;
+                        for (int b = 0; b < state.Cities.Length; b++)
+                        {
+                            CityState rival = state.Cities[b];
+                            if (rival.OwnerId != target.Id) continue;
+                            int distance = HexGrid.Distance(own.Q, own.R, rival.Q, rival.R);
+                            if (distance < borderDistance) { borderDistance = distance; aggressorCity = own; targetCity = rival; }
+                        }
+                    }
+                    if (aggressorCity == null || targetCity == null || borderDistance > 5) continue;
+                    int targetStrength = MilitaryStrength(state, target.Id);
+                    int hostility = Math.Max(0, -aggressor.Relations[target.Id]) + aggressor.Threats[target.Id] / 2 + target.Threats[aggressor.Id] / 3;
+                    int rivalry = AiMilitaryPosture(state, aggressor.Id * 4 + target.Id);
+                    if (rivalry < (aggressor.Difficulty == Difficulty.Trial ? 20 : 12)) hostility += 70;
+                    if (hostility < (aggressor.Difficulty == Difficulty.Trial ? 35 : 50)) continue;
+                    if (targetStrength > 0 && ownStrength * 100 < targetStrength * (aggressor.Difficulty == Difficulty.Trial ? 100 : 145)) continue;
+                    if (targetStrength == 0 && hostility < 65) continue;
+                    int score = hostility * 2 + ownStrength - targetStrength - borderDistance * 4;
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        chosenTarget = target;
+                        chosenTargetCity = targetCity;
+                        chosenClaim = FindBorderClaimCell(state, aggressor.Id, target.Id);
+                    }
+                }
+                if (chosenTarget == null) continue;
+                string legalGoal = aggressor.StrategicGoal == "defense" ? "демилитаризация границы" :
+                    HasTreatyRecord(state, TreatyKind.TradeRoute, aggressor.Id, chosenTarget.Id) ? "снятие торговой блокады" :
+                    "защита спорной границы";
+                int q = chosenClaim == null ? chosenTargetCity.Q : chosenClaim.Q;
+                int r = chosenClaim == null ? chosenTargetCity.R : chosenClaim.R;
+                CommandResult declaration = DeclareWar(state, aggressor, chosenTarget.Id, q, r, legalGoal, false);
+                if (declaration.Accepted)
+                {
+                    lines.Add(aggressor.Name + " начала кризисную мобилизацию против " + chosenTarget.Name + "; заявленная цель: " + legalGoal + ".");
+                    return;
+                }
+            }
+        }
+
+        private static bool IsProtectedByGuarantee(GameState state, int targetId, int aggressorId)
+        {
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                TreatyState treaty = state.Treaties[i];
+                if (!treaty.Active || treaty.Kind != TreatyKind.Guarantee) continue;
+                int protectedId = treaty.FromCivilizationId == targetId ? treaty.ToCivilizationId :
+                    treaty.ToCivilizationId == targetId ? treaty.FromCivilizationId : -1;
+                if (protectedId >= 0 && protectedId != aggressorId) return true;
+            }
+            return false;
+        }
+
+        private static bool HasTreatyRecord(GameState state, TreatyKind kind, int first, int second)
+        {
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                TreatyState treaty = state.Treaties[i];
+                if (treaty.Kind == kind && ((treaty.FromCivilizationId == first && treaty.ToCivilizationId == second) ||
+                    (treaty.FromCivilizationId == second && treaty.ToCivilizationId == first))) return true;
+            }
+            return false;
         }
 
         private void ResolveEventsAndCrisis(GameState state, List<string> lines)
@@ -384,7 +659,7 @@ namespace Nasledie.Core
                 for (int i = 0; i < state.Civilizations.Length; i++) state.Civilizations[i].Reputation = Math.Min(100, state.Civilizations[i].Reputation + 2);
                 return;
             }
-            state.Crisis.Threat = Math.Min(120, state.Crisis.Threat + 4);
+            state.Crisis.Threat = Math.Min(120, state.Crisis.Threat + 8);
             if (state.Crisis.TurnsActive >= 4)
             {
                 for (int i = 0; i < state.Cities.Length; i++)

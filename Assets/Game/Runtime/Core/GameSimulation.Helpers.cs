@@ -5,6 +5,42 @@ namespace Nasledie.Core
 {
     public sealed partial class GameSimulation
     {
+        private static void NormalizeUnitPopulationData(GameState state)
+        {
+            if (state == null || state.Units == null) return;
+            for (int i = 0; i < state.Units.Length; i++)
+            {
+                UnitState unit = state.Units[i];
+                if (unit == null) continue;
+                UnitDefinition definition = RulesCatalog.Unit(unit.Kind);
+                if (definition == null) continue;
+                if (unit.InitialStrength <= 0) unit.InitialStrength = Math.Max(0, definition.Strength);
+                if (unit.InitialPopulationTenths <= 0)
+                    unit.InitialPopulationTenths = Math.Max(0, Math.Max(unit.PopulationTenths + unit.WoundedPopulationTenths, definition.PopulationTenths));
+                unit.WoundedPopulationTenths = Math.Max(0, Math.Min(unit.InitialPopulationTenths, unit.WoundedPopulationTenths));
+                unit.WoundedStrength = Math.Max(0, Math.Min(unit.InitialStrength, unit.WoundedStrength));
+            }
+        }
+
+        private static void RecordPlayerCommand(GameState state, GameCommand command)
+        {
+            if (state.CommandJournal == null) state.CommandJournal = Array.Empty<string>();
+            string text = command.Text ?? string.Empty;
+            string secondary = command.SecondaryText ?? string.Empty;
+            string entry = "turn=" + state.Turn + ";actor=" + command.ActorId + ";kind=" + command.Kind +
+                ";entity=" + command.EntityId + ";target=" + command.TargetId + ";cell=" + command.Q + "," + command.R +
+                ";value=" + command.Value + ";sequence=" + command.Sequence + ";text=" + text.Replace('\n', ' ').Replace(';', ',') +
+                ";secondary=" + secondary.Replace('\n', ' ').Replace(';', ',');
+            Array.Resize(ref state.CommandJournal, state.CommandJournal.Length + 1);
+            state.CommandJournal[state.CommandJournal.Length - 1] = entry;
+            if (state.CommandJournal.Length > 2000)
+            {
+                string[] retained = new string[2000];
+                Array.Copy(state.CommandJournal, state.CommandJournal.Length - retained.Length, retained, 0, retained.Length);
+                state.CommandJournal = retained;
+            }
+        }
+
         private static T[] Append<T>(ref T[] values, T value)
         {
             if (values == null) values = Array.Empty<T>();
@@ -30,9 +66,16 @@ namespace Nasledie.Core
         {
             int total = 0;
             for (int i = 0; i < state.Cities.Length; i++) if (state.Cities[i].OwnerId == civilizationId) total += state.Cities[i].PopulationTenths;
-            for (int i = 0; i < state.Units.Length; i++) if (state.Units[i].OwnerId == civilizationId) total += state.Units[i].PopulationTenths;
+            for (int i = 0; i < state.Units.Length; i++)
+                if (state.Units[i].OwnerId == civilizationId)
+                    total += state.Units[i].PopulationTenths + Math.Max(0, state.Units[i].WoundedPopulationTenths);
             CivilizationState civ = state.Civilization(civilizationId);
             if (civ != null) total += civ.RefugeePopulationTenths;
+            for (int i = 0; i < state.Civilizations.Length; i++)
+            {
+                int[] held = state.Civilizations[i].PrisonersHeldByCivilizationTenths;
+                if (held != null && civilizationId >= 0 && civilizationId < held.Length) total += Math.Max(0, held[civilizationId]);
+            }
             return total;
         }
 
@@ -66,6 +109,7 @@ namespace Nasledie.Core
                 maximumEntityId = Math.Max(maximumEntityId, city.Id);
                 if (city.Project == null) city.Project = new CityProject();
                 city.Workers = city.Workers ?? new int[6];
+                if (city.Workers.Length != 6) Array.Resize(ref city.Workers, 6);
                 city.ServiceFunding = city.ServiceFunding ?? new int[3];
                 city.BuildingIds = city.BuildingIds ?? Array.Empty<string>();
                 city.BuildingLevels = city.BuildingLevels ?? Array.Empty<int>();
@@ -73,25 +117,9 @@ namespace Nasledie.Core
                 city.PopulationTenths = Math.Max(0, Math.Min(city.HousingTenths, city.PopulationTenths));
                 city.ReservedPopulationTenths = Math.Max(0, Math.Min(city.PopulationTenths, city.ReservedPopulationTenths));
                 city.FoodTenths = Math.Max(0, Math.Min(Math.Max(city.FoodStoreCapacityTenths, city.PopulationTenths * 4), city.FoodTenths));
-                int people = city.WorkerCount;
-                int assigned = 0;
-                for (int w = 0; w < city.Workers.Length; w++)
-                {
-                    city.Workers[w] = Math.Max(0, city.Workers[w]);
-                    assigned += city.Workers[w];
-                }
-                if (assigned > people)
-                {
-                    int remove = assigned - people;
-                    for (int w = city.Workers.Length - 1; w >= 0 && remove > 0; w--)
-                    {
-                        int take = Math.Min(remove, city.Workers[w]);
-                        city.Workers[w] -= take;
-                        remove -= take;
-                    }
-                }
                 for (int w = 0; w < city.ServiceFunding.Length; w++) city.ServiceFunding[w] = Math.Max(0, Math.Min(2, city.ServiceFunding[w]));
                 if (city.OwnerId < 0 || city.OwnerId >= state.Civilizations.Length) throw new InvalidOperationException("У города нет владельца.");
+                EconomyCalculator.NormalizeWorkerAssignments(state, city);
             }
             for (int i = 0; i < state.Civilizations.Length; i++)
             {
@@ -104,6 +132,9 @@ namespace Nasledie.Core
                 civ.Threats = civ.Threats ?? new int[state.Civilizations.Length];
                 civ.CulturalInfluence = civ.CulturalInfluence ?? new int[state.Civilizations.Length];
                 civ.TradeDependency = civ.TradeDependency ?? new int[state.Civilizations.Length];
+                civ.PrisonersHeldByCivilizationTenths = civ.PrisonersHeldByCivilizationTenths ?? new int[state.Civilizations.Length];
+                if (civ.PrisonersHeldByCivilizationTenths.Length != state.Civilizations.Length)
+                    Array.Resize(ref civ.PrisonersHeldByCivilizationTenths, state.Civilizations.Length);
                 if (civ.TechnologyProgressTenths.Length != RulesCatalog.Technologies.Length)
                     Array.Resize(ref civ.TechnologyProgressTenths, RulesCatalog.Technologies.Length);
             }
@@ -116,6 +147,7 @@ namespace Nasledie.Core
                 unit.Strength = Math.Max(0, Math.Min(150, unit.Strength));
                 unit.Readiness = Math.Max(0, Math.Min(120, unit.Readiness));
             }
+            NormalizeUnitPopulationData(state);
             if (state.Treaties == null) state.Treaties = Array.Empty<TreatyState>();
             if (state.Conflicts == null) state.Conflicts = Array.Empty<ConflictState>();
             if (state.Events == null) state.Events = Array.Empty<ActiveEventState>();
@@ -526,16 +558,128 @@ namespace Nasledie.Core
             return null;
         }
 
+        private static int MilitaryStrength(GameState state, int civilizationId)
+        {
+            int total = 0;
+            for (int i = 0; i < state.Units.Length; i++)
+            {
+                UnitState unit = state.Units[i];
+                if (unit.OwnerId != civilizationId || unit.Kind == UnitKind.SettlerWagon) continue;
+                total += Math.Max(0, unit.Strength) * Math.Max(30, unit.Readiness) / 100 * Math.Max(3000, unit.SupplyBasisPoints) / 10000;
+            }
+            return total;
+        }
+
+        private static UnitState WeakestMilitaryUnit(GameState state, int civilizationId)
+        {
+            UnitState weakest = null;
+            for (int i = 0; i < state.Units.Length; i++)
+            {
+                UnitState unit = state.Units[i];
+                if (unit.OwnerId != civilizationId || unit.Kind == UnitKind.SettlerWagon) continue;
+                if (weakest == null || unit.Strength < weakest.Strength) weakest = unit;
+            }
+            return weakest;
+        }
+
+        private static HexCell FindBorderClaimCell(GameState state, int claimantId, int targetId)
+        {
+            HexCell best = null;
+            int bestScore = int.MaxValue;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell cell = state.Cells[i];
+                if (cell.OwnerId != targetId || cell.Terrain == TerrainKind.Water || cell.Terrain == TerrainKind.Mountain ||
+                    cell.Terrain == TerrainKind.Swamp || cell.DistrictCityId >= 0 || !string.IsNullOrEmpty(cell.DistrictBuildingId)) continue;
+                bool cityCell = false;
+                for (int c = 0; c < state.Cities.Length; c++)
+                    if (state.Cities[c].Q == cell.Q && state.Cities[c].R == cell.R) { cityCell = true; break; }
+                if (cityCell) continue;
+                bool border = false;
+                for (int d = 0; d < 6; d++)
+                {
+                    HexCell neighbor = state.Cell(cell.Q + HexGrid.Directions[d, 0], cell.R + HexGrid.Directions[d, 1]);
+                    if (neighbor != null && neighbor.OwnerId == claimantId) { border = true; break; }
+                }
+                if (!border) continue;
+                int claimantDistance = int.MaxValue;
+                int targetDistance = int.MaxValue;
+                for (int c = 0; c < state.Cities.Length; c++)
+                {
+                    CityState city = state.Cities[c];
+                    int distance = HexGrid.Distance(cell.Q, cell.R, city.Q, city.R);
+                    if (city.OwnerId == claimantId) claimantDistance = Math.Min(claimantDistance, distance);
+                    if (city.OwnerId == targetId) targetDistance = Math.Min(targetDistance, distance);
+                }
+                int score = claimantDistance * 3 + targetDistance;
+                if (score < bestScore) { bestScore = score; best = cell; }
+            }
+            return best;
+        }
+
+        private static void RestoreRouteAfterPeace(GameState state, int firstId, int secondId)
+        {
+            CityState firstCity = null;
+            CityState secondCity = null;
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                if (firstCity == null && state.Cities[i].OwnerId == firstId) firstCity = state.Cities[i];
+                if (secondCity == null && state.Cities[i].OwnerId == secondId) secondCity = state.Cities[i];
+            }
+            if (firstCity == null || secondCity == null) return;
+            TreatyState route = null;
+            for (int i = 0; i < state.Treaties.Length; i++)
+            {
+                TreatyState candidate = state.Treaties[i];
+                if (candidate.Kind == TreatyKind.TradeRoute &&
+                    ((candidate.FromCivilizationId == firstId && candidate.ToCivilizationId == secondId) ||
+                     (candidate.FromCivilizationId == secondId && candidate.ToCivilizationId == firstId)))
+                { route = candidate; break; }
+            }
+            if (route == null)
+            {
+                route = new TreatyState
+                {
+                    Id = state.NextEntityId++, Kind = TreatyKind.TradeRoute,
+                    FromCivilizationId = firstId, ToCivilizationId = secondId,
+                    RouteCityA = firstCity.Id, RouteCityB = secondCity.Id,
+                    TreasuryPerTurnTenths = 20, TurnsRemaining = 0
+                };
+                Append(ref state.Treaties, route);
+            }
+            else
+            {
+                CityState routeA = state.City(route.RouteCityA);
+                CityState routeB = state.City(route.RouteCityB);
+                if (routeA == null || routeB == null || !RouteExists(state, routeA, routeB))
+                { route.RouteCityA = firstCity.Id; route.RouteCityB = secondCity.Id; }
+                route.TurnsRemaining = 0;
+                route.Broken = false;
+                route.Fulfilled = false;
+                route.Pending = false;
+            }
+            CityState selectedA = state.City(route.RouteCityA);
+            CityState selectedB = state.City(route.RouteCityB);
+            if (selectedA != null && selectedB != null && RouteExists(state, selectedA, selectedB) && !HasActiveEmbargo(state, selectedA.Id, selectedB.Id))
+            {
+                route.Active = true;
+                ApplyTreatyEffect(state, route);
+            }
+        }
+
         private static int TreatyCost(TreatyKind kind)
         {
             switch (kind)
             {
-                case TreatyKind.TradeRoute: return 10;
-                case TreatyKind.NonAggression: return 15;
-                case TreatyKind.OpenBorders: return 20;
-                case TreatyKind.KnowledgeExchange: return 25;
-                case TreatyKind.Guarantee: return 30;
-                case TreatyKind.Embargo: return 25;
+                case TreatyKind.TradeRoute: return 20;
+                case TreatyKind.NonAggression: return 50;
+                case TreatyKind.OpenBorders: return 40;
+                case TreatyKind.KnowledgeExchange: return 30;
+                case TreatyKind.Guarantee: return 80;
+                case TreatyKind.Embargo: return 30;
+                case TreatyKind.ResourceExport: return 20;
+                case TreatyKind.HumanitarianAid: return 20;
+                case TreatyKind.Mediation: return 50;
                 case TreatyKind.Peace: return 0;
                 default: return 20;
             }
@@ -543,7 +687,12 @@ namespace Nasledie.Core
 
         private static int TreatyDuration(TreatyKind kind)
         {
-            return kind == TreatyKind.NonAggression ? 6 : kind == TreatyKind.Peace ? 2 : 8;
+            if (kind == TreatyKind.TradeRoute) return 0;
+            if (kind == TreatyKind.KnowledgeExchange || kind == TreatyKind.HumanitarianAid || kind == TreatyKind.Mediation) return 1;
+            if (kind == TreatyKind.NonAggression || kind == TreatyKind.OpenBorders || kind == TreatyKind.Guarantee || kind == TreatyKind.ResourceExport) return 5;
+            if (kind == TreatyKind.Embargo) return 3;
+            if (kind == TreatyKind.Peace) return 2;
+            return 0;
         }
 
         private static string TreatyName(TreatyKind kind)
@@ -556,6 +705,9 @@ namespace Nasledie.Core
                 case TreatyKind.KnowledgeExchange: return "обмен знаниями";
                 case TreatyKind.Guarantee: return "гарантия безопасности";
                 case TreatyKind.Embargo: return "эмбарго";
+                case TreatyKind.ResourceExport: return "экспорт соли";
+                case TreatyKind.HumanitarianAid: return "гуманитарная помощь";
+                case TreatyKind.Mediation: return "посредничество";
                 case TreatyKind.Peace: return "перемирие";
                 default: return "соглашение";
             }
@@ -573,14 +725,45 @@ namespace Nasledie.Core
             second.Trusts[first.Id] = Math.Min(100, second.Trusts[first.Id] + 5);
             if (treaty.Kind == TreatyKind.KnowledgeExchange)
             {
-                int firstContribution = Math.Min(30, first.KnowledgeTenths / 2);
-                int secondContribution = Math.Min(30, second.KnowledgeTenths / 2);
+                int firstContribution = first.KnowledgeTenths / 5;
+                int secondContribution = second.KnowledgeTenths / 5;
                 first.KnowledgeTenths -= firstContribution;
                 second.KnowledgeTenths -= secondContribution;
                 first.KnowledgeTenths += secondContribution;
                 second.KnowledgeTenths += firstContribution;
                 first.CulturePrestige++;
                 second.CulturePrestige++;
+            }
+            if (treaty.Kind == TreatyKind.HumanitarianAid)
+            {
+                CityState source = state.City(treaty.RouteCityA);
+                CityState recipient = state.City(treaty.RouteCityB);
+                if (source != null && recipient != null)
+                {
+                    source.FoodTenths = Math.Max(0, source.FoodTenths - 20);
+                    recipient.FoodTenths += 20;
+                    first.TreasuryTenths -= 50;
+                    second.TreasuryTenths += 50;
+                    recipient.Trust = Math.Min(100, recipient.Trust + 5);
+                }
+            }
+            if (treaty.Kind == TreatyKind.Mediation)
+            {
+                for (int i = 0; i < state.Conflicts.Length; i++)
+                {
+                    ConflictState conflict = state.Conflicts[i];
+                    if (!conflict.Active || conflict.Phase > 2 ||
+                        (conflict.AggressorId != second.Id && conflict.DefenderId != second.Id) ||
+                        conflict.AggressorId == first.Id || conflict.DefenderId == first.Id) continue;
+                    conflict.Phase = 3;
+                    conflict.TruceTurns = 3;
+                    CivilizationState aggressor = state.Civilization(conflict.AggressorId);
+                    CivilizationState defender = state.Civilization(conflict.DefenderId);
+                    if (aggressor != null) aggressor.WarStrain = Math.Max(0, aggressor.WarStrain - 10);
+                    if (defender != null) defender.WarStrain = Math.Max(0, defender.WarStrain - 10);
+                    ReleaseOccupation(state, conflict);
+                    break;
+                }
             }
             if (treaty.Kind == TreatyKind.Guarantee)
             {
@@ -590,9 +773,8 @@ namespace Nasledie.Core
             if (treaty.Kind == TreatyKind.Embargo)
             {
                 for (int i = 0; i < state.Treaties.Length; i++)
-                    if (state.Treaties[i].Active && state.Treaties[i].Kind == TreatyKind.TradeRoute &&
-                        ((state.Treaties[i].FromCivilizationId == first.Id && state.Treaties[i].ToCivilizationId == second.Id) ||
-                         (state.Treaties[i].FromCivilizationId == second.Id && state.Treaties[i].ToCivilizationId == first.Id)))
+                    if (state.Treaties[i].Active && (state.Treaties[i].Kind == TreatyKind.TradeRoute || state.Treaties[i].Kind == TreatyKind.ResourceExport) &&
+                        RouteCitiesMatch(state.Treaties[i], treaty.RouteCityA, treaty.RouteCityB))
                     {
                         MarkTreatyBroken(state, state.Treaties[i]);
                         state.Treaties[i].Active = false;
@@ -600,12 +782,69 @@ namespace Nasledie.Core
             }
         }
 
+        private static bool RouteCitiesMatch(TreatyState treaty, int cityA, int cityB)
+        {
+            return treaty != null && ((treaty.RouteCityA == cityA && treaty.RouteCityB == cityB) ||
+                (treaty.RouteCityA == cityB && treaty.RouteCityB == cityA));
+        }
+
+        private static bool HasActiveEmbargo(GameState state, int cityA, int cityB)
+        {
+            if (state == null) return false;
+            for (int i = 0; i < state.Treaties.Length; i++)
+                if (state.Treaties[i].Active && state.Treaties[i].Kind == TreatyKind.Embargo &&
+                    RouteCitiesMatch(state.Treaties[i], cityA, cityB)) return true;
+            return false;
+        }
+
+        private static bool HasRecognizedEmbargoCrisis(GameState state, int firstId, int secondId)
+        {
+            if (state == null) return false;
+            for (int i = 0; i < state.Conflicts.Length; i++)
+            {
+                ConflictState conflict = state.Conflicts[i];
+                if (conflict.Active && conflict.Phase <= 1 &&
+                    ((conflict.AggressorId == firstId && conflict.DefenderId == secondId) ||
+                     (conflict.AggressorId == secondId && conflict.DefenderId == firstId))) return true;
+            }
+            if (HasTreatyRecord(state, TreatyKind.TradeRoute, firstId, secondId) ||
+                HasTreatyRecord(state, TreatyKind.ResourceExport, firstId, secondId))
+            {
+                CivilizationState first = state.Civilization(firstId);
+                CivilizationState second = state.Civilization(secondId);
+                if (first != null && second != null && (first.Threats[secondId] >= 60 || second.Threats[firstId] >= 60)) return true;
+            }
+            return false;
+        }
+
+        private static bool HasPrisonersHeld(GameState state, int firstId, int secondId)
+        {
+            CivilizationState first = state.Civilization(firstId);
+            CivilizationState second = state.Civilization(secondId);
+            if (first == null || second == null || first.PrisonersHeldByCivilizationTenths == null || second.PrisonersHeldByCivilizationTenths == null) return false;
+            return secondId < first.PrisonersHeldByCivilizationTenths.Length && firstId < second.PrisonersHeldByCivilizationTenths.Length &&
+                   (first.PrisonersHeldByCivilizationTenths[secondId] > 0 || second.PrisonersHeldByCivilizationTenths[firstId] > 0);
+        }
+
+        private static void ReleasePrisoners(GameState state, int firstId, int secondId)
+        {
+            CivilizationState first = state.Civilization(firstId);
+            CivilizationState second = state.Civilization(secondId);
+            if (first == null || second == null || !HasPrisonersHeld(state, firstId, secondId)) return;
+            int heldFromSecond = first.PrisonersHeldByCivilizationTenths[secondId];
+            int heldFromFirst = second.PrisonersHeldByCivilizationTenths[firstId];
+            first.PrisonersHeldByCivilizationTenths[secondId] = 0;
+            second.PrisonersHeldByCivilizationTenths[firstId] = 0;
+            second.RefugeePopulationTenths += heldFromSecond;
+            first.RefugeePopulationTenths += heldFromFirst;
+        }
+
         private static void CloseTradeRoutes(GameState state, int civilizationId, int partnerId)
         {
             for (int i = 0; i < state.Treaties.Length; i++)
             {
                 TreatyState treaty = state.Treaties[i];
-                if (!treaty.Active || treaty.Kind != TreatyKind.TradeRoute) continue;
+                if (!treaty.Active || (treaty.Kind != TreatyKind.TradeRoute && treaty.Kind != TreatyKind.ResourceExport)) continue;
                 bool belongsToActor = treaty.FromCivilizationId == civilizationId || treaty.ToCivilizationId == civilizationId;
                 bool partnerMatches = partnerId < 0 || treaty.FromCivilizationId == partnerId || treaty.ToCivilizationId == partnerId;
                 if (belongsToActor && partnerMatches)
@@ -628,6 +867,9 @@ namespace Nasledie.Core
             if (target.Archetype == "Торговец" && kind == TreatyKind.TradeRoute) score += 25;
             if (target.Archetype == "Попечитель" && (kind == TreatyKind.OpenBorders || kind == TreatyKind.NonAggression)) score += 15;
             if (kind == TreatyKind.TradeRoute) score += 15;
+            if (kind == TreatyKind.ResourceExport && target.Archetype == "Торговец") score += 20;
+            if (kind == TreatyKind.HumanitarianAid) score += 25;
+            if (kind == TreatyKind.Mediation) score += 15;
             return score;
         }
 

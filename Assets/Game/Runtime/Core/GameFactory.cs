@@ -325,6 +325,120 @@ namespace Nasledie.Core
                     break;
                 }
             }
+            EnsureSafeExpansionPaths(cells);
+            BalanceStartPotential(cells);
+        }
+
+        public static int StartPotential(GameState state, int civilizationId)
+        {
+            if (state == null) return 0;
+            CityState city = null;
+            for (int i = 0; i < state.Cities.Length; i++)
+                if (state.Cities[i].OwnerId == civilizationId) { city = state.Cities[i]; break; }
+            if (city == null) return 0;
+            int potential = 0;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell cell = state.Cells[i];
+                if (HexGrid.Distance(cell.Q, cell.R, city.Q, city.R) <= 3) potential += CellPotential(cell);
+            }
+            return potential;
+        }
+
+        private static void EnsureSafeExpansionPaths(HexCell[] cells)
+        {
+            for (int startIndex = 0; startIndex < StartPositions.GetLength(0); startIndex++)
+            {
+                int q = StartPositions[startIndex, 0];
+                int r = StartPositions[startIndex, 1];
+                int[] directions = { q < 6 ? 0 : 3, r < 6 ? 5 : 2 };
+                for (int route = 0; route < directions.Length; route++)
+                {
+                    int direction = directions[route];
+                    for (int step = 1; step <= 4; step++)
+                    {
+                        HexCell path = Find(cells, q + HexGrid.Directions[direction, 0] * step, r + HexGrid.Directions[direction, 1] * step);
+                        if (path == null) break;
+                        if (path.Terrain == TerrainKind.Water || path.Terrain == TerrainKind.Mountain || path.Terrain == TerrainKind.Swamp)
+                            path.Terrain = TerrainKind.Plains;
+                    }
+                }
+            }
+        }
+
+        private static void BalanceStartPotential(HexCell[] cells)
+        {
+            for (int pass = 0; pass < 80; pass++)
+            {
+                int minimum = int.MaxValue;
+                int maximum = 0;
+                int weakestStart = -1;
+                for (int s = 0; s < StartPositions.GetLength(0); s++)
+                {
+                    int score = StartPotential(cells, StartPositions[s, 0], StartPositions[s, 1]);
+                    if (score < minimum) { minimum = score; weakestStart = s; }
+                    if (score > maximum) maximum = score;
+                }
+                if (weakestStart < 0 || minimum * 100 >= maximum * 80) return;
+                int q0 = StartPositions[weakestStart, 0];
+                int r0 = StartPositions[weakestStart, 1];
+                HexCell bestCell = null;
+                TerrainKind bestTerrain = TerrainKind.Plains;
+                int bestGain = 0;
+                for (int i = 0; i < cells.Length; i++)
+                {
+                    HexCell cell = cells[i];
+                    int distance = HexGrid.Distance(cell.Q, cell.R, q0, r0);
+                    if (distance < 2 || distance > 3 || IsNearAnotherStart(cell.Q, cell.R, weakestStart, 3) ||
+                        cell.Terrain == TerrainKind.Coast || cell.Terrain == TerrainKind.River || cell.Resource == ResourceKind.Salt) continue;
+                    TerrainKind[] candidates = { TerrainKind.Meadow, TerrainKind.Plains, TerrainKind.Forest, TerrainKind.Hills };
+                    for (int t = 0; t < candidates.Length; t++)
+                    {
+                        if (candidates[t] == cell.Terrain) continue;
+                        TerrainKind oldTerrain = cell.Terrain;
+                        cell.Terrain = candidates[t];
+                        int gain = CellPotential(cell) - CellPotential(oldTerrain, cell.Resource);
+                        cell.Terrain = oldTerrain;
+                        if (gain > bestGain) { bestGain = gain; bestCell = cell; bestTerrain = candidates[t]; }
+                    }
+                }
+                if (bestCell == null || bestGain <= 0) return;
+                bestCell.Terrain = bestTerrain;
+            }
+        }
+
+        private static int StartPotential(HexCell[] cells, int q0, int r0)
+        {
+            int potential = 0;
+            for (int i = 0; i < cells.Length; i++)
+                if (HexGrid.Distance(cells[i].Q, cells[i].R, q0, r0) <= 3) potential += CellPotential(cells[i]);
+            return potential;
+        }
+
+        private static int CellPotential(HexCell cell) { return CellPotential(cell.Terrain, cell.Resource); }
+
+        private static int CellPotential(TerrainKind terrain, ResourceKind resource)
+        {
+            int value = terrain == TerrainKind.Meadow ? 5 : terrain == TerrainKind.Plains ? 4 :
+                terrain == TerrainKind.River || terrain == TerrainKind.Coast ? 4 :
+                terrain == TerrainKind.Forest ? 3 : terrain == TerrainKind.Hills ? 2 : terrain == TerrainKind.Arid ? 1 : 0;
+            if (resource == ResourceKind.FertileSoil) value += 2;
+            else if (resource == ResourceKind.Iron) value += 3;
+            else if (resource == ResourceKind.Herbs || resource == ResourceKind.Salt) value += 1;
+            return value;
+        }
+
+        private static bool IsNearAnotherStart(int q, int r, int excludedStart, int radius)
+        {
+            for (int i = 0; i < StartPositions.GetLength(0); i++)
+                if (i != excludedStart && HexGrid.Distance(q, r, StartPositions[i, 0], StartPositions[i, 1]) <= radius) return true;
+            return false;
+        }
+
+        private static HexCell Find(HexCell[] cells, int q, int r)
+        {
+            for (int i = 0; i < cells.Length; i++) if (cells[i].Q == q && cells[i].R == r) return cells[i];
+            return null;
         }
 
         public static void RebuildVisibility(GameState state)

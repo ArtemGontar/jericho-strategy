@@ -390,7 +390,8 @@ internal static class FreshDiplomaticVictoryScenario
         {
             TreatyState treaty = state.Treaties[i];
             if (treaty.Active && treaty.Kind == TreatyKind.TradeRoute && treaty.FromCivilizationId == playerId &&
-                treaty.ToCivilizationId == partnerId && treaty.RouteCityA == assemblyCityId && treaty.TurnsRemaining >= 3) return true;
+                treaty.ToCivilizationId == partnerId && treaty.RouteCityA == assemblyCityId &&
+                (treaty.TurnsRemaining == 0 || treaty.TurnsRemaining >= 3)) return true;
         }
         return false;
     }
@@ -443,7 +444,7 @@ internal static class FreshDiplomaticVictoryScenario
             if (!treaty.Active || treaty.Kind != TreatyKind.TradeRoute ||
                 (treaty.FromCivilizationId != playerId && treaty.ToCivilizationId != playerId)) continue;
             if (result.Length > 0) result += ";";
-            result += treaty.FromCivilizationId + "→" + treaty.ToCivilizationId + "(" + treaty.TurnsRemaining + ")";
+            result += treaty.FromCivilizationId + "→" + treaty.ToCivilizationId + "(" + (treaty.TurnsRemaining == 0 ? "indefinite" : treaty.TurnsRemaining.ToString()) + ")";
         }
         return result.Length == 0 ? "none" : result;
     }

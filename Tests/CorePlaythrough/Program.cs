@@ -5,10 +5,20 @@ using Nasledie.Core;
 
 internal static class Program
 {
-    private static int Main()
+    private static int Main(string[] args)
     {
         try
         {
+            if (args != null && args.Length > 0 && args[0] == "mechanics")
+            {
+                MechanicsRegressionScenario.Run(Console.WriteLine);
+                return 0;
+            }
+            if (args != null && args.Length > 0 && args[0] == "balance")
+            {
+                AiActiveVictoryBalanceScenario.Run(Console.WriteLine);
+                return 0;
+            }
             RunCampaignPaceAcceptance();
             RunAllDifficultiesToCompletion();
             AiActiveVictoryBalanceScenario.Run(Console.WriteLine);
@@ -385,7 +395,9 @@ internal static class Program
         simulation.EndTurn();
         rivalCapital = simulation.State.City(rivalCapital.Id);
         Assert(rivalCapital.Workers[(int)WorkerRole.Farmer] > farmersBefore,
-            "an AI city facing a food shortfall must override its preferred economy focus and add farmers");
+            "an AI city facing a food shortfall must override its preferred economy focus and add farmers (" + farmersBefore + " -> " +
+            rivalCapital.Workers[(int)WorkerRole.Farmer] + ", population=" + rivalCapital.PopulationTenths + ", food=" + rivalCapital.FoodTenths +
+            ", yield=" + EconomyCalculator.Calculate(simulation.State, rivalCapital).FoodTenths + ")");
         Console.WriteLine("PASS: an AI rival changes worker assignments immediately when a city faces a food emergency.");
     }
 
@@ -617,12 +629,15 @@ internal static class Program
         state.Cells = new[]
         {
             new HexCell { Q = 0, R = 0, Terrain = TerrainKind.Plains, OwnerId = 0, VisibleToMask = 1 },
-            new HexCell { Q = 1, R = 0, Terrain = TerrainKind.Forest, OwnerId = 1, VisibleToMask = 1 }
+            new HexCell { Q = 1, R = 0, Terrain = TerrainKind.Forest, OwnerId = 1, VisibleToMask = 1 },
+            new HexCell { Q = 2, R = 0, Terrain = TerrainKind.Plains, OwnerId = 1, VisibleToMask = 1 }
         };
         state.Units = new[]
         {
-            new UnitState { Id = 10, OwnerId = 0, Kind = UnitKind.FieldForce, Q = 0, R = 0, Strength = 100, MovementLeft = 1 },
-            new UnitState { Id = 11, OwnerId = 1, Kind = UnitKind.Militia, Q = 1, R = 0, Strength = 100, MovementLeft = 1 }
+            new UnitState { Id = 10, OwnerId = 0, Kind = UnitKind.FieldForce, Q = 0, R = 0, Strength = 100, InitialStrength = 100,
+                PopulationTenths = 10, InitialPopulationTenths = 10, MovementLeft = 1 },
+            new UnitState { Id = 11, OwnerId = 1, Kind = UnitKind.Militia, Q = 1, R = 0, Strength = 60,
+                InitialStrength = 70, PopulationTenths = 5, InitialPopulationTenths = 5, MovementLeft = 1 }
         };
         state.Conflicts = new[] { new ConflictState { Id = 20, AggressorId = 0, DefenderId = 1, Phase = 2, Active = true } };
         GameSimulation simulation = new GameSimulation(state);
@@ -637,6 +652,13 @@ internal static class Program
             "battle presentation must identify both sides and the contested cell");
         Assert(battle.PlayerFacing && battle.HumanVisibilityMask == 1,
             "human battle presentation must be marked as visible to the human player");
+        Assert(battle.AttackerDeathsTenths == 1 && battle.AttackerWoundedTenths == 1 &&
+               battle.DefenderDeathsTenths == 1 && battle.DefenderWoundedTenths == 1 && state.Units[0].WoundedPopulationTenths == 1,
+            "battle losses must distinguish deaths from injured population and retain wounded residents for recovery");
+        Assert(battle.AttackerWon && battle.DefenderRetreated && !battle.DefenderDestroyed &&
+               state.Units.Length == 2 && state.Units[1].Id == 11 && state.Units[1].Strength > 0 &&
+               state.Units[1].Q == 2 && state.Units[1].R == 0,
+            "a surviving losing army must retreat to a safe owned hex instead of disappearing");
         Console.WriteLine("PASS: resolved battles publish presentation data with participants, losses, and visibility.");
     }
 

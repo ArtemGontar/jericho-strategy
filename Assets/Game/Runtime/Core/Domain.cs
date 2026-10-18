@@ -8,13 +8,14 @@ namespace Nasledie.Core
     public enum ResourceKind { None, Iron, Herbs, Salt, FertileSoil }
     public enum WorkerRole { Farmer, Artisan, Scholar, Merchant, Artist, CivilServant }
     public enum UnitKind { Militia, FieldForce, SiegeTeam, SettlerWagon }
-    public enum ImprovementKind { None, Farm, Forestry, Workshop, Road, Bridge, Market, Fishery, IrrigatedFarm }
+    public enum ImprovementKind { None, Farm, Forestry, Workshop, Road, Bridge, Market, Fishery, IrrigatedFarm, Park, Fortification }
     public enum ProjectKind { None, Building, Improvement, Recruitment, EraTransition, ScientificProject }
     public enum VictoryPath { None, Scientific, Cultural, QualityOfLife, Diplomatic, HeritageScore }
-    public enum TreatyKind { TradeRoute, NonAggression, OpenBorders, KnowledgeExchange, Guarantee, Embargo, Peace }
-    public enum EventKind { Drought, Epidemic, RoadCongestion, RefugeeFlow, ProcurementCorruption, Smog, EducationReform, BorderDispute, TradeShortage, CulturalExchange, MobilizationFatigue, SharedResearch }
+    public enum TreatyKind { TradeRoute, NonAggression, OpenBorders, KnowledgeExchange, Guarantee, Embargo, Peace, ResourceExport, HumanitarianAid, Mediation }
+    public enum PeaceTermKind { StatusQuo, Reparations, Demobilization, BorderAdjustment, AnnexOccupiedCity, PrisonerExchange }
+    public enum EventKind { Drought, Epidemic, RoadCongestion, RefugeeFlow, ProcurementCorruption, Smog, EducationReform, BorderDispute, TradeShortage, CulturalExchange, MobilizationFatigue, SharedResearch, SettlerInterception, NeutralMediation }
     public enum CrisisKind { None, FoodShortage, Epidemic, TradeCollapse }
-    public enum CommandKind { SetWorkers, AutoAssignWorkers, SetProject, ChooseTechnology, BuildImprovement, FoundCity, MoveUnit, Recruit, DeclareWar, ProposeTreaty, AcceptTreaty, MakePeace, SetTax, SetSpending, EnactLaw, EventChoice, ContributeToCrisis, BeginVictoryProject, Repair }
+    public enum CommandKind { SetWorkers, AutoAssignWorkers, SetProject, ChooseTechnology, BuildImprovement, FoundCity, MoveUnit, Recruit, DeclareWar, ProposeTreaty, AcceptTreaty, MakePeace, SetTax, SetSpending, EnactLaw, EventChoice, ContributeToCrisis, BeginVictoryProject, Repair, UpgradeUnit }
     public enum TaxRate { Low, Normal, High }
     public enum Difficulty { Calm, Standard, Strong, Trial }
     public enum GamePace { Relaxed, Standard, Quick }
@@ -153,6 +154,10 @@ namespace Nasledie.Core
         public int R;
         public int Strength;
         public int PopulationTenths;
+        public int InitialStrength;
+        public int InitialPopulationTenths;
+        public int WoundedPopulationTenths;
+        public int WoundedStrength;
         public int Readiness = 100;
         public int SupplyBasisPoints = 10000;
         public int MovementLeft;
@@ -163,6 +168,7 @@ namespace Nasledie.Core
         public int TargetCellR;
         public bool IsWounded;
         public int WoundedTurns;
+        public bool IronEquipped;
 
         public UnitState Copy() { return (UnitState)MemberwiseClone(); }
     }
@@ -199,6 +205,7 @@ namespace Nasledie.Core
         public int[] Threats = new int[4];
         public int[] CulturalInfluence = new int[4];
         public int[] TradeDependency = new int[4];
+        public int[] PrisonersHeldByCivilizationTenths = new int[4];
         public int ActiveResearchIndex;
         public int QualityVictoryTurns;
         public int ScienceProjectTurns;
@@ -238,6 +245,8 @@ namespace Nasledie.Core
             copy.Threats = (int[])Threats.Clone();
             copy.CulturalInfluence = (int[])CulturalInfluence.Clone();
             copy.TradeDependency = (int[])TradeDependency.Clone();
+            copy.PrisonersHeldByCivilizationTenths = PrisonersHeldByCivilizationTenths == null
+                ? Array.Empty<int>() : (int[])PrisonersHeldByCivilizationTenths.Clone();
             return copy;
         }
     }
@@ -254,6 +263,7 @@ namespace Nasledie.Core
         public int RouteCityB;
         public int FoodPerTurnTenths;
         public int TreasuryPerTurnTenths;
+        public ResourceKind ExportedResource;
         public bool Active;
         public bool Pending;
         public bool Fulfilled;
@@ -276,6 +286,9 @@ namespace Nasledie.Core
         public int TruceTurns;
         public int RecoveryTurns;
         public int OccupationCityId = -1;
+        public PeaceTermKind AgreedPeaceTerm;
+        public int PeaceRequesterId = -1;
+        public bool MediationOffered;
         public bool Active;
 
         public ConflictState Copy() { return (ConflictState)MemberwiseClone(); }
@@ -287,6 +300,7 @@ namespace Nasledie.Core
         public int Id;
         public EventKind Kind;
         public int TargetCityId = -1;
+        public int TargetUnitId = -1;
         public int TargetCivilizationId = -1;
         public int OtherCivilizationId = -1;
         public int TurnsRemaining = 1;
@@ -345,15 +359,25 @@ namespace Nasledie.Core
         public int CellR;
         public int AttackerLoss;
         public int DefenderLoss;
+        public int AttackerDeathsTenths;
+        public int DefenderDeathsTenths;
+        public int AttackerWoundedTenths;
+        public int DefenderWoundedTenths;
+        public int AttackerPrisonersTenths;
+        public int DefenderPrisonersTenths;
+        public int RetreatQ;
+        public int RetreatR;
         public int HumanVisibilityMask;
         public bool AttackerWon;
+        public bool DefenderRetreated;
+        public bool DefenderDestroyed;
         public bool PlayerFacing;
     }
 
     [Serializable]
     public sealed class GameState
     {
-        public int SaveVersion = 4;
+        public int SaveVersion = 8;
         public int RulesVersion = 1;
         public int Seed;
         public int Turn = 1;
@@ -380,6 +404,7 @@ namespace Nasledie.Core
         public CrisisState Crisis = new CrisisState();
         public TurnReport[] Reports = Array.Empty<TurnReport>();
         public string[] EventLog = Array.Empty<string>();
+        public string[] CommandJournal = Array.Empty<string>();
         public int LastPlayerBalanceTenths;
         public int BattlesThisTurn;
         public int TreatiesThisTurn;
@@ -424,6 +449,7 @@ namespace Nasledie.Core
             copy.Crisis = Crisis == null ? new CrisisState() : Crisis.Copy();
             copy.Reports = (TurnReport[])Reports.Clone();
             copy.EventLog = (string[])EventLog.Clone();
+            copy.CommandJournal = CommandJournal == null ? Array.Empty<string>() : (string[])CommandJournal.Clone();
             return copy;
         }
     }

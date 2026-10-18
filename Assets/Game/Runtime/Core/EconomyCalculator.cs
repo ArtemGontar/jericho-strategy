@@ -13,6 +13,8 @@ namespace Nasledie.Core
         public int HealthChange;
         public int SafetyChange;
         public int EducationChange;
+        public int EnvironmentChange;
+        public int AttractionChange;
         public int OccupiedWorkers;
         public int UnemployedWorkers;
         public int[] RoleOutputTenths = new int[6];
@@ -20,6 +22,8 @@ namespace Nasledie.Core
 
     public static class EconomyCalculator
     {
+        private const int FlexibleCityWorkplaces = 3;
+
         public static CityYield Calculate(GameState state, CityState city)
         {
             var result = new CityYield();
@@ -50,38 +54,57 @@ namespace Nasledie.Core
             result.SafetyChange += city.ServiceFunding.Length > 1 ? city.ServiceFunding[1] : 0;
             result.EducationChange += city.ServiceFunding.Length > 2 ? city.ServiceFunding[2] : 0;
 
-            int farmTileBonus = 0;
             int marketTileBonus = 0;
-            int forestBonus = 0;
-            int workshopTileBonus = 0;
             int fisheryFoodBonus = 0;
             int fisheryTradeBonusTenths = 0;
-            int resourceFoodBonus = 0;
+            int parkCount = 0;
+            int fortificationCount = 0;
             int resourceIndustryBonusPercent = 0;
             int resourceHealthBonus = 0;
+            int[] farmerCellModifiers = new int[state.Cells.Length + 3];
+            int[] artisanCellModifiers = new int[state.Cells.Length + 3];
+            int farmerCellCount = 3; // the three flexible city-center workplaces
+            int artisanCellCount = 3;
             for (int i = 0; i < state.Cells.Length; i++)
             {
                 HexCell cell = state.Cells[i];
-                if (cell.OwnerId != city.OwnerId || HexGrid.Distance(cell.Q, cell.R, city.Q, city.R) > 2) continue;
-                if (cell.Damage < 75 && (cell.Improvement == ImprovementKind.Farm || cell.Improvement == ImprovementKind.IrrigatedFarm) && cell.ImprovementLevel > 0) farmTileBonus += 10 * cell.ImprovementLevel;
+                if (!IsCellWithinWorkArea(state, city, cell)) continue;
                 if (cell.Damage < 75 && cell.Improvement == ImprovementKind.Market) marketTileBonus += 10;
-                if (cell.Damage < 75 && cell.Improvement == ImprovementKind.Forestry) forestBonus += 1;
-                if (cell.Damage < 75 && cell.Improvement == ImprovementKind.Workshop) workshopTileBonus += 1;
+                if (cell.Damage < 75 && cell.Improvement == ImprovementKind.Park) parkCount++;
+                if (cell.Damage < 75 && cell.Improvement == ImprovementKind.Fortification) fortificationCount++;
                 if (cell.Damage < 75 && cell.Improvement == ImprovementKind.Fishery)
                 {
                     fisheryFoodBonus += 20;
                     fisheryTradeBonusTenths += 10;
                 }
-                if (cell.Damage < 75 && cell.Resource == ResourceKind.FertileSoil && (cell.Improvement == ImprovementKind.Farm || cell.Improvement == ImprovementKind.IrrigatedFarm)) resourceFoodBonus += 10;
                 if (cell.Damage < 75 && cell.Resource == ResourceKind.Iron && cell.Improvement != ImprovementKind.None) resourceIndustryBonusPercent += 10;
                 if (cell.Resource == ResourceKind.Herbs) resourceHealthBonus += 5;
+
+                bool farmed = cell.Damage < 75 && cell.ImprovementLevel > 0 &&
+                    (cell.Improvement == ImprovementKind.Farm || cell.Improvement == ImprovementKind.IrrigatedFarm);
+                int farmerModifier = cell.Terrain == TerrainKind.Meadow || cell.Terrain == TerrainKind.River ? 10 :
+                    cell.Terrain == TerrainKind.Arid || cell.Terrain == TerrainKind.Swamp ? -10 : 0;
+                if (farmed)
+                {
+                    if (cell.Improvement == ImprovementKind.IrrigatedFarm && civilization.Knows("irrigation"))
+                        farmerModifier = 20;
+                    else farmerModifier += 10;
+                }
+                if (farmed && cell.Resource == ResourceKind.FertileSoil) farmerModifier += 10;
+                farmerCellModifiers[farmerCellCount++] = farmerModifier;
+
+                int artisanModifier = cell.Terrain == TerrainKind.Forest || cell.Terrain == TerrainKind.Hills ? 10 : 0;
+                if (cell.Damage < 75 && (cell.Improvement == ImprovementKind.Forestry || cell.Improvement == ImprovementKind.Workshop)) artisanModifier += 10;
+                artisanCellModifiers[artisanCellCount++] = artisanModifier;
             }
-            result.FoodTenths += Scale(farmTileBonus, efficiency);
+            result.FoodTenths += Scale(BestWorkerCellBonus(farmerCellModifiers, farmerCellCount, farmerCount), efficiency);
+            result.Production += Scale(BestWorkerCellBonus(artisanCellModifiers, artisanCellCount, artisanCount), efficiency) / 10;
             result.FoodTenths += Scale(fisheryFoodBonus, efficiency);
-            result.FoodTenths += Scale(resourceFoodBonus, efficiency);
-            result.Production += forestBonus + workshopTileBonus;
             result.Production = result.Production * (100 + resourceIndustryBonusPercent) / 100;
             result.HealthChange += resourceHealthBonus;
+            result.EnvironmentChange += parkCount * 2;
+            result.AttractionChange += parkCount * 2;
+            result.TreasuryTenths -= fortificationCount * 5;
 
             int schoolLevel = city.BuildingLevel("school");
             int universityLevel = city.BuildingLevel("university");
@@ -142,15 +165,6 @@ namespace Nasledie.Core
             if (civilization.HasLaw("universal_education")) result.KnowledgeTenths = result.KnowledgeTenths * 110 / 100;
             if (civilization.HasLaw("volunteer_service")) result.TreasuryTenths += 2;
 
-            if (civilization.Knows("irrigation"))
-            {
-                for (int i = 0; i < state.Cells.Length; i++)
-                {
-                    HexCell cell = state.Cells[i];
-                    if (cell.OwnerId == city.OwnerId && cell.Terrain == TerrainKind.Arid && cell.Improvement == ImprovementKind.IrrigatedFarm)
-                        result.FoodTenths += 20;
-                }
-            }
             if (civilization.Knows("mechanization")) result.Production += artisanCount > 0 ? 1 : 0;
 
             int taxMultiplier = civilization.TaxRate == TaxRate.Low ? 7000 : civilization.TaxRate == TaxRate.High ? 13500 : 10000;
@@ -189,7 +203,111 @@ namespace Nasledie.Core
                 result.KnowledgeTenths = result.KnowledgeTenths * occupation / 10000;
                 result.TreasuryTenths = result.TreasuryTenths * occupation / 10000;
             }
+            else if (city.IntegrationTurns > 0)
+            {
+                result.FoodTenths = result.FoodTenths * 7000 / 10000;
+                result.Production = result.Production * 7000 / 10000;
+                result.KnowledgeTenths = result.KnowledgeTenths * 7000 / 10000;
+                result.TreasuryTenths = result.TreasuryTenths * 7000 / 10000;
+            }
             return result;
+        }
+
+        public static bool HasNearbyResource(GameState state, CityState city, ResourceKind resource, int radius = 2)
+        {
+            if (state == null || city == null) return false;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell cell = state.Cells[i];
+                if (cell.OwnerId == city.OwnerId && cell.Resource == resource &&
+                    HexGrid.Distance(cell.Q, cell.R, city.Q, city.R) <= radius) return true;
+            }
+            return false;
+        }
+
+        public static int WorkerCapacity(GameState state, CityState city)
+        {
+            if (state == null || city == null) return 0;
+            return FlexibleCityWorkplaces + CountWorkableCells(state, city) + city.BuildingLevel("residential_quarter");
+        }
+
+        public static int WorkerRoleCapacity(GameState state, CityState city, WorkerRole role)
+        {
+            if (state == null || city == null) return 0;
+            int capacity = role == WorkerRole.Farmer ? FlexibleCityWorkplaces : 1;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell cell = state.Cells[i];
+                if (!IsCellWithinWorkArea(state, city, cell)) continue;
+                if (role == WorkerRole.Farmer && IsFarmerWorkCell(cell)) capacity++;
+            }
+            for (int i = 0; i < RulesCatalog.Buildings.Length; i++)
+            {
+                BuildingDefinition building = RulesCatalog.Buildings[i];
+                if (building.WorkerPlaceRole == (int)role)
+                    capacity += city.BuildingLevel(building.Id) * Math.Max(0, building.WorkerPlaces);
+            }
+            if (role == WorkerRole.Merchant) capacity += Math.Max(0, CountTradeRoutes(state, city.OwnerId));
+            return capacity;
+        }
+
+        public static int AssignedWorkers(CityState city)
+        {
+            if (city == null || city.Workers == null) return 0;
+            int assigned = 0;
+            for (int i = 0; i < city.Workers.Length; i++) assigned += Math.Max(0, city.Workers[i]);
+            return assigned;
+        }
+
+        public static void NormalizeWorkerAssignments(GameState state, CityState city)
+        {
+            if (state == null || city == null) return;
+            if (city.Workers == null) city.Workers = new int[6];
+            else if (city.Workers.Length != 6) Array.Resize(ref city.Workers, 6);
+
+            for (int role = 0; role < city.Workers.Length; role++)
+            {
+                city.Workers[role] = Math.Max(0, Math.Min(city.Workers[role], WorkerRoleCapacity(state, city, (WorkerRole)role)));
+            }
+
+            int limit = Math.Min(city.WorkerCount, WorkerCapacity(state, city));
+            int remove = Math.Max(0, AssignedWorkers(city) - limit);
+            // Keep food and production labor first when population or a district is lost.
+            for (int role = city.Workers.Length - 1; role >= 0 && remove > 0; role--)
+            {
+                int amount = Math.Min(remove, city.Workers[role]);
+                city.Workers[role] -= amount;
+                remove -= amount;
+            }
+        }
+
+        private static int CountWorkableCells(GameState state, CityState city)
+        {
+            int count = 0;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell cell = state.Cells[i];
+                if (cell == null || cell.OwnerId != city.OwnerId ||
+                    cell.Terrain == TerrainKind.Mountain || cell.Terrain == TerrainKind.Water) continue;
+                int distance = HexGrid.Distance(cell.Q, cell.R, city.Q, city.R);
+                if (distance >= 1 && distance <= 4) count++;
+            }
+            return count;
+        }
+
+        private static bool IsCellWithinWorkArea(GameState state, CityState city, HexCell cell)
+        {
+            if (state == null || city == null || cell == null || cell.OwnerId != city.OwnerId ||
+                cell.Terrain == TerrainKind.Mountain || cell.Terrain == TerrainKind.Water) return false;
+            int distance = HexGrid.Distance(cell.Q, cell.R, city.Q, city.R);
+            return distance >= 1 && distance <= 2;
+        }
+
+        private static bool IsFarmerWorkCell(HexCell cell)
+        {
+            return cell.Terrain == TerrainKind.Meadow || cell.Terrain == TerrainKind.Plains ||
+                   cell.Terrain == TerrainKind.Arid || cell.Terrain == TerrainKind.River ||
+                   cell.Terrain == TerrainKind.Coast;
         }
 
         public static int CityUpkeep(GameState state, CityState city)
@@ -238,26 +356,10 @@ namespace Nasledie.Core
         {
             int workersAvailable = city.WorkerCount;
             var next = new int[6];
-            int flexibleSlots = 3;
             int[] roleSlots = new int[6];
-            int workCells = 0;
-            int farmCells = 0;
-            for (int i = 0; i < state.Cells.Length; i++)
-            {
-                HexCell cell = state.Cells[i];
-                if (cell.OwnerId != city.OwnerId || HexGrid.Distance(cell.Q, cell.R, city.Q, city.R) == 0) continue;
-                if (cell.Terrain == TerrainKind.Mountain || cell.Terrain == TerrainKind.Water) continue;
-                workCells++;
-                if (cell.Terrain == TerrainKind.Meadow || cell.Terrain == TerrainKind.Plains || cell.Terrain == TerrainKind.Arid || cell.Terrain == TerrainKind.River || cell.Terrain == TerrainKind.Coast) farmCells++;
-            }
-            roleSlots[(int)WorkerRole.Farmer] = farmCells;
-            roleSlots[(int)WorkerRole.Artisan] = 1 + city.BuildingLevel("workshop");
-            roleSlots[(int)WorkerRole.Scholar] = 1 + city.BuildingLevel("school") + city.BuildingLevel("university") * 2 + city.BuildingLevel("academy") * 2;
-            roleSlots[(int)WorkerRole.Merchant] = 1 + city.BuildingLevel("market") + Math.Max(0, CountTradeRoutes(state, city.OwnerId));
-            roleSlots[(int)WorkerRole.Artist] = 1 + city.BuildingLevel("cultural_house") + city.BuildingLevel("archive") + city.BuildingLevel("exchange_house");
-            roleSlots[(int)WorkerRole.CivilServant] = 1 + city.BuildingLevel("clinic") + city.BuildingLevel("hospital") + city.BuildingLevel("road_services");
-            int totalSlots = flexibleSlots + workCells + city.BuildingLevel("residential_quarter");
-            int available = Math.Min(workersAvailable, totalSlots);
+            for (int role = 0; role < roleSlots.Length; role++)
+                roleSlots[role] = WorkerRoleCapacity(state, city, (WorkerRole)role);
+            int available = Math.Min(workersAvailable, WorkerCapacity(state, city));
 
             int farmers = Math.Min(Math.Min(3, roleSlots[(int)WorkerRole.Farmer]), available);
             next[(int)WorkerRole.Farmer] = farmers;
@@ -330,6 +432,23 @@ namespace Nasledie.Core
         {
             int index = (int)role;
             return index >= 0 && index < values.Length ? values[index] : 0;
+        }
+
+        private static int BestWorkerCellBonus(int[] modifiers, int modifierCount, int workerCount)
+        {
+            int total = 0;
+            int count = Math.Min(Math.Max(0, workerCount), modifierCount);
+            for (int worker = 0; worker < count; worker++)
+            {
+                int bestIndex = -1;
+                int best = int.MinValue;
+                for (int i = 0; i < modifierCount; i++)
+                    if (modifiers[i] > best) { best = modifiers[i]; bestIndex = i; }
+                if (bestIndex < 0) break;
+                total += best;
+                modifiers[bestIndex] = int.MinValue;
+            }
+            return total;
         }
 
         private static int Scale(int value, int basisPoints)
