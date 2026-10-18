@@ -384,7 +384,7 @@ namespace Nasledie.Client
         {
             GameObject audioRoot = new GameObject("NasledieAudio");
             audioRoot.transform.SetParent(transform, false);
-            if (FindObjectOfType<AudioListener>() == null) audioRoot.AddComponent<AudioListener>();
+            if (FindFirstObjectByType<AudioListener>() == null) audioRoot.AddComponent<AudioListener>();
             soundtracks[0] = CreateAudioSource(audioRoot.transform, "MusicA", true);
             soundtracks[1] = CreateAudioSource(audioRoot.transform, "MusicB", true);
             soundEffects = CreateAudioSource(audioRoot.transform, "SoundEffects", false);
@@ -3543,7 +3543,7 @@ namespace Nasledie.Client
                     (cost <= 0 ? 0 : progress * 100 / cost) + "%", 23, GamePalette.Paper, TextAnchor.MiddleLeft, true);
             }
             int eraKnowledge = CountTechnologiesInEra(owner, owner.Era);
-            int councils = CountCitiesWithBuilding(simulation.State, owner.Id, "council");
+            int councils = CountCitiesWithBuilding(owner.Id, "council");
             int transitionCost = GameSimulation.EraTransitionProductionCost(owner.Era);
             bool transitionInProgress = HasEraTransition(simulation.State, owner.Id);
             UiKit.Label(summary.transform, "Знания поступают от учёных и школ. Для общественного перехода нужны три технологии текущей эпохи, Совет и 10 влияния; выбранный город вложит " + transitionCost + " производства.",
