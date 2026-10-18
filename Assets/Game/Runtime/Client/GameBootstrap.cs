@@ -14,6 +14,7 @@ namespace Nasledie.Client
         private enum ScreenPage { Overview, City, Research, Diplomacy, Laws, Events, Victory, Chronicle }
         private enum TutorialObjective { ViewCity, AssignWorkers, Research, CityProject, LandImprovement, RecruitSettler, ViewDiplomacy, ViewEvents, ViewVictory, ViewChronicle }
         private enum MapOverlay { Political, Food, Production, Defense }
+        private enum ChronicleFilter { All, Cities, Neighbors }
 
         private const float MapHexWidth = 64f;
         private const float MapHexHeight = 58f;
@@ -141,6 +142,7 @@ namespace Nasledie.Client
         private int tutorialCompletedMask;
         private string tutorialFeedback = "";
         private MapOverlay mapOverlay;
+        private ChronicleFilter chronicleFilter;
         private int textScaleIndex = 1;
         private bool highContrast;
         private bool hapticsEnabled;
@@ -2031,7 +2033,7 @@ namespace Nasledie.Client
             UiKit.SetAnchors(UiKit.Rect(detailShade), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             GameObject detailContent = UiKit.ScrollView(detailPane.transform, "StrategyPanelScroll");
             UiKit.Vertical(detailContent, 12, 10);
-            if (currentPage != ScreenPage.Overview)
+            if (currentPage == ScreenPage.City)
                 RenderSelectedCellContext(detailContent.transform, simulation.State.Civilization(simulation.State.HumanCivilizationId));
             switch (currentPage)
             {
@@ -3005,6 +3007,12 @@ namespace Nasledie.Client
             row.AddComponent<LayoutElement>().flexibleWidth = 1f;
             UiKit.Horizontal(row, 0, spacing);
             return row;
+        }
+
+        private float CompactChoiceWidth()
+        {
+            float scale = canvas == null ? 1f : Mathf.Max(0.1f, canvas.scaleFactor);
+            return Mathf.Clamp(Screen.width / scale * 0.13f, 120f, 230f);
         }
 
         private void RenderCity(Transform parent)
@@ -5054,22 +5062,25 @@ namespace Nasledie.Client
         {
             GameState state = simulation.State;
             CivilizationState player = state.Civilization(state.HumanCivilizationId);
-            GameObject crisis = UiKit.Card(parent, "Общие кризисы");
+            GameObject crisis = UiKit.Section(parent, "ГЛОБАЛЬНЫЙ КРИЗИС");
             if (state.Crisis != null && state.Crisis.Kind != CrisisKind.None && !state.Crisis.Resolved)
             {
                 int usefulContribution = Math.Min(5, Math.Max(1, (state.Crisis.Threat + 3) / 4));
-                UiKit.Label(crisis.transform, state.Crisis.PublicText + " · угроза " + state.Crisis.Threat + " · ход " + state.Crisis.TurnsActive,
-                    21, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-                GameObject row = UiKit.CreateObject("CrisisResources", crisis.transform);
-                UiKit.Horizontal(row, 0, 8);
-                AddActionButton(row.transform, "ВНЕСТИ ДО " + usefulContribution + " ЕДЫ", delegate { Issue(CommandKind.ContributeToCrisis, text: "food", value: 5); }, GamePalette.Teal, 58);
-                AddActionButton(row.transform, "ВНЕСТИ ДО " + usefulContribution + " ЗНАНИЙ", delegate { Issue(CommandKind.ContributeToCrisis, text: "knowledge", value: 5); }, GamePalette.Ink, 58);
-                AddActionButton(row.transform, "ВНЕСТИ ДО " + usefulContribution + " ВЛИЯНИЯ", delegate { Issue(CommandKind.ContributeToCrisis, text: "influence", value: 5); }, GamePalette.Rust, 58);
+                UiKit.Label(crisis.transform, state.Crisis.PublicText + " · угроза " + state.Crisis.Threat + "/120 · ход " + state.Crisis.TurnsActive,
+                    13, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                UiKit.Label(crisis.transform, "Угроза растёт на 8 за ход; после 4 ходов кризис повредит запасы, здоровье или выпуск.",
+                    12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                AddCrisisContribution(crisis.transform, "ЕДА · ДО " + usefulContribution, "Угроза −4/ед. · репутация +2",
+                    delegate { Issue(CommandKind.ContributeToCrisis, text: "food", value: 5); }, HasCrisisFood(state, player.Id, usefulContribution), GamePalette.Teal);
+                AddCrisisContribution(crisis.transform, "ЗНАНИЯ · ДО " + usefulContribution, "Угроза −4/ед. · репутация +2",
+                    delegate { Issue(CommandKind.ContributeToCrisis, text: "knowledge", value: 5); }, player.KnowledgeTenths >= usefulContribution * 10, GamePalette.Ink);
+                AddCrisisContribution(crisis.transform, "ВЛИЯНИЕ · ДО " + usefulContribution, "Угроза −4/ед. · репутация +2",
+                    delegate { Issue(CommandKind.ContributeToCrisis, text: "influence", value: 5); }, player.InfluenceTenths >= usefulContribution * 10, GamePalette.Rust);
+                UiKit.Label(crisis.transform, "Еда в лучшем запасе " + Format(MaxCityFood(state, player.Id)) + " · знания " + Format(player.KnowledgeTenths) + " · влияние " + Format(player.InfluenceTenths) + " · вклад даёт +2 репутации.",
+                    12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             }
-            else UiKit.Label(crisis.transform, state.HasResolvedGlobalCrisis ? "Последний мировой кризис преодолён. Совместная помощь укрепила репутацию участвовавших цивилизаций." : "Мирового кризиса сейчас нет. Новые кризисы могут затронуть еду, здоровье и торговые пути.",
-                20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-            UiKit.Label(crisis.transform, "Доступно ресурсов: казна " + Format(player.TreasuryTenths) + " · знания " + Format(player.KnowledgeTenths) + " · влияние " + Format(player.InfluenceTenths),
-                18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            else UiKit.Label(crisis.transform, state.HasResolvedGlobalCrisis ? "Последний кризис преодолён совместно. Сейчас глобальной угрозы нет." : "Сейчас глобальной угрозы нет. Кризис затрагивает запасы, здоровье или торговлю.",
+                13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
 
             int pending = 0;
             for (int i = 0; i < state.Events.Length; i++)
@@ -5080,22 +5091,58 @@ namespace Nasledie.Client
                 EventDefinition definition = EventDefinitionFor(active.Kind);
                 CityState city = state.City(active.TargetCityId);
                 CivilizationState other = active.OtherCivilizationId >= 0 ? state.Civilization(active.OtherCivilizationId) : null;
-                GameObject card = UiKit.Card(parent, EventName(active.Kind) + " · " + (city == null ? "ваша цивилизация" : city.Name) + (other == null ? "" : " · спор с " + other.Name));
-                UiKit.Label(card.transform, definition == null ? "Событие требует решения." : definition.TriggerRu, 21, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-                UiKit.Label(card.transform, "Выберите один ответ. Каждый вариант меняет ресурсы или состояние города.", 18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                GameObject section = UiKit.Section(parent, EventName(active.Kind) + " · " + (city == null ? "держава" : city.Name) + (other == null ? "" : " · " + other.Name));
+                UiKit.Label(section.transform, definition == null ? "Событие требует решения." : definition.TriggerRu,
+                    13, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+                UiKit.Label(section.transform, "Выберите один ответ. Последствия и цена показаны рядом.",
+                    12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
                 for (int c = 0; c < active.Choices.Length; c++)
                 {
                     string choice = active.Choices[c];
-                    Button button = UiKit.Button(card.transform, ChoiceName(choice), delegate { Issue(CommandKind.EventChoice, active.Id, text: choice); }, GamePalette.Ink, 58, 18);
-                    button.interactable = ChoiceAvailable(state, active, choice, player, city);
+                    bool available = ChoiceAvailable(state, active, choice, player, city);
+                    GameObject option = CreateActionRow(section.transform, "EventChoice_" + active.Id + "_" + choice, 8);
+                    option.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
+                    Button button = AddCompactActionButton(option.transform, ChoiceName(choice),
+                        delegate { Issue(CommandKind.EventChoice, active.Id, text: choice); }, GamePalette.Ink);
+                    SetToolbarButtonWidth(button, CompactChoiceWidth());
+                    button.interactable = available;
+                    Text impact = UiKit.Label(option.transform, ChoiceImpact(choice) + (available ? "" : " · сейчас недоступно"),
+                        12, available ? GamePalette.PaperDim : GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                    impact.GetComponent<LayoutElement>().flexibleWidth = 1f;
                 }
             }
             if (pending == 0)
             {
-                GameObject quiet = UiKit.Card(parent, "Городские события");
-                UiKit.Label(quiet.transform, "Новых событий, требующих вашего ответа, нет. Проблемы еды и здоровья повышают вероятность засухи или эпидемии; торговля, образование и конфликты открывают другие события.",
-                    20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                GameObject quiet = UiKit.Section(parent, "СОБЫТИЯ ДЕРЖАВЫ");
+                UiKit.Label(quiet.transform, "Нерешённых событий нет. Засуха и эпидемия связаны с запасами и здоровьем; торговля, образование и войны могут открыть новые решения.",
+                    13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             }
+        }
+
+        private static int MaxCityFood(GameState state, int ownerId)
+        {
+            int food = 0;
+            if (state == null || state.Cities == null) return food;
+            for (int i = 0; i < state.Cities.Length; i++)
+                if (state.Cities[i].OwnerId == ownerId) food = Math.Max(food, state.Cities[i].FoodTenths);
+            return food;
+        }
+
+        private static bool HasCrisisFood(GameState state, int ownerId, int amount)
+        {
+            return MaxCityFood(state, ownerId) >= amount * 10;
+        }
+
+        private void AddCrisisContribution(Transform parent, string label, string effect, Action action, bool available, Color color)
+        {
+            GameObject row = CreateActionRow(parent, "CrisisContribution", 8);
+            row.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
+            Button button = AddCompactActionButton(row.transform, label, action, color);
+            SetToolbarButtonWidth(button, CompactChoiceWidth());
+            button.interactable = available;
+            Text impact = UiKit.Label(row.transform, effect + (available ? "" : " · не хватает запаса"),
+                12, available ? GamePalette.PaperDim : GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            impact.GetComponent<LayoutElement>().flexibleWidth = 1f;
         }
 
         private EventDefinition EventDefinitionFor(EventKind kind)
@@ -5114,47 +5161,95 @@ namespace Nasledie.Client
         {
             switch (choice)
             {
-                case "BuyFood": return "Закупить еду · 5 казны";
-                case "ReassignWorkers": return "Перевести работников на поля";
-                case "Rationing": return "Ввести нормирование · снизить доверие";
-                case "OpenClinic": return "Открыть временную клинику · 10 казны";
-                case "Quarantine": return "Карантин · здоровье вверх, торговля вниз";
-                case "RequestAid": return "Запросить соседскую помощь";
-                case "BuildHub": return "Построить дорожный узел · 6 казны";
-                case "RestrictTraffic": return "Ограничить движение · снизить привлекательность";
-                case "AcceptDelay": return "Принять задержку · снизить выпуск";
-                case "Accept": return "Принять семьи · 4 казны";
-                case "OpenCorridor": return "Открыть коридор · 2 влияния";
-                case "Refuse": return "Отказать";
-                case "Investigate": return "Провести расследование · 5 казны";
-                case "Audit": return "Аудит · 2 влияния";
-                case "Ignore": return "Не вмешиваться";
-                case "Filters": return "Установить фильтры · 6 казны";
-                case "ReduceOutput": return "Сократить выпуск";
-                case "FundSchools": return "Финансировать школы · 8 казны";
-                case "Experiment": return "Проверить новую программу · 2 влияния";
-                case "KeepBudget": return "Оставить бюджет без изменений";
-                case "Negotiate": return "Начать переговоры";
-                case "ExchangeLand": return "Обменять свободные приграничные земли · 2 влияния";
-                case "Ultimatum": return "Выдвинуть ультиматум соседу";
-                case "EmergencyStock": return "Открыть резервы · 6 казны";
-                case "NewRoute": return "Открыть торговый маршрут · 1 влияние";
-                case "DomesticSupply": return "Начать строительство амбара";
-                case "Festival": return "Провести фестиваль · 4 казны";
-                case "JointMuseum": return "Поддержать общий музей · 2 влияния";
-                case "CloseExchange": return "Ограничить обмен";
-                case "PaySupport": return "Выплатить поддержку · 8 казны";
-                case "LocalTruce": return "Попросить о местном перемирии";
-                case "Continue": return "Продолжить мобилизацию";
-                case "JointProject": return "Общий научный проект · 10 знаний";
-                case "NationalProject": return "Развивать собственную программу";
-                case "ShareKnowledge": return "Передать знания соседям · 5 знаний";
-                case "Retreat": return "Отступить к ближайшему безопасному поселению";
-                case "Internment": return "Принять интернирование · обоз пропустит этот ход";
-                case "ContinueJourney": return "Рискнуть прорывом · потерять часть жителей";
-                case "AcceptMediation": return "Принять нейтральное перемирие · снизить напряжение";
-                case "RejectMediation": return "Отклонить · продолжить войну с ростом напряжения";
+                case "BuyFood": return "ЗАКУПИТЬ ЕДУ · 5 КАЗНЫ";
+                case "ReassignWorkers": return "ПЕРЕВЕСТИ ЖИТЕЛЕЙ НА ПОЛЯ";
+                case "Rationing": return "ВВЕСТИ НОРМИРОВАНИЕ";
+                case "OpenClinic": return "ОТКРЫТЬ КЛИНИКУ · 9–10 КАЗНЫ";
+                case "Quarantine": return "ВВЕСТИ КАРАНТИН";
+                case "RequestAid": return "ПОПРОСИТЬ ПОМОЩЬ";
+                case "BuildHub": return "ПОСТРОИТЬ УЗЕЛ · 6 КАЗНЫ";
+                case "RestrictTraffic": return "ОГРАНИЧИТЬ ДВИЖЕНИЕ";
+                case "AcceptDelay": return "ПРИНЯТЬ ЗАДЕРЖКУ";
+                case "Accept": return "ПРИНЯТЬ СЕМЬИ · 4 КАЗНЫ";
+                case "OpenCorridor": return "ОТКРЫТЬ КОРИДОР · 2 ВЛИЯНИЯ";
+                case "Refuse": return "ОТКАЗАТЬ";
+                case "Investigate": return "РАССЛЕДОВАТЬ · 5 КАЗНЫ";
+                case "Audit": return "ПРОВЕСТИ АУДИТ · 2 ВЛИЯНИЯ";
+                case "Ignore": return "НЕ ВМЕШИВАТЬСЯ";
+                case "Filters": return "УСТАНОВИТЬ ФИЛЬТРЫ · 6 КАЗНЫ";
+                case "ReduceOutput": return "СОКРАТИТЬ ВЫПУСК";
+                case "FundSchools": return "ФИНАНСИРОВАТЬ ШКОЛЫ · 8 КАЗНЫ";
+                case "Experiment": return "ПРОВЕСТИ ЭКСПЕРИМЕНТ · 2 ВЛИЯНИЯ";
+                case "KeepBudget": return "ОСТАВИТЬ БЮДЖЕТ";
+                case "Negotiate": return "ВЕСТИ ПЕРЕГОВОРЫ";
+                case "ExchangeLand": return "ОБМЕНЯТЬ УЧАСТКИ · 2 ВЛИЯНИЯ";
+                case "Ultimatum": return "ВЫДВИНУТЬ УЛЬТИМАТУМ";
+                case "EmergencyStock": return "ОТКРЫТЬ РЕЗЕРВЫ · 6 КАЗНЫ";
+                case "NewRoute": return "ОТКРЫТЬ МАРШРУТ";
+                case "DomesticSupply": return "ПОСТРОИТЬ АМБАР";
+                case "Festival": return "ПРОВЕСТИ ФЕСТИВАЛЬ · 4 КАЗНЫ";
+                case "JointMuseum": return "ОБЩИЙ МУЗЕЙ · 2 ВЛИЯНИЯ";
+                case "CloseExchange": return "ЗАКРЫТЬ ОБМЕН";
+                case "PaySupport": return "ВЫПЛАТИТЬ ПОМОЩЬ · 8 КАЗНЫ";
+                case "LocalTruce": return "ПРЕДЛОЖИТЬ ПЕРЕМИРИЕ";
+                case "Continue": return "ПРОДОЛЖИТЬ МОБИЛИЗАЦИЮ";
+                case "JointProject": return "ОБЩИЙ ПРОЕКТ · 10 ЗНАНИЙ";
+                case "NationalProject": return "НАЦИОНАЛЬНАЯ ПРОГРАММА";
+                case "ShareKnowledge": return "ПЕРЕДАТЬ ЗНАНИЯ · 5 ЗНАНИЙ";
+                case "Retreat": return "ОТСТУПИТЬ";
+                case "Internment": return "ПРИНЯТЬ ИНТЕРНИРОВАНИЕ";
+                case "ContinueJourney": return "РИСКНУТЬ ПРОРЫВОМ";
+                case "AcceptMediation": return "ПРИНЯТЬ ПЕРЕМИРИЕ";
+                case "RejectMediation": return "ОТКЛОНИТЬ ПРЕДЛОЖЕНИЕ";
                 default: return choice;
+            }
+        }
+
+        private static string ChoiceImpact(string choice)
+        {
+            switch (choice)
+            {
+                case "BuyFood": return "+4 еды в городе";
+                case "ReassignWorkers": return "До 4 жителей станут фермерами";
+                case "Rationing": return "Меньше дефицита · доверие −5";
+                case "OpenClinic": return "Здоровье +10";
+                case "Quarantine": return "Здоровье +12 · торговля закрыта · привлекательность −10";
+                case "RequestAid": return "Здоровье +5 · репутация +3";
+                case "BuildHub": return "Эффективность города +5%";
+                case "RestrictTraffic": return "Привлекательность города −5";
+                case "AcceptDelay": return "Эффективность города −5%";
+                case "Accept": return "+1 житель · доверие +3";
+                case "OpenCorridor": return "Репутация +5";
+                case "Refuse": return "Репутация −3";
+                case "Investigate": return "Доверие города +5";
+                case "Audit": return "Репутация +4";
+                case "Ignore": return "Доверие города −6 или здоровье −4";
+                case "Filters": return "Чистота среды +10";
+                case "ReduceOutput": return "Эффективность города −5%";
+                case "FundSchools": return "Образование города +8";
+                case "Experiment": return "Образование города +5";
+                case "KeepBudget": return "Доверие города −2";
+                case "Negotiate": return "Репутация +2 · влияние −1";
+                case "ExchangeLand": return "Отношения +5 при доступной общей границе";
+                case "Ultimatum": return "Отношения с соседом −10";
+                case "EmergencyStock": return "+3 еды в городе";
+                case "NewRoute": return "Торговый доход, если путь доступен";
+                case "DomesticSupply": return "Амбар в очереди строительства";
+                case "Festival": return "Культурный престиж +5";
+                case "JointMuseum": return "Престиж +3 · репутация +2";
+                case "CloseExchange": return "Привлекательность города −5";
+                case "PaySupport": return "Военная усталость −10";
+                case "LocalTruce": return "Перемирие на 2 хода · отношения +3";
+                case "Continue": return "Репутация −2";
+                case "JointProject": return "Культурный престиж +2";
+                case "NationalProject": return "Культурный престиж +1";
+                case "ShareKnowledge": return "Репутация +3";
+                case "Retreat": return "Обоз уходит к безопасному поселению";
+                case "Internment": return "Обоз пропустит ход без потерь";
+                case "ContinueJourney": return "Потеря примерно 20% жителей обоза";
+                case "AcceptMediation": return "Остановить боевые потери · снизить напряжение";
+                case "RejectMediation": return "Война продолжится · напряжение вырастет";
+                default: return "Изменится состояние города или державы";
             }
         }
 
@@ -5181,9 +5276,9 @@ namespace Nasledie.Client
                 return wagon != null && (choice == "Retreat" || choice == "Internment" || choice == "ContinueJourney");
             }
             if (choice == "BuyFood") return player.TreasuryTenths >= 50;
-            if (choice == "OpenClinic") return player.TreasuryTenths >= 100;
-            if (choice == "BuildHub" || choice == "Filters") return player.TreasuryTenths >= 60;
-            if (choice == "Accept") return player.TreasuryTenths >= 40 && city != null && city.PopulationTenths + 10 <= city.HousingTenths;
+            if (choice == "OpenClinic") return city != null && player.TreasuryTenths >= (EconomyCalculator.HasNearbyResource(state, city, ResourceKind.Herbs) ? 90 : 100);
+            if (choice == "BuildHub" || choice == "Filters") return city != null && player.TreasuryTenths >= 60;
+            if (choice == "Accept") return player.TreasuryTenths >= 40 && city != null;
             if (choice == "OpenCorridor" || choice == "Audit" || choice == "Experiment" || choice == "JointMuseum") return player.InfluenceTenths >= 20;
             if (choice == "Investigate") return player.TreasuryTenths >= 50;
             if (choice == "FundSchools") return player.TreasuryTenths >= 80;
@@ -5215,24 +5310,26 @@ namespace Nasledie.Client
                     if (winners[i] == player.Id) playerWon = true;
                 }
                 string resultTitle = winnerNames.Count == 0 ? "Кампания завершена" : winnerNames.Count == 1 ? winnerNames[0] + " победила" : "Совместная победа · " + string.Join(", ", winnerNames.ToArray());
-                GameObject final = UiKit.Card(parent, resultTitle);
-                AddArtwork(final.transform, playerWon ? "Backgrounds/Victory_Background" : "Backgrounds/Defeat_Background", 230);
-                UiKit.Label(final.transform, "Путь: " + VictoryEvaluator.PathName(state.WinningPath) + "\n" +
-                    (playerWon ? "Вы завершили кампанию победой." : "Победила другая цивилизация. Вы можете изучить итоги в летописи."),
-                    28, GamePalette.Gold, TextAnchor.MiddleLeft, true);
-                UiKit.Label(final.transform, "Итоговый счёт наследия: " + VictoryEvaluator.HeritageScore(state, player.Id) + " · население " + Format(simulation.CivilizationPopulationTenths(player.Id)) +
-                    " · технологии " + player.CompletedTechnologies + " · культура " + player.CulturePrestige + " · репутация " + player.Reputation,
-                    22, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-                UiKit.Button(final.transform, "ПОСМОТРЕТЬ ДОСТИЖЕНИЯ И НАГРАДЫ", ShowAchievements, GamePalette.InkSoft, 68, 20);
-                UiKit.Button(final.transform, "В ГЛАВНОЕ МЕНЮ", delegate { simulation = null; ShowMenu(); }, GamePalette.Teal, 78, 24);
+                GameObject final = UiKit.Section(parent, resultTitle);
+                UiKit.Label(final.transform, (playerWon ? "ПОБЕДА · " : "ПОРАЖЕНИЕ · ") + VictoryEvaluator.PathName(state.WinningPath),
+                    16, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+                UiKit.Label(final.transform, playerWon ? "Ваша держава завершила кампанию." : "Изучите ход соперника в летописи и попробуйте другой путь развития.",
+                    13, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+                UiKit.Label(final.transform, "Наследие " + VictoryEvaluator.HeritageScore(state, player.Id) + " · жители " + Format(simulation.CivilizationPopulationTenths(player.Id)) +
+                    " · технологии " + player.CompletedTechnologies + " · престиж " + player.CulturePrestige + " · репутация " + player.Reputation,
+                    13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                GameObject actions = CreateActionRow(final.transform, "CampaignResultActions", 8);
+                AddCompactActionButton(actions.transform, "ДОСТИЖЕНИЯ И НАГРАДЫ", ShowAchievements, GamePalette.InkSoft);
+                AddCompactActionButton(actions.transform, "В ГЛАВНОЕ МЕНЮ", delegate { simulation = null; ShowMenu(); }, GamePalette.Teal);
                 return;
             }
 
-            GameObject scoreCard = UiKit.Card(parent, "Пути к победе · ход " + state.Turn + " из " + state.MaximumTurn);
-            UiKit.Label(scoreCard.transform, "Захват территории не является условием победы. Пять путей оценивают устойчивость, знания, культуру, сотрудничество и долгосрочное развитие.",
-                21, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(scoreCard.transform, "Ваш счёт наследия: " + VictoryEvaluator.HeritageScore(state, player.Id) + " · мировой кризис преодолён: " + (state.HasResolvedGlobalCrisis ? "да" : "нет"),
-                21, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+            CityState selectedCity = SelectedCity();
+            int selectedCityId = selectedCity == null ? -1 : selectedCity.Id;
+            GameObject overview = UiKit.Section(parent, "ПУТИ К ПОБЕДЕ");
+            UiKit.Label(overview.transform, "Ход " + state.Turn + "/" + state.MaximumTurn + " · наследие " + VictoryEvaluator.HeritageScore(state, player.Id) +
+                " · кризис " + (state.HasResolvedGlobalCrisis ? "преодолён" : "не разрешён") + " · территория сама по себе не приносит победу.",
+                13, GamePalette.Paper, TextAnchor.MiddleLeft, true);
 
             int qualityCities = 0;
             int totalPopulation = 0;
@@ -5252,72 +5349,98 @@ namespace Nasledie.Client
                 if (index >= 75) qualifiedPopulation += city.PopulationTenths;
                 if (city.Health < 60 || city.Safety < 60) cityServicesReady = false;
             }
-            GameObject quality = UiKit.Card(parent, "Благополучие · пассивный путь");
-            UiKit.Label(quality.transform, "Пять ходов подряд: 4+ города; индекс качества жизни ≥75 у 80% населения; здоровье и безопасность каждого города ≥60; разница индексов ≤20; дефицит не дольше двух ходов.",
-                20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(quality.transform, "Города " + qualityCities + "/4 · население с индексом ≥75: " + (totalPopulation == 0 ? 0 : qualifiedPopulation * 100 / totalPopulation) + "% · диапазон индекса " +
-                (qualityCities == 0 ? "—" : lowestQuality + "–" + highestQuality) + " · состояние служб " + (cityServicesReady ? "в норме" : "нуждается в улучшении") +
-                " · спокойные ходы " + player.QualityVictoryTurns + "/5", 21, GamePalette.Sage, TextAnchor.MiddleLeft, true);
+            GameObject quality = UiKit.Section(parent, "БЛАГОПОЛУЧИЕ · ПАССИВНЫЙ ПУТЬ");
+            UiKit.Label(quality.transform, "5 ходов: 4 города · качество ≥75 у 80% жителей · здоровье и безопасность ≥60 во всех городах · разброс качества ≤20 · дефицит не более 2 ходов.",
+                12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            UiKit.Label(quality.transform, "Города " + qualityCities + "/4 · жители с качеством ≥75: " + (totalPopulation == 0 ? 0 : qualifiedPopulation * 100 / totalPopulation) + "% · качество " +
+                (qualityCities == 0 ? "—" : lowestQuality + "–" + highestQuality) + " · службы " + (qualityCities == 0 ? "нет городов" : cityServicesReady ? "все ≥60" : "есть ниже 60") +
+                " · дефицит " + player.ConsecutiveDeficitTurns + " х. · устойчивость " + player.QualityVictoryTurns + "/5 х.",
+                13, GamePalette.Sage, TextAnchor.MiddleLeft, true);
 
             int universities = CountCitiesWithBuilding(player.Id, "university");
             int academies = CountEmpireBuilding(player.Id, "academy");
-            bool scienceReady = player.Knows("computing_networks") && player.Knows("open_science") && universities >= 2 && academies >= 1 && player.KnowledgeTenths >= 300 && player.InfluenceTenths >= 80;
-            GameObject science = UiKit.Card(parent, "Научный прорыв · активный путь");
-            UiKit.Label(science.transform, "Исследуйте вычислительные сети и открытую науку; постройте университеты в двух городах и академию; внесите 30 знаний, 20 ПП города и 8 влияния. Проект длится 4 хода, последние два выпуска знаний должны быть ≥5.",
-                20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(science.transform, "Города с университетом " + universities + "/2 · академии " + academies + "/1 · прогресс " + player.ScienceProjectTurns + "/4 · выпуск знаний " +
-                Format(player.PreviousTurnKnowledgeOutputTenths) + "/" + Format(player.LastTurnKnowledgeOutputTenths) + " из 5", 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-            Button scienceButton = UiKit.Button(science.transform, "НАЧАТЬ ПРОГРАММУ В ГОРОДЕ", delegate { Issue(CommandKind.BeginVictoryProject, SelectedCity().Id, value: (int)VictoryPath.Scientific); }, GamePalette.Teal, 62, 19);
-            scienceButton.interactable = scienceReady && (SelectedCity().Project == null || SelectedCity().Project.Kind == ProjectKind.None);
+            bool scienceTechReady = player.Knows("computing_networks") && player.Knows("open_science");
+            bool scienceReady = selectedCity != null && VictoryEvaluator.CanStartScientificProgram(state, player.Id, selectedCityId) && player.KnowledgeTenths >= 300 && player.InfluenceTenths >= 80;
+            bool scienceActive = HasVictoryProject(state, player.Id, ProjectKind.ScientificProject);
+            GameObject science = UiKit.Section(parent, "НАУЧНЫЙ ПРОРЫВ · АКТИВНЫЙ ПУТЬ");
+            UiKit.Label(science.transform, "Вычислительные сети + открытая наука · 2 университета · академия · 30 знаний + 8 влияния · проект 4 хода · последние 2 выпуска знаний ≥5.",
+                12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            UiKit.Label(science.transform, "Технологии " + (scienceTechReady ? "есть" : "нужны") + " · университеты " + universities + "/2 · академия " + academies + "/1 · программа " + player.ScienceProjectTurns + "/4 · знания " +
+                Format(player.PreviousTurnKnowledgeOutputTenths) + "/" + Format(player.LastTurnKnowledgeOutputTenths) + " из 5.",
+                13, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+            Button scienceButton = AddCompactActionButton(science.transform, scienceActive ? "ПРОГРАММА ИДЁТ" : "НАЧАТЬ · 30 ЗНАНИЙ + 8 ВЛИЯНИЯ",
+                delegate { if (selectedCity != null) Issue(CommandKind.BeginVictoryProject, selectedCityId, value: (int)VictoryPath.Scientific); }, GamePalette.Teal);
+            scienceButton.interactable = !scienceActive && scienceReady;
 
-            int culturalObjects = CountCulturalObjects(player.Id);
-            GameObject culture = UiKit.Card(parent, "Культурное наследие · активный путь");
-            UiKit.Label(culture.transform, "Постройте культурный дом, архив и Дом обмена в трёх разных городах; накопите 100 престижа; влияние должно быть 70/70/40. Оплатите 20 влияния и 10 казны и завершите двухходовый фестиваль.",
-                20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            int culturalHouses = CountCitiesWithBuilding(player.Id, "cultural_house");
+            int archives = CountCitiesWithBuilding(player.Id, "archive");
+            int exchangeHouses = CountCitiesWithBuilding(player.Id, "exchange_house");
+            bool culturalReady = VictoryEvaluator.CanStartCulturalFestival(state, player.Id);
             string festivalProgress = player.CultureFestivalTurns > 0 ? (2 - player.CultureFestivalTurns) + "/2" : "не начат";
-            UiKit.Label(culture.transform, "Престиж " + player.CulturePrestige + "/100 · объекты " + culturalObjects + "/3 · влияние " + CulturalInfluenceLabel(player) + " · фестиваль " + festivalProgress, 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-            Button cultureButton = UiKit.Button(culture.transform, "ПРОВЕСТИ ФЕСТИВАЛЬ · 20 ВЛИЯНИЯ И 10 КАЗНЫ",
-                delegate { Issue(CommandKind.BeginVictoryProject, SelectedCity().Id, value: (int)VictoryPath.Cultural); }, GamePalette.Rust, 62, 18);
-            cultureButton.interactable = VictoryEvaluator.CanStartCulturalFestival(state, player.Id) && player.InfluenceTenths >= 200 && player.TreasuryTenths >= 100 && player.CultureFestivalTurns == 0;
+            GameObject culture = UiKit.Section(parent, "КУЛЬТУРНОЕ НАСЛЕДИЕ · АКТИВНЫЙ ПУТЬ");
+            UiKit.Label(culture.transform, "Культурный дом, архив и Дом обмена — в 3 разных городах · престиж 100 · влияние у соседей 70/70/40 · фестиваль 2 хода · цена 20 влияния + 10 казны.",
+                12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            UiKit.Label(culture.transform, "Дома " + culturalHouses + "/1 · архивы " + archives + "/1 · Дома обмена " + exchangeHouses + "/1 · престиж " + player.CulturePrestige + "/100 · влияние " + CulturalInfluenceLabel(player) + " · фестиваль " + festivalProgress,
+                13, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+            Button cultureButton = AddCompactActionButton(culture.transform, player.CultureFestivalTurns > 0 ? "ФЕСТИВАЛЬ ИДЁТ · " + festivalProgress : "НАЧАТЬ ФЕСТИВАЛЬ · 20 ВЛИЯНИЯ + 10 КАЗНЫ",
+                delegate { if (selectedCity != null) Issue(CommandKind.BeginVictoryProject, selectedCityId, value: (int)VictoryPath.Cultural); }, GamePalette.Rust);
+            cultureButton.interactable = selectedCity != null && (selectedCity.Project == null || selectedCity.Project.Kind == ProjectKind.None) &&
+                culturalReady && player.InfluenceTenths >= 200 && player.TreasuryTenths >= 100 && player.CultureFestivalTurns == 0;
 
-            int routes = CountRoutes(player.Id);
-            GameObject diplomatic = UiKit.Card(parent, "Международное сотрудничество · активный путь");
-            UiKit.Label(diplomatic.transform, "Исследуйте Международную ассамблею; свяжите её город маршрутами с двумя цивилизациями; внесите 20 влияния в фонд. Разрешите кризис вкладом трёх сторон, получите три голоса из четырёх и удержите коалицию два хода.",
-                20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(diplomatic.transform, "Маршруты " + routes + "/2 · участники кризиса " + CountBits(state.ResolvedGlobalCrisisContributorMask) + "/3 · поддержавшие стороны " + DiplomaticPartners(player) + "/2 · коалиция " + player.DiplomaticCoalitionTurns + "/2",
-                20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-            bool diplomacyReady = VictoryEvaluator.CanStartDiplomaticCoalition(state, player.Id, SelectedCity().Id) && player.InfluenceTenths >= 200;
-            Button diplomaticButton = UiKit.Button(diplomatic.transform, "СОЗВАТЬ КОАЛИЦИЮ В АССАМБЛЕЕ", delegate { Issue(CommandKind.BeginVictoryProject, SelectedCity().Id, value: (int)VictoryPath.Diplomatic); }, GamePalette.Ink, 62, 18);
-            diplomaticButton.interactable = diplomacyReady && player.DiplomaticCoalitionTurns == 0 && (SelectedCity().Project == null || SelectedCity().Project.Kind == ProjectKind.None);
+            bool diplomaticReady = selectedCity != null && VictoryEvaluator.CanStartDiplomaticCoalition(state, player.Id, selectedCityId) && player.InfluenceTenths >= 200;
+            int diplomaticVotes = DiplomaticVoteCount(state, player);
+            bool crisisContribution = (state.ResolvedGlobalCrisisContributorMask & (1 << player.Id)) != 0;
+            GameObject diplomatic = UiKit.Section(parent, "МЕЖДУНАРОДНОЕ СОТРУДНИЧЕСТВО · АКТИВНЫЙ ПУТЬ");
+            UiKit.Label(diplomatic.transform, "Исследуйте Международную ассамблею и свяжите её город маршрутами с 2 державами · внесите 20 влияния · кризис решён с участием 3 сторон · получите 3 голоса · удержите коалицию 2 хода.",
+                12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            UiKit.Label(diplomatic.transform, "Ассамблея и маршруты " + (selectedCity != null && VictoryEvaluator.HasDiplomaticAssemblyRoutes(state, player.Id, selectedCityId) ? "готовы" : "не готовы") +
+                " · кризис " + (state.HasResolvedGlobalCrisis ? "решён" : "не решён") + " · участники " + CountBits(state.ResolvedGlobalCrisisContributorMask) + "/3 · ваш вклад " + (crisisContribution ? "да" : "нет") +
+                " · голоса " + diplomaticVotes + "/3 · коалиция " + (player.DiplomaticCoalitionTurns > 0 ? (2 - player.DiplomaticCoalitionTurns) + "/2" : "не начата"),
+                13, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+            Button diplomaticButton = AddCompactActionButton(diplomatic.transform,
+                player.DiplomaticCoalitionTurns > 0 ? "КОАЛИЦИЯ ИДЁТ · ОСТАЛОСЬ " + player.DiplomaticCoalitionTurns + " ХОД." : "СОЗВАТЬ КОАЛИЦИЮ · 20 ВЛИЯНИЯ",
+                delegate { if (selectedCity != null) Issue(CommandKind.BeginVictoryProject, selectedCityId, value: (int)VictoryPath.Diplomatic); }, GamePalette.Ink);
+            diplomaticButton.interactable = diplomaticReady && player.DiplomaticCoalitionTurns == 0 && selectedCity != null &&
+                (selectedCity.Project == null || selectedCity.Project.Kind == ProjectKind.None);
 
-            GameObject heritage = UiKit.Card(parent, "Наследие эпох · итоговый путь");
-            UiKit.Label(heritage.transform, "Если никто не завершил другой путь, на " + state.MaximumTurn + "-м ходу побеждает цивилизация с наибольшим счётом развития. Он учитывает население, качество городов, технологии, культуру, связи, репутацию и цену войны.",
-                20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(heritage.transform, "Ваш счёт: " + VictoryEvaluator.HeritageScore(state, player.Id) + " · прогресс города: " + player.CompletedTechnologies + " технологий · " + CountCities(state, player.Id) + " городов · " + Format(simulation.CivilizationPopulationTenths(player.Id)) + " жителей.",
-                21, GamePalette.Gold, TextAnchor.MiddleLeft, true);
-            GameObject comparison = UiKit.Card(parent, "Счёт соседей");
+            HeritageScoreBreakdown breakdown = VictoryEvaluator.HeritageBreakdown(state, player.Id);
+            GameObject heritage = UiKit.Section(parent, "НАСЛЕДИЕ ЭПОХ · ИТОГ НА " + state.MaximumTurn + "-М ХОДУ");
+            UiKit.Label(heritage.transform, "Счёт складывается из благополучия, науки и образования, культуры, устойчивости, доверия и исполненных договоров.",
+                12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            UiKit.Label(heritage.transform, "Счёт " + breakdown.Total + " · благополучие " + breakdown.QualityOfLife + " · наука " + breakdown.EducationAndTechnology +
+                " · культура " + breakdown.CulturalContribution + " · устойчивость " + breakdown.Sustainability + " · доверие " + breakdown.TrustAndAgreements,
+                13, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+            GameObject comparison = UiKit.Section(parent, "СРАВНЕНИЕ ДЕРЖАВ");
             for (int i = 0; i < state.Civilizations.Length; i++)
             {
                 CivilizationState civ = state.Civilizations[i];
-                UiKit.Label(comparison.transform, civ.Name + " · " + VictoryEvaluator.HeritageScore(state, civ.Id) + " очков · репутация " + civ.Reputation +
-                    " · технологии " + civ.CompletedTechnologies + " · военная нагрузка " + civ.WarStrain,
-                    20, civ.Id == player.Id ? GamePalette.Gold : GamePalette.PaperDim, TextAnchor.MiddleLeft, civ.Id == player.Id);
+                UiKit.Label(comparison.transform, civ.Name + " · наследие " + VictoryEvaluator.HeritageScore(state, civ.Id) + " · репутация " + civ.Reputation +
+                    " · технологии " + civ.CompletedTechnologies + " · усталость от войны " + civ.WarStrain,
+                    13, civ.Id == player.Id ? GamePalette.Gold : GamePalette.PaperDim, TextAnchor.MiddleLeft, civ.Id == player.Id);
             }
         }
 
-        private int CountCulturalObjects(int ownerId)
+        private static bool HasVictoryProject(GameState state, int ownerId, ProjectKind kind)
         {
-            int count = 0;
-            for (int i = 0; i < simulation.State.Cities.Length; i++)
-                if (simulation.State.Cities[i].OwnerId == ownerId) count += simulation.State.Cities[i].CompletedCulturalIds.Length;
-            return count;
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityState city = state.Cities[i];
+                if (city.OwnerId == ownerId && city.Project != null && city.Project.Kind == kind) return true;
+            }
+            return false;
         }
 
-        private static int CulturalPartners(CivilizationState civ)
+        private static int DiplomaticVoteCount(GameState state, CivilizationState civ)
         {
-            int count = 0;
-            for (int i = 0; i < civ.CulturalInfluence.Length; i++) if (i != civ.Id && civ.CulturalInfluence[i] >= 25) count++;
-            return count;
+            int votes = 1;
+            if (civ.Relations == null || civ.Trusts == null) return votes;
+            for (int i = 0; i < state.Civilizations.Length; i++)
+            {
+                CivilizationState partner = state.Civilizations[i];
+                if (partner == null || partner.IsDefeated || partner.Id == civ.Id || partner.Id >= civ.Relations.Length || partner.Id >= civ.Trusts.Length) continue;
+                if (civ.Relations[partner.Id] >= 25 && civ.Trusts[partner.Id] >= 50) votes++;
+            }
+            return votes;
         }
 
         private static string CulturalInfluenceLabel(CivilizationState civ)
@@ -5328,14 +5451,6 @@ namespace Nasledie.Client
             return values.Count < 3 ? "—" : values[0] + "/" + values[1] + "/" + values[2];
         }
 
-        private static int DiplomaticPartners(CivilizationState civ)
-        {
-            int count = 0;
-            for (int i = 0; i < civ.Relations.Length; i++)
-                if (i != civ.Id && civ.Relations[i] >= 25 && i < civ.Trusts.Length && civ.Trusts[i] >= 50) count++;
-            return count;
-        }
-
         private static int CountBits(int value)
         {
             int count = 0;
@@ -5343,36 +5458,84 @@ namespace Nasledie.Client
             return count;
         }
 
-        private int CountRoutes(int ownerId)
-        {
-            int count = 0;
-            for (int i = 0; i < simulation.State.Treaties.Length; i++)
-            {
-                TreatyState treaty = simulation.State.Treaties[i];
-                if (treaty.Active && treaty.Kind == TreatyKind.TradeRoute && (treaty.FromCivilizationId == ownerId || treaty.ToCivilizationId == ownerId)) count++;
-            }
-            return count;
-        }
-
         private void RenderChronicle(Transform parent)
         {
             GameState state = simulation.State;
-            GameObject reportCard = UiKit.Card(parent, "Последние отчёты");
-            if (state.Reports.Length == 0) UiKit.Label(reportCard.transform, "После первого завершённого хода появится отчёт: изменения еды, населения, казны, знаний, влияния и культуры.", 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-            for (int i = state.Reports.Length - 1; i >= 0; i--)
+            GameObject filters = CreateActionRow(parent, "ChronicleFilters", 6);
+            AddCompactActionButton(filters.transform, "ВСЕ", delegate { chronicleFilter = ChronicleFilter.All; RenderGame(); },
+                chronicleFilter == ChronicleFilter.All ? GamePalette.Gold : GamePalette.Ink);
+            AddCompactActionButton(filters.transform, "ГОРОДА", delegate { chronicleFilter = ChronicleFilter.Cities; RenderGame(); },
+                chronicleFilter == ChronicleFilter.Cities ? GamePalette.Gold : GamePalette.Ink);
+            AddCompactActionButton(filters.transform, "СОСЕДИ", delegate { chronicleFilter = ChronicleFilter.Neighbors; RenderGame(); },
+                chronicleFilter == ChronicleFilter.Neighbors ? GamePalette.Gold : GamePalette.Ink);
+
+            HashSet<string> recentReportEntries = new HashSet<string>();
+            int reportCount = state.Reports == null ? 0 : state.Reports.Length;
+            if (reportCount == 0)
+                UiKit.Label(parent, "После первого завершённого хода здесь появятся выпуск и последствия решений.",
+                    13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            for (int i = reportCount - 1; i >= 0; i--)
             {
                 TurnReport report = state.Reports[i];
-                GameObject card = UiKit.Card(reportCard.transform, "Ход " + report.Turn + " · итог");
-                UiKit.Label(card.transform, "Еда " + Signed(report.FoodDeltaTenths) + " · население " + Signed(report.PopulationDeltaTenths) +
-                    " · казна " + Signed(report.TreasuryDeltaTenths) + " · знания " + Signed(report.KnowledgeDeltaTenths) +
-                    " · влияние " + Signed(report.InfluenceDeltaTenths) + " · культура " + Signed(report.CultureDelta),
-                    20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-                UiKit.Label(card.transform, "Смерти " + Format(report.DeathsTenths) + " · миграция " + Format(report.EmigrationTenths) + " · сражения " + report.BattleCount + " · договоры " + report.TreatyCount,
-                    18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-                for (int e = 0; e < report.Entries.Length; e++) UiKit.Label(card.transform, "• " + report.Entries[e], 18, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+                GameObject reportSection = UiKit.Section(parent, "ХОД " + report.Turn);
+                UiKit.Label(reportSection.transform, "Еда " + Signed(report.FoodDeltaTenths) + " · жители " + Signed(report.PopulationDeltaTenths) + " · казна " + Signed(report.TreasuryDeltaTenths),
+                    13, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                UiKit.Label(reportSection.transform, "Знания " + Signed(report.KnowledgeDeltaTenths) + " · влияние " + Signed(report.InfluenceDeltaTenths) + " · культура " + Signed(report.CultureDelta),
+                    12, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+                UiKit.Label(reportSection.transform, "Погибло " + Format(report.DeathsTenths) + " · уехало " + Format(report.EmigrationTenths) + " · сражения " + report.BattleCount + " · договоры " + report.TreatyCount,
+                    12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                if (report.Entries == null) continue;
+                for (int e = 0; e < report.Entries.Length; e++)
+                {
+                    string entry = report.Entries[e];
+                    if (string.IsNullOrEmpty(entry)) continue;
+                    recentReportEntries.Add(entry);
+                    if (ChronicleEntryMatchesFilter(state, entry))
+                        UiKit.Label(reportSection.transform, entry, 12, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+                }
             }
-            GameObject log = UiKit.Card(parent, "Летопись кампании · последние события");
-            for (int i = state.EventLog.Length - 1; i >= 0; i--) UiKit.Label(log.transform, state.EventLog[i], 18, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+            GameObject log = UiKit.Section(parent, "СОБЫТИЯ КАМПАНИИ");
+            int additionalEntries = 0;
+            if (state.EventLog != null)
+            {
+                for (int i = state.EventLog.Length - 1; i >= 0; i--)
+                {
+                    string entry = state.EventLog[i];
+                    if (string.IsNullOrEmpty(entry) || recentReportEntries.Contains(entry) || !ChronicleEntryMatchesFilter(state, entry)) continue;
+                    UiKit.Label(log.transform, entry, 12, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+                    additionalEntries++;
+                }
+            }
+            if (additionalEntries == 0)
+                UiKit.Label(log.transform, "Дополнительных записей по этому фильтру нет.", 12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+        }
+
+        private bool ChronicleEntryMatchesFilter(GameState state, string entry)
+        {
+            if (chronicleFilter == ChronicleFilter.All) return true;
+            string value = entry ?? string.Empty;
+            CivilizationState player = state.Civilization(state.HumanCivilizationId);
+            if (chronicleFilter == ChronicleFilter.Cities)
+            {
+                for (int i = 0; i < state.Cities.Length; i++)
+                {
+                    CityState city = state.Cities[i];
+                    if (city.OwnerId == player.Id && !string.IsNullOrEmpty(city.Name) && value.IndexOf(city.Name, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                }
+                string[] cityTerms = { "город", "посел", "столиц", "район", "жител", "работник", "обоз", "здоров", "запас", "ферм", "школ", "строительств" };
+                for (int i = 0; i < cityTerms.Length; i++)
+                    if (value.IndexOf(cityTerms[i], StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                return false;
+            }
+            for (int i = 0; i < state.Civilizations.Length; i++)
+            {
+                CivilizationState civilization = state.Civilizations[i];
+                if (civilization.Id != player.Id && !string.IsNullOrEmpty(civilization.Name) && value.IndexOf(civilization.Name, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            }
+            string[] neighborTerms = { "сосед", "торгов", "договор", "войн", "границ", "отношен", "перемир", "гарант", "репутац", "коалиц", "посред", "экспорт", "блокад" };
+            for (int i = 0; i < neighborTerms.Length; i++)
+                if (value.IndexOf(neighborTerms[i], StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            return false;
         }
 
         private static int CountCities(GameState state, int ownerId)
