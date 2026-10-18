@@ -17,12 +17,13 @@ internal static class MechanicsRegressionScenario
         CheckPrisonerExchange();
         CheckNeutralMediation();
         CheckHighDifficultyWarInitiative();
+        CheckAiWarPlanningUsesObservedStrength();
         CheckRiverMovement();
         CheckNonAggressionBreachPenalty();
         CheckSettlerWagonSafety();
         CheckSettlerInterceptionChoices();
         CheckBattlePrisonerCapture();
-        report("PASS: fair starts, terrain-specialized worker yields and capacities, coasts, salt/resource deals, humanitarian aid, treaty timing/embargo, mediation, park/fortification/iron/herb effects, peace demands/annexation, high-difficulty AI war initiative, bridge movement, treaty breach consequences, civilian wagon evacuation/interception choices, and command journaling work.");
+        report("PASS: fair starts, terrain-specialized worker yields and capacities, coasts, salt/resource deals, humanitarian aid, treaty timing/embargo, mediation, park/fortification/iron/herb effects, peace demands/annexation, high-difficulty AI war initiative using observed forces, bridge movement, treaty breach consequences, civilian wagon evacuation/interception choices, and command journaling work.");
     }
 
     private static void CheckCoastAndResources()
@@ -696,6 +697,7 @@ internal static class MechanicsRegressionScenario
         CityState aiCity = FirstCity(state, ai.Id);
         CityState playerCity = FirstCity(state, playerId);
         MakeAdjacent(aiCity, playerCity);
+        GameFactory.RebuildVisibility(state);
         ai.Difficulty = Difficulty.Trial;
         ai.TreasuryTenths = 500;
         ai.Reputation = 80;
@@ -717,6 +719,62 @@ internal static class MechanicsRegressionScenario
             if (simulation.State.Conflicts[i].Active && simulation.State.Conflicts[i].AggressorId == ai.Id &&
                 simulation.State.Conflicts[i].DefenderId == playerId && simulation.State.Conflicts[i].Phase == 0) initiated = true;
         Assert(initiated, "a hostile, well-armed Trial AI must start a visible crisis before war instead of remaining permanently passive");
+    }
+
+    private static void CheckAiWarPlanningUsesObservedStrength()
+    {
+        bool withoutHiddenForce = StartsHighDifficultyWar(false);
+        bool withHiddenForce = StartsHighDifficultyWar(true);
+        Assert(withoutHiddenForce && withHiddenForce,
+            "an unseen enemy force must not change an AI war decision when all observed facts and the seed are identical");
+    }
+
+    private static bool StartsHighDifficultyWar(bool addUnseenDefender)
+    {
+        GameSimulation simulation = GameSimulation.NewCampaign(9017, Difficulty.Standard);
+        GameState state = simulation.State;
+        CivilizationState ai = state.Civilization(1);
+        int targetId = state.HumanCivilizationId;
+        CityState aiCity = FirstCity(state, ai.Id);
+        CityState targetCity = FirstCity(state, targetId);
+        MakeAdjacent(aiCity, targetCity);
+        ai.Difficulty = Difficulty.Trial;
+        ai.TreasuryTenths = 500;
+        ai.Reputation = 80;
+        ai.WarStrain = 0;
+        ai.WarsStarted = 0;
+        ai.StrategicGoal = "expansion";
+        ai.Relations[targetId] = -100;
+        ai.Threats[targetId] = 100;
+        var attacker = new UnitState
+        {
+            Id = 9070, OwnerId = ai.Id, CitySourceId = aiCity.Id, Kind = UnitKind.FieldForce,
+            Q = aiCity.Q, R = aiCity.R, Strength = 100, Readiness = 100, SupplyBasisPoints = 10000, MovementLeft = 2
+        };
+        state.Units = new[] { attacker };
+        state.Turn = 21;
+        GameFactory.RebuildVisibility(state);
+        if (addUnseenDefender)
+        {
+            HexCell hiddenCell = null;
+            int aiMask = 1 << ai.Id;
+            for (int i = 0; i < state.Cells.Length; i++)
+                if ((state.Cells[i].VisibleToMask & aiMask) == 0) { hiddenCell = state.Cells[i]; break; }
+            Assert(hiddenCell != null, "the map must contain cells outside the AI's current sight");
+            state.Units = new[] { attacker, new UnitState
+            {
+                Id = 9071, OwnerId = targetId, CitySourceId = targetCity.Id, Kind = UnitKind.FieldForce,
+                Q = hiddenCell.Q, R = hiddenCell.R, Strength = 300, Readiness = 100, SupplyBasisPoints = 10000
+            } };
+            Assert((hiddenCell.VisibleToMask & aiMask) == 0, "the target force used by this test must remain unseen by the AI");
+        }
+
+        simulation.EndTurn();
+        for (int i = 0; i < simulation.State.Conflicts.Length; i++)
+            if (simulation.State.Conflicts[i].Active && simulation.State.Conflicts[i].AggressorId == ai.Id &&
+                simulation.State.Conflicts[i].DefenderId == targetId && simulation.State.Conflicts[i].Phase == 0)
+                return true;
+        return false;
     }
 
     private static void CheckRiverMovement()

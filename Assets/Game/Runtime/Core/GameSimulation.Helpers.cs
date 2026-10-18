@@ -570,6 +570,26 @@ namespace Nasledie.Core
             return total;
         }
 
+        private static int ObservedMilitaryStrength(GameState state, int civilizationId, int observerId)
+        {
+            int total = 0;
+            int observerMask = 1 << observerId;
+            for (int i = 0; i < state.Units.Length; i++)
+            {
+                UnitState unit = state.Units[i];
+                if (unit.OwnerId != civilizationId || unit.Kind == UnitKind.SettlerWagon) continue;
+                HexCell cell = state.Cell(unit.Q, unit.R);
+                if (cell == null || (cell.VisibleToMask & observerMask) == 0) continue;
+                total += Math.Max(0, unit.Strength) * Math.Max(30, unit.Readiness) / 100 * Math.Max(3000, unit.SupplyBasisPoints) / 10000;
+            }
+            return total;
+        }
+
+        private static bool IsKnownToCivilization(HexCell cell, int civilizationId)
+        {
+            return cell != null && (cell.ExploredByMask & (1 << civilizationId)) != 0;
+        }
+
         private static UnitState WeakestMilitaryUnit(GameState state, int civilizationId)
         {
             UnitState weakest = null;
@@ -582,18 +602,18 @@ namespace Nasledie.Core
             return weakest;
         }
 
-        private static HexCell FindBorderClaimCell(GameState state, int claimantId, int targetId)
+        private static HexCell FindBorderClaimCell(GameState state, int claimantId, int targetId, int observerId)
         {
             HexCell best = null;
             int bestScore = int.MaxValue;
             for (int i = 0; i < state.Cells.Length; i++)
             {
                 HexCell cell = state.Cells[i];
-                if (cell.OwnerId != targetId || cell.Terrain == TerrainKind.Water || cell.Terrain == TerrainKind.Mountain ||
+                if (!IsKnownToCivilization(cell, observerId) || cell.OwnerId != targetId || cell.Terrain == TerrainKind.Water || cell.Terrain == TerrainKind.Mountain ||
                     cell.Terrain == TerrainKind.Swamp || cell.DistrictCityId >= 0 || !string.IsNullOrEmpty(cell.DistrictBuildingId)) continue;
                 bool cityCell = false;
                 for (int c = 0; c < state.Cities.Length; c++)
-                    if (state.Cities[c].Q == cell.Q && state.Cities[c].R == cell.R) { cityCell = true; break; }
+                    if (state.Cities[c].Q == cell.Q && state.Cities[c].R == cell.R && IsKnownToCivilization(cell, observerId)) { cityCell = true; break; }
                 if (cityCell) continue;
                 bool border = false;
                 for (int d = 0; d < 6; d++)
@@ -609,8 +629,9 @@ namespace Nasledie.Core
                     CityState city = state.Cities[c];
                     int distance = HexGrid.Distance(cell.Q, cell.R, city.Q, city.R);
                     if (city.OwnerId == claimantId) claimantDistance = Math.Min(claimantDistance, distance);
-                    if (city.OwnerId == targetId) targetDistance = Math.Min(targetDistance, distance);
+                    if (city.OwnerId == targetId && IsKnownToCivilization(state.Cell(city.Q, city.R), observerId)) targetDistance = Math.Min(targetDistance, distance);
                 }
+                if (targetDistance == int.MaxValue) continue;
                 int score = claimantDistance * 3 + targetDistance;
                 if (score < bestScore) { bestScore = score; best = cell; }
             }

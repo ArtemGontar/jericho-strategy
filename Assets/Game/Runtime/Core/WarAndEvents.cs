@@ -554,12 +554,14 @@ namespace Nasledie.Core
                         {
                             CityState rival = state.Cities[b];
                             if (rival.OwnerId != target.Id) continue;
+                            HexCell rivalCityCell = state.Cell(rival.Q, rival.R);
+                            if (!IsKnownToCivilization(rivalCityCell, aggressor.Id)) continue;
                             int distance = HexGrid.Distance(own.Q, own.R, rival.Q, rival.R);
                             if (distance < borderDistance) { borderDistance = distance; aggressorCity = own; targetCity = rival; }
                         }
                     }
                     if (aggressorCity == null || targetCity == null || borderDistance > 5) continue;
-                    int targetStrength = MilitaryStrength(state, target.Id);
+                    int targetStrength = ObservedMilitaryStrength(state, target.Id, aggressor.Id);
                     int hostility = Math.Max(0, -aggressor.Relations[target.Id]) + aggressor.Threats[target.Id] / 2 + target.Threats[aggressor.Id] / 3;
                     int rivalry = AiMilitaryPosture(state, aggressor.Id * 4 + target.Id);
                     if (rivalry < (aggressor.Difficulty == Difficulty.Trial ? 20 : 12)) hostility += 70;
@@ -572,7 +574,7 @@ namespace Nasledie.Core
                         bestScore = score;
                         chosenTarget = target;
                         chosenTargetCity = targetCity;
-                        chosenClaim = FindBorderClaimCell(state, aggressor.Id, target.Id);
+                        chosenClaim = FindBorderClaimCell(state, aggressor.Id, target.Id, aggressor.Id);
                     }
                 }
                 if (chosenTarget == null) continue;
