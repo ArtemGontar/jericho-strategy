@@ -9,7 +9,8 @@ internal static class MechanicsRegressionScenario
         CheckImprovementYields();
         CheckRiverMovement();
         CheckNonAggressionBreachPenalty();
-        report("PASS: generated coasts, fishery/workshop/herb yields, bridge movement, and treaty breach consequences are playable mechanics.");
+        CheckSettlerWagonSafety();
+        report("PASS: generated coasts, fishery/workshop/herb yields, bridge movement, treaty breach consequences, and civilian wagon evacuation work.");
     }
 
     private static void CheckCoastAndResources()
@@ -159,6 +160,111 @@ internal static class MechanicsRegressionScenario
         Assert(!pact.Active && pact.Broken, "declaring war must close and mark the active pact as broken");
         Assert(actor.Reputation <= reputationBefore - 32, "breaking a pact must add a distinct reputation penalty");
         Assert(target.Relations[actor.Id] <= targetRelationBefore - 20, "the target must register the broken promise");
+    }
+
+    private static void CheckSettlerWagonSafety()
+    {
+        GameSimulation simulation = GameSimulation.NewCampaign(9006, Difficulty.Standard);
+        GameState state = simulation.State;
+        int playerId = state.HumanCivilizationId;
+        int rivalId = 1;
+        SetUpWar(state, playerId, rivalId);
+        HexCell origin = state.Cell(5, 5);
+        HexCell contested = state.Cell(6, 5);
+        HexCell refuge = state.Cell(6, 6);
+        Assert(origin != null && contested != null && refuge != null, "settler combat cells must exist");
+        for (int i = 0; i < state.Cells.Length; i++)
+            if (state.Cells[i].OwnerId == rivalId) state.Cells[i].OwnerId = -1;
+        origin.OwnerId = playerId;
+        origin.Terrain = TerrainKind.Plains;
+        contested.OwnerId = rivalId;
+        contested.Terrain = TerrainKind.Plains;
+        refuge.OwnerId = rivalId;
+        refuge.Terrain = TerrainKind.Plains;
+        state.Units = new[]
+        {
+            new UnitState { Id = 9010, OwnerId = playerId, CitySourceId = state.Cities[0].Id, Kind = UnitKind.Militia,
+                Q = origin.Q, R = origin.R, Strength = 70, Readiness = 100, SupplyBasisPoints = 10000, MovementLeft = 1 },
+            new UnitState { Id = 9011, OwnerId = rivalId, CitySourceId = state.Cities[1].Id, Kind = UnitKind.SettlerWagon,
+                Q = contested.Q, R = contested.R, PopulationTenths = 20, FoodCargoTenths = 20, Strength = 0, MovementLeft = 0 }
+        };
+
+        CommandResult intercept = simulation.Issue(new GameCommand
+        {
+            Kind = CommandKind.MoveUnit, ActorId = playerId, EntityId = 9010, Q = contested.Q, R = contested.R
+        });
+        Assert(intercept.Accepted, "a military unit can intercept a wagon without fighting it as a soldier");
+        UnitState protectedWagon = FindUnit(state, 9011);
+        Assert(protectedWagon != null && protectedWagon.Q == refuge.Q && protectedWagon.R == refuge.R,
+            "an intercepted wagon must retreat to the closest unoccupied owned cell");
+        Assert(protectedWagon.PopulationTenths == 20 && protectedWagon.FoodCargoTenths == 20,
+            "retreat must preserve the wagon population and its food cargo");
+
+        GameSimulation refugeeSimulation = GameSimulation.NewCampaign(9007, Difficulty.Standard);
+        GameState refugeeState = refugeeSimulation.State;
+        SetUpWar(refugeeState, refugeeState.HumanCivilizationId, rivalId);
+        HexCell refugeeOrigin = refugeeState.Cell(5, 5);
+        HexCell wagonCell = refugeeState.Cell(6, 5);
+        for (int i = 0; i < refugeeState.Cells.Length; i++)
+            if (refugeeState.Cells[i].OwnerId == rivalId) refugeeState.Cells[i].OwnerId = -1;
+        refugeeOrigin.OwnerId = refugeeState.HumanCivilizationId;
+        refugeeOrigin.Terrain = TerrainKind.Plains;
+        wagonCell.OwnerId = rivalId;
+        wagonCell.Terrain = TerrainKind.Plains;
+        refugeeState.Units = new[]
+        {
+            new UnitState { Id = 9012, OwnerId = refugeeState.HumanCivilizationId, CitySourceId = refugeeState.Cities[0].Id,
+                Kind = UnitKind.Militia, Q = refugeeOrigin.Q, R = refugeeOrigin.R, Strength = 70, Readiness = 100,
+                SupplyBasisPoints = 10000, MovementLeft = 1 },
+            new UnitState { Id = 9013, OwnerId = rivalId, CitySourceId = refugeeState.Cities[1].Id, Kind = UnitKind.SettlerWagon,
+                Q = wagonCell.Q, R = wagonCell.R, PopulationTenths = 20, Strength = 0 }
+        };
+        CommandResult evacuation = refugeeSimulation.Issue(new GameCommand
+        {
+            Kind = CommandKind.MoveUnit, ActorId = refugeeState.HumanCivilizationId, EntityId = 9012,
+            Q = wagonCell.Q, R = wagonCell.R
+        });
+        Assert(evacuation.Accepted && FindUnit(refugeeState, 9013) == null &&
+               refugeeState.Civilization(rivalId).RefugeePopulationTenths == 20,
+            "without a safe owned cell, wagon residents must be preserved as refugees rather than lost");
+
+        GameSimulation civilianAttackSimulation = GameSimulation.NewCampaign(9008, Difficulty.Standard);
+        GameState civilianState = civilianAttackSimulation.State;
+        SetUpWar(civilianState, civilianState.HumanCivilizationId, rivalId);
+        HexCell civilianOrigin = civilianState.Cell(5, 5);
+        HexCell militaryTarget = civilianState.Cell(6, 5);
+        civilianOrigin.OwnerId = civilianState.HumanCivilizationId;
+        militaryTarget.OwnerId = civilianState.HumanCivilizationId;
+        civilianOrigin.Terrain = TerrainKind.Plains;
+        militaryTarget.Terrain = TerrainKind.Plains;
+        civilianState.Units = new[]
+        {
+            new UnitState { Id = 9014, OwnerId = civilianState.HumanCivilizationId, CitySourceId = civilianState.Cities[0].Id,
+                Kind = UnitKind.SettlerWagon, Q = civilianOrigin.Q, R = civilianOrigin.R, PopulationTenths = 20, MovementLeft = 2 },
+            new UnitState { Id = 9015, OwnerId = rivalId, CitySourceId = civilianState.Cities[1].Id,
+                Kind = UnitKind.Militia, Q = militaryTarget.Q, R = militaryTarget.R, Strength = 70, MovementLeft = 1 }
+        };
+        CommandResult civilianAttack = civilianAttackSimulation.Issue(new GameCommand
+        {
+            Kind = CommandKind.MoveUnit, ActorId = civilianState.HumanCivilizationId, EntityId = 9014,
+            Q = militaryTarget.Q, R = militaryTarget.R
+        });
+        Assert(!civilianAttack.Accepted && civilianAttack.Code == "settler_cannot_attack" && FindUnit(civilianState, 9014) != null,
+            "a settler wagon must never enter a combat resolution as an attacker");
+    }
+
+    private static void SetUpWar(GameState state, int playerId, int rivalId)
+    {
+        state.Conflicts = new[]
+        {
+            new ConflictState { Id = 9020, AggressorId = playerId, DefenderId = rivalId, Phase = 2, Active = true }
+        };
+    }
+
+    private static UnitState FindUnit(GameState state, int id)
+    {
+        for (int i = 0; i < state.Units.Length; i++) if (state.Units[i].Id == id) return state.Units[i];
+        return null;
     }
 
     private static void Assert(bool condition, string message)

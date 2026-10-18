@@ -365,10 +365,21 @@ namespace Nasledie.Core
             if (unit.MovementLeft < movementCost) return CommandResult.Reject("movement_spent", "На этот ход у отряда не осталось очков движения.");
             if (destination.OwnerId >= 0 && destination.OwnerId != actor.Id && !AtWar(state, actor.Id, destination.OwnerId) && !HasTreaty(state, TreatyKind.OpenBorders, actor.Id, destination.OwnerId))
                 return CommandResult.Reject("closed_border", "Нужны открытые границы или состояние войны.");
+            if (unit.Kind == UnitKind.SettlerWagon && destination.OwnerId >= 0 && destination.OwnerId != actor.Id)
+                return CommandResult.Reject("settler_enemy_territory", "Гражданский обоз не входит на территорию другой цивилизации.");
             UnitState defender = FindUnitAt(state, q, r, actor.Id);
             if (defender != null)
             {
                 if (!AtWar(state, actor.Id, defender.OwnerId)) return CommandResult.Reject("unit_blocked", "На клетке стоит отряд другой цивилизации.");
+                if (unit.Kind == UnitKind.SettlerWagon)
+                    return CommandResult.Reject("settler_cannot_attack", "Гражданский обоз не атакует военные отряды.");
+                if (defender.Kind == UnitKind.SettlerWagon)
+                {
+                    unit.MovementLeft = 0;
+                    EvacuateSettlerWagon(state, defender, feedback);
+                    GameFactory.RebuildVisibility(state);
+                    return CommandResult.Ok("Гражданский обоз эвакуирован из зоны боя.");
+                }
                 ResolveBattle(state, unit, defender, destination, feedback);
                 return CommandResult.Ok("Сражение разрешено.");
             }
@@ -390,6 +401,46 @@ namespace Nasledie.Core
             }
             GameFactory.RebuildVisibility(state);
             return CommandResult.Ok("Отряд перемещён.");
+        }
+
+        private static void EvacuateSettlerWagon(GameState state, UnitState wagon, bool feedback)
+        {
+            HexCell safestCell = null;
+            int safestDistance = int.MaxValue;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell candidate = state.Cells[i];
+                if (candidate.OwnerId != wagon.OwnerId || candidate.Terrain == TerrainKind.Mountain || candidate.Terrain == TerrainKind.Water ||
+                    (candidate.Q == wagon.Q && candidate.R == wagon.R)) continue;
+                bool occupied = false;
+                for (int unitIndex = 0; unitIndex < state.Units.Length; unitIndex++)
+                {
+                    UnitState other = state.Units[unitIndex];
+                    if (other.Id == wagon.Id || other.Q != candidate.Q || other.R != candidate.R) continue;
+                    occupied = true;
+                    break;
+                }
+                if (occupied) continue;
+                int distance = HexGrid.Distance(wagon.Q, wagon.R, candidate.Q, candidate.R);
+                if (distance < safestDistance)
+                {
+                    safestDistance = distance;
+                    safestCell = candidate;
+                }
+            }
+            if (safestCell != null)
+            {
+                wagon.Q = safestCell.Q;
+                wagon.R = safestCell.R;
+                wagon.MovementLeft = 0;
+                if (feedback) AppendLog(state, "Гражданский обоз отступил на ближайшую безопасную клетку своей цивилизации.");
+                return;
+            }
+
+            CivilizationState owner = state.Civilization(wagon.OwnerId);
+            if (owner != null) owner.RefugeePopulationTenths += Math.Max(0, wagon.PopulationTenths);
+            RemoveUnit(state, wagon.Id);
+            if (feedback) AppendLog(state, "Для обоза не нашлось безопасного участка; его жители эвакуированы в поток беженцев.");
         }
 
         private CommandResult Recruit(GameState state, CivilizationState actor, CityState city, UnitKind kind, bool feedback)
