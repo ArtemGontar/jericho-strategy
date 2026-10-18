@@ -440,8 +440,139 @@ def modal(name, title, kicker, sections, background=None, map_background=False, 
     save(name, s)
 
 
+def strategy_topbar(turn=24):
+    out = [rect(0, 0, 1920, 94, INK, 0, .86)]
+    out.append(text(46, 42, "JERICHO", 21, GOLD, 800, letter_spacing=1.1))
+    out.append(text(46, 70, f"ХОД {turn}  ·  ЭПОХА ОБЩИН", 12, DIM, 550, letter_spacing=.55))
+    for i, (label, value) in enumerate([("КАЗНА", "126"), ("ЕДА", "+3,1"), ("ЗНАНИЯ", "+6,0"), ("ВЛИЯНИЕ", "18"), ("КУЛЬТУРА", "61")]):
+        x = 922 + i * 168
+        out.append(text(x, 33, label, 10, MUTED, 700, "middle", letter_spacing=.8))
+        out.append(text(x, 65, value, 18, PAPER, 650, "middle"))
+    out.append(line(0, 93, 1920, 93, GOLD, .34))
+    return "".join(out)
+
+
+def hex_selection_screen():
+    s = finish(base(map_art=True, left_shade=False))
+    s += strategy_topbar()
+    # The selected hex remains part of the world map; its details live in one clean inspector rail.
+    s += '<rect x="1376" y="94" width="544" height="986" fill="#111714" opacity=".82"/>'
+    s += line(1376, 114, 1376, 1040, GOLD, .46, 2)
+    s += text(1420, 157, "ЗЕМЛЯ", 12, SAGE, 700, letter_spacing=1.4)
+    s += text(1420, 207, "Плодородный луг", 29, PAPER, 720)
+    s += text(1420, 243, "Иерихон  ·  1 клетка от столицы", 15, DIM, 450)
+    s += line(1420, 273, 1876, 273, PAPER, .21)
+    # A farm illustration links the inspected land to its available action.
+    s += image(1415, 292, 180, 154, art("Farm.png"), "xMidYMid meet")
+    s += text(1615, 329, "ЛУГ", 12, SAGE, 700, letter_spacing=1)
+    s += text(1615, 361, "Плодородная почва", 18, PAPER, 600)
+    s += text(1615, 392, "+2 еды при обработке", 14, DIM, 450)
+    s += text(1420, 482, "УЧАСТОК", 12, SAGE, 700, letter_spacing=1.1)
+    s += text(1420, 518, "Свободен · принадлежит Иерихону", 17, PAPER, 550)
+    s += text(1420, 555, "Ферма окупится за 3 хода", 14, DIM, 450)
+    s += line(1420, 586, 1876, 586, PAPER, .21)
+    s += text(1420, 625, "ДЕЙСТВИЕ", 12, SAGE, 700, letter_spacing=1.1)
+    s += text(1420, 664, "Ферма", 22, PAPER, 650)
+    s += text(1420, 697, "12 производства  ·  рост продовольствия", 14, DIM, 450)
+    s += button(1420, 739, 218, "ПОСТРОИТЬ ФЕРМУ", True, 49, 14)
+    s += button(1652, 739, 224, "ПРОИЗВОДСТВО", False, 49, 14)
+    s += text(1420, 826, "КЛЕТКА", 11, MUTED, 700, letter_spacing=1)
+    s += text(1420, 856, "Координаты  ·  12, 8", 14, DIM, 500)
+    s += text(1420, 896, "Нажмите на карту, чтобы выбрать другой участок", 13, MUTED, 450)
+    # One clear marker anchors the inspector to the selected place on the map.
+    s += '<polygon points="857,443 905,469 905,521 857,547 809,521 809,469" fill="#d1ab62" fill-opacity=".17" stroke="#e6c377" stroke-width="5"/>'
+    s += '<circle cx="857" cy="495" r="5" fill="#f1eadc"/>'
+    s += text(860, 431, "ФЕРМА", 11, INK, 750, "middle")
+    save("17-hex-selection", s)
+
+
+def turn_resolution_screen():
+    s = finish(base(map_art=True, left_shade=False))
+    s += strategy_topbar()
+    # A report dock leaves the board visible and uses the game's own turn data hierarchy.
+    s += '<rect x="0" y="668" width="1920" height="412" fill="#111714" opacity=".88"/>'
+    s += line(0, 668, 1920, 668, GOLD, .38, 2)
+    s += text(66, 725, "ХОД 24 ЗАВЕРШЁН", 26, GOLD, 760, letter_spacing=.3)
+    s += text(66, 758, "ГОРОД РАСТЁТ  ·  ПОРЯДОК СОХРАНЁН", 11, SAGE, 700, letter_spacing=1.1)
+    labels = [("ЕДА", "+3,1", "запас на 4 хода"), ("КАЗНА", "+8,2", "после содержания"), ("ЗНАНИЯ", "+6,0", "ирригация изучена"), ("ЖИТЕЛИ", "+0,4", "отток остановлен")]
+    for i, (label, value, hint) in enumerate(labels):
+        x = 72 + i * 226
+        s += text(x, 819, label, 11, MUTED, 700, letter_spacing=1)
+        s += text(x, 860, value, 29, PAPER, 700)
+        s += text(x, 893, hint, 13, DIM, 450)
+        if i < len(labels) - 1:
+            s += line(x + 192, 796, x + 192, 910, PAPER, .18)
+    s += line(1012, 714, 1012, 1018, PAPER, .21)
+    s += text(1050, 725, "ЧТО ИЗМЕНИЛОСЬ", 12, SAGE, 700, letter_spacing=1)
+    s += text(1050, 777, "Рынок завершён в столице", 18, PAPER, 550)
+    s += text(1050, 819, "Шумер продлил торговый путь", 16, DIM, 450)
+    s += text(1050, 857, "Угроза засухи снизилась · 4", 16, DIM, 450)
+    s += text(1050, 930, "3 события  ·  1 договор  ·  боёв нет", 12, MUTED, 500)
+    s += button(1570, 957, 270, "ДАЛЬШЕ  →", True, 54, 17)
+    s += button(1288, 957, 252, "ЛЕТОПИСЬ", False, 54, 15)
+    save("18-turn-resolution", s)
+
+
+def battle_animation_screen():
+    s = finish(base(map_art=True, left_shade=False))
+    s += strategy_topbar()
+    # Freeze-frame of the on-map attack animation; it is not a modal combat screen.
+    s += '<path d="M672 530 C730 497 782 483 845 487" fill="none" stroke="#e6c377" stroke-width="6" stroke-dasharray="11 10" opacity=".85"/>'
+    s += '<svg x="640" y="437" width="88" height="112" viewBox="0 0 640 640"><image x="0" y="0" width="1280" height="1280" href="' + art("UnitAtlas.png") + '"/></svg>'
+    s += '<svg x="820" y="438" width="88" height="112" viewBox="640 0 640 640"><image x="0" y="0" width="1280" height="1280" href="' + art("UnitAtlas.png") + '"/></svg>'
+    s += '<circle cx="810" cy="490" r="48" fill="#e6c377" fill-opacity=".2" stroke="#f0c76e" stroke-width="4"/>'
+    s += text(810, 499, "✦", 36, GOLD, 750, "middle")
+    s += text(680, 564, "АТАКА", 10, PAPER, 700, "middle", letter_spacing=.7)
+    s += text(866, 564, "ОБОРОНА", 10, PAPER, 700, "middle", letter_spacing=.7)
+    # After the brief hit animation, the outcome settles into a small board-side notice.
+    s += '<rect x="1344" y="125" width="530" height="324" fill="#111714" opacity=".78"/>'
+    s += text(1384, 173, "ПОСЛЕ УДАРА", 11, SAGE, 700, letter_spacing=1.1)
+    s += text(1384, 217, "Переправа удержана", 24, PAPER, 720)
+    s += text(1384, 262, "Иерихон  ·  ополчение", 15, DIM, 500)
+    s += text(1384, 298, "Шумер  ·  полевые войска", 15, DIM, 500)
+    s += line(1384, 325, 1834, 325, PAPER, .20)
+    s += text(1384, 363, "7 погибло  ·  3 ранено", 14, PAPER, 550)
+    s += text(1384, 397, "Торговый путь прерван на ход", 14, DIM, 450)
+    s += text(1384, 448, "Летопись сохранит потери и последствия", 12, MUTED, 450)
+    s += line(1344, 485, 1874, 485, GOLD, .38)
+    s += text(1384, 532, "ИТОГ ОСТАНЕТСЯ В ЛЕТОПИСИ", 11, MUTED, 650, letter_spacing=.8)
+    save("19-battle-animation", s)
+
+
+def era_transition_screen():
+    s = finish(base("Era_Transition_Background.png", left_shade=False, full_shade=.35))
+    s += '<rect x="0" y="0" width="1920" height="134" fill="#111714" opacity=".39"/>'
+    s += text(64, 43, "НОВАЯ ГЛАВА  ·  ХОД 25", 12, SAGE, 700, letter_spacing=1.4)
+    s += text(64, 94, "Эпоха городов", 40, PAPER, 760)
+    s += '<rect x="0" y="786" width="1920" height="294" fill="#111714" opacity=".87"/>'
+    s += line(0, 786, 1920, 786, GOLD, .48, 2)
+    s += text(72, 837, "ВАША ЦИВИЛИЗАЦИЯ МЕНЯЕТСЯ", 11, SAGE, 700, letter_spacing=1.2)
+    s += text(72, 885, "Общины", 21, DIM, 600)
+    s += text(196, 885, "→", 25, GOLD, 650, "middle")
+    s += text(229, 885, "Города", 27, PAPER, 750)
+    s += text(72, 933, "Города становятся центрами ремесла, письма и обмена.", 15, DIM, 450)
+    s += line(744, 824, 744, 1034, PAPER, .22)
+    s += text(795, 837, "НАПРАВЛЕНИЯ ИССЛЕДОВАНИЙ", 11, SAGE, 700, letter_spacing=1.2)
+    for i, (title, detail) in enumerate([("Ирригация", "урожай и каналы"), ("Дороги", "связь и снабжение"), ("Рынки", "торговля и казна")]):
+        x = 795 + i * 254
+        s += text(x, 887, title, 20, PAPER, 700)
+        s += text(x, 923, detail, 13, DIM, 450)
+        if i < 2:
+            s += line(x + 210, 862, x + 210, 968, PAPER, .18)
+    s += line(1574, 824, 1574, 1034, PAPER, .22)
+    s += text(1624, 867, "МИР ПЕРЕСТРАИВАЕТСЯ", 11, MUTED, 700, letter_spacing=.8)
+    s += text(1624, 910, "Новые силуэты", 17, PAPER, 600)
+    s += text(1624, 940, "уже на карте", 17, PAPER, 600)
+    s += button(1624, 986, 230, "В ГОРОДА  →", True, 50, 15)
+    save("20-era-transition", s)
+
+
 def build():
     OUT.mkdir(parents=True, exist_ok=True)
+    for old in OUT.glob("[0-9][0-9]-*.svg"):
+        old.unlink()
+    for old in OUT.glob("[0-9][0-9]-*.jpg"):
+        old.unlink()
     if MAP_SOURCE.exists():
         shutil.copy2(MAP_SOURCE, OUT / "map-art.png")
     menu()
@@ -454,21 +585,10 @@ def build():
     encyclopedia_article()
     achievements()
     save_manager()
-    modal("17-hex-selection", "Плодородный луг", "КЛЕТКА · 1 ОЧКО ОТ СТОЛИЦЫ", [
-        ("РЕСУРС", ["Плодородная почва · +2 еды", "Земля принадлежит Иерихону"]),
-        ("ДЕЙСТВИЯ", ["Назначить работника", "Построить ферму · 12 производства", "Проложить дорогу · 8 производства"]),
-    ], map_background=True, actions=("ПОСТРОИТЬ ФЕРМУ", "ЗАКРЫТЬ", "НАЗНАЧИТЬ ЖИТЕЛЯ"))
-    modal("18-turn-resolution", "Ход 24 завершён", "ИТОГИ ЦИВИЛИЗАЦИИ", [
-        ("ВЫПУСК", ["Еда +3,1   ·   казна +8,2   ·   знания +6,0"]),
-        ("СОБЫТИЯ", ["Рынок построен в столице", "Шумер продлил торговый путь", "Угроза засухи снизилась на 4"]),
-    ], map_background=True, actions=("СЛЕДУЮЩИЙ ХОД", "К ЛЕТОПИСИ"))
-    modal("19-battle-report", "Столкновение у переправы", "ВОЕННЫЙ ОТЧЁТ", [
-        ("СИЛЫ", ["Ваш отряд · ополчение · сила 46", "Соперник · полевые войска · сила 58"]),
-        ("ПОСЛЕДСТВИЯ", ["Потери с обеих сторон", "Торговый путь прерван", "Военная нагрузка давит на города"]),
-    ], "Diplomacy_Background.png", actions=("ПРИНЯТЬ ИТОГ", "ОТВЕТИТЬ ДИПЛОМАТИЕЙ"))
-    modal("20-era-transition", "Эпоха городов", "НОВАЯ ЭПОХА", [
-        ("ОТКРЫТИЯ", ["Школы, рынки и новые институты", "Районы получают новую архитектуру", "Соседи замечают рост вашего влияния"]),
-    ], "City_Background.png", actions=("ПРОДОЛЖИТЬ", "ПОДРОБНЕЕ"))
+    hex_selection_screen()
+    turn_resolution_screen()
+    battle_animation_screen()
+    era_transition_screen()
     modal("21-campaign-result", "Наследие создано", "ПОБЕДА · КУЛЬТУРА", [
         ("ИТОГИ", ["Ход 74 / 120   ·   население 86", "Знания 91   ·   доверие 78", "Открыт титул «Меценат» · +60 славы"]),
         ("ДАЛЬШЕ", ["Разобрать летопись", "Поделиться историей", "Начать новую партию"]),

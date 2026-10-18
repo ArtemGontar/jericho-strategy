@@ -41,16 +41,9 @@ namespace Nasledie.Client
             public UnitKind Kind;
             public int StartQ;
             public int StartR;
+            public bool StartVisible;
             public int TargetQ;
             public int TargetR;
-        }
-
-        private sealed class BattleSidePresentation
-        {
-            public UnitKind Kind;
-            public Era Era;
-            public int Loss;
-            public string Label;
         }
 
         private sealed class TutorialStep
@@ -1907,6 +1900,8 @@ namespace Nasledie.Client
             UiKit.SetAnchors(UiKit.Rect(detailShade), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             GameObject detailContent = UiKit.ScrollView(detailPane.transform, "StrategyPanelScroll");
             UiKit.Vertical(detailContent, 12, 10);
+            if (currentPage != ScreenPage.Overview)
+                RenderSelectedCellContext(detailContent.transform, simulation.State.Civilization(simulation.State.HumanCivilizationId));
             switch (currentPage)
             {
                 case ScreenPage.Overview: RenderOverview(detailContent.transform); break;
@@ -1991,6 +1986,7 @@ namespace Nasledie.Client
             GameState state = simulation.State;
             CivilizationState player = state.Civilization(state.HumanCivilizationId);
             NationDefinition nation = player == null ? null : NationCatalog.Get(player.NationId);
+            RenderSelectedCellContext(parent, player);
             if (nation != null)
             {
                 GameObject leaderCard = UiKit.Card(parent, "ВАШ НАРОД · " + nation.NameRu);
@@ -2032,6 +2028,55 @@ namespace Nasledie.Client
                 14, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             UiKit.Button(worldCard.transform, "ДИПЛОМАТИЯ", delegate { currentPage = ScreenPage.Diplomacy; RenderGame(); }, GamePalette.Ink, 46, 12);
             UiKit.Button(worldCard.transform, "НАУКА И ПОБЕДА", delegate { currentPage = ScreenPage.Research; RenderGame(); }, GamePalette.Ink, 46, 12);
+        }
+
+        private void RenderSelectedCellContext(Transform parent, CivilizationState player)
+        {
+            if (player == null || selectedQ < 0 || selectedR < 0) return;
+            HexCell cell = simulation.State.Cell(selectedQ, selectedR);
+            if (cell == null || (cell.ExploredByMask & (1 << player.Id)) == 0 || CityAt(cell.Q, cell.R) != null) return;
+
+            GameObject card = UiKit.Card(parent, "ВЫБРАННАЯ КЛЕТКА · " + TerrainName(cell.Terrain));
+            GameObject row = UiKit.CreateObject("SelectedCellDetails", card.transform);
+            UiKit.Horizontal(row, 0, 8);
+            string terrainArtwork = TerrainArtwork(cell.Terrain);
+            if (!string.IsNullOrEmpty(terrainArtwork)) AddMapArtwork(row.transform, terrainArtwork, new Vector2(78, 68), Vector2.zero, Color.white);
+            GameObject detail = UiKit.CreateObject("SelectedCellText", row.transform);
+            UiKit.Vertical(detail, 0, 2);
+            LayoutElement detailLayout = detail.AddComponent<LayoutElement>();
+            detailLayout.flexibleWidth = 1f;
+            bool visible = (cell.VisibleToMask & (1 << player.Id)) != 0;
+            string ownership = cell.OwnerId == player.Id ? "В ваших владениях" : cell.OwnerId >= 0 ? "Территория соседа" : "Ничейная земля";
+            UiKit.Label(detail.transform, ownership + " · координаты " + cell.Q + ", " + cell.R, 14, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+            string resource = visible && cell.Resource != ResourceKind.None ? ResourceName(cell.Resource) : "ресурсов не найдено";
+            UiKit.Label(detail.transform, resource + (visible && cell.Improvement != ImprovementKind.None ? " · " + ImprovementName(cell.Improvement) : ""),
+                13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+
+            if (cell.OwnerId == player.Id)
+            {
+                CityState city = SelectedCity();
+                if (city != null && HexGrid.Distance(cell.Q, cell.R, city.Q, city.R) <= 2)
+                    UiKit.Button(card.transform, "РАБОТЫ НА КЛЕТКЕ", delegate { currentPage = ScreenPage.City; RenderGame(); }, GamePalette.Ink, 44, 12);
+            }
+        }
+
+        private static string ResourceName(ResourceKind resource)
+        {
+            switch (resource)
+            {
+                case ResourceKind.Iron: return "Железо";
+                case ResourceKind.Herbs: return "Лекарственные травы";
+                case ResourceKind.Salt: return "Соль";
+                case ResourceKind.FertileSoil: return "Плодородная почва";
+                default: return "ресурсов не найдено";
+            }
+        }
+
+        private static string ImprovementName(ImprovementKind improvement)
+        {
+            for (int i = 0; i < RulesCatalog.Improvements.Length; i++)
+                if (RulesCatalog.Improvements[i].Kind == improvement) return RulesCatalog.Improvements[i].NameRu;
+            return improvement.ToString();
         }
 
         private static int playerId(GameState state) { return state.HumanCivilizationId; }
@@ -2488,18 +2533,20 @@ namespace Nasledie.Client
             {
                 UnitState moving = UnitById(selectedUnitId);
                 Vector2 startScreen = moving == null ? Vector2.zero : HexScreenPosition(moving.Q, moving.R);
+                int startQ = moving == null ? q : moving.Q;
+                int startR = moving == null ? r : moving.R;
                 CommandResult movement = simulation.Issue(new GameCommand { Kind = CommandKind.MoveUnit, ActorId = simulation.State.HumanCivilizationId, EntityId = selectedUnitId, Q = q, R = r });
                 notice = movement.Message;
                 BattleResolutionEvent[] battles = simulation.LastResolvedBattles;
                 bool resolvedBattle = movement.Accepted && battles != null && battles.Length > 0;
-                if (resolvedBattle) PlaySoundEffect("Battle_Resolve");
-                if (resolvedBattle && animationMode > 0 && currentPage == ScreenPage.Overview)
+                if (resolvedBattle && animationMode > 0)
                 {
                     selectedUnitId = -1;
                     RenderGame();
-                    StartCoroutine(AnimateCommandBattle(battles[0]));
+                    StartCoroutine(AnimateCommandBattle(battles[0], startQ, startR));
                     return;
                 }
+                if (resolvedBattle) PlaySoundEffect("Battle_Resolve");
                 if (movement.Accepted && moving != null && animationMode > 0 && currentPage == ScreenPage.Overview && startScreen != Vector2.zero)
                 {
                     PlaySoundEffect("World_Move");
@@ -3285,6 +3332,15 @@ namespace Nasledie.Client
             return false;
         }
 
+        private static int CountVisibleBattles(BattleResolutionEvent[] battles)
+        {
+            if (battles == null) return 0;
+            int count = 0;
+            for (int i = 0; i < battles.Length; i++)
+                if (battles[i] != null && battles[i].HumanVisibilityMask != 0) count++;
+            return count;
+        }
+
         private void SetTax(TaxRate rate) { Issue(CommandKind.SetTax, value: (int)rate); }
 
         private void SaveManual()
@@ -3373,6 +3429,7 @@ namespace Nasledie.Client
             List<UnitMovePresentation> turnMoves = advanced && resolvedPage == ScreenPage.Overview && animationMode > 0
                 ? FindTurnUnitMoves(unitPositions)
                 : new List<UnitMovePresentation>();
+            if (turnBattles.Length > 0) RemoveBattleParticipantsFromMovement(turnMoves, turnBattles);
             movingUnitIds.Clear();
             for (int i = 0; i < turnMoves.Count; i++) movingUnitIds.Add(turnMoves[i].UnitId);
             currentPage = turnMoves.Count > 0 ? ScreenPage.Overview : resolvedPage;
@@ -3385,12 +3442,21 @@ namespace Nasledie.Client
                 yield return AnimateTurnUnitMovements(layer, turnMoves);
             if (advanced && animationMode > 0 && turnBattles.Length > 0)
             {
+                if (HasVisibleBattles(turnBattles) && currentPage != ScreenPage.Overview)
+                {
+                    currentPage = ScreenPage.Overview;
+                    movingUnitIds.Clear();
+                    RenderGame();
+                }
                 int shown = 0;
                 for (int i = 0; i < turnBattles.Length && shown < 3; i++)
                 {
                     if (turnBattles[i] == null || turnBattles[i].HumanVisibilityMask == 0) continue;
-                    PlaySoundEffect("Battle_Resolve");
-                    yield return ShowBattlePresentation(layer, turnBattles[i]);
+                    UnitMovePresentation attackerStart;
+                    bool hasVisibleStart = unitPositions.TryGetValue(turnBattles[i].AttackerId, out attackerStart) && attackerStart.StartVisible;
+                    int startQ = hasVisibleStart ? attackerStart.StartQ : turnBattles[i].CellQ - 1;
+                    int startR = hasVisibleStart ? attackerStart.StartR : turnBattles[i].CellR;
+                    yield return PlayBattleAttack(layer, turnBattles[i], startQ, startR);
                     shown++;
                 }
             }
@@ -3403,6 +3469,8 @@ namespace Nasledie.Client
 
             if (advanced)
             {
+                if (animationMode > 0)
+                    yield return ShowTurnReport(layer.transform, previousTurn);
                 Era nextEra = simulation.State.Civilization(simulation.State.HumanCivilizationId).Era;
                 List<BuildingMilestone> completed = FindNewlyCompletedBuildings(buildingLevels);
                 List<ImprovementMilestone> completedImprovements = FindNewlyCompletedImprovements(improvements);
@@ -3432,10 +3500,12 @@ namespace Nasledie.Client
             {
                 UnitState unit = units[i];
                 if (unit == null) continue;
+                HexCell cell = simulation.State.Cell(unit.Q, unit.R);
+                bool visible = cell != null && (cell.VisibleToMask & (1 << simulation.State.HumanCivilizationId)) != 0;
                 result[unit.Id] = new UnitMovePresentation
                 {
                     UnitId = unit.Id, OwnerId = unit.OwnerId, Kind = unit.Kind,
-                    StartQ = unit.Q, StartR = unit.R
+                    StartQ = unit.Q, StartR = unit.R, StartVisible = visible
                 };
             }
             return result;
@@ -3464,6 +3534,26 @@ namespace Nasledie.Client
                 });
             }
             return result;
+        }
+
+        private static void RemoveBattleParticipantsFromMovement(List<UnitMovePresentation> moves, BattleResolutionEvent[] battles)
+        {
+            if (moves == null || battles == null) return;
+            for (int moveIndex = moves.Count - 1; moveIndex >= 0; moveIndex--)
+            {
+                bool isBattleParticipant = false;
+                for (int battleIndex = 0; battleIndex < battles.Length; battleIndex++)
+                {
+                    BattleResolutionEvent battle = battles[battleIndex];
+                    if (battle == null || battle.HumanVisibilityMask == 0) continue;
+                    if (moves[moveIndex].UnitId == battle.AttackerId || moves[moveIndex].UnitId == battle.DefenderId)
+                    {
+                        isBattleParticipant = true;
+                        break;
+                    }
+                }
+                if (isBattleParticipant) moves.RemoveAt(moveIndex);
+            }
         }
 
         private Dictionary<string, int> CapturePlayerBuildingLevels()
@@ -3534,82 +3624,258 @@ namespace Nasledie.Client
             return completed;
         }
 
+        private IEnumerator ShowTurnReport(Transform layer, int completedTurn)
+        {
+            TurnReport report = null;
+            TurnReport[] reports = simulation.State.Reports ?? Array.Empty<TurnReport>();
+            for (int i = reports.Length - 1; i >= 0; i--)
+                if (reports[i] != null && reports[i].Turn == completedTurn) { report = reports[i]; break; }
+            if (report == null) yield break;
+            int visibleBattleCount = CountVisibleBattles(simulation.LastResolvedBattles);
+
+            DestroyChildren(layer);
+            Image blocker = layer.GetComponent<Image>();
+            if (blocker != null) blocker.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.025f);
+            Button backdrop = layer.GetComponent<Button>();
+            if (backdrop == null) backdrop = layer.gameObject.AddComponent<Button>();
+            backdrop.targetGraphic = blocker;
+            backdrop.transition = Selectable.Transition.None;
+            backdrop.onClick.RemoveAllListeners();
+            dismissPresentationRequested = false;
+            backdrop.onClick.AddListener(delegate { dismissPresentationRequested = true; });
+
+            Image dock = AddPresentationRail(layer, "TurnReportDock", new Vector2(0.025f, 0.045f), new Vector2(0.975f, 0.355f),
+                new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.89f));
+            AddPresentationLabel(layer, "TurnReportTitle", "ХОД " + completedTurn + " ЗАВЕРШЁН", 25, GamePalette.Gold,
+                TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(0.05f, 0.285f), new Vector2(0.54f, 0.34f));
+            AddPresentationLabel(layer, "TurnReportSubhead", "ИЗМЕНЕНИЯ ЗА ХОД", 11, GamePalette.Sage,
+                TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(0.05f, 0.245f), new Vector2(0.54f, 0.275f));
+
+            string[] metricNames = { "ЕДА", "КАЗНА", "ЗНАНИЯ", "ВЛИЯНИЕ", "КУЛЬТУРА", "ЖИТЕЛИ" };
+            string[] metricValues = {
+                Signed(report.FoodDeltaTenths), Signed(report.TreasuryDeltaTenths), Signed(report.KnowledgeDeltaTenths),
+                Signed(report.InfluenceDeltaTenths), (report.CultureDelta > 0 ? "+" : "") + report.CultureDelta,
+                Signed(report.PopulationDeltaTenths)
+            };
+            for (int i = 0; i < metricNames.Length; i++)
+            {
+                float x = 0.05f + i * 0.085f;
+                AddPresentationLabel(layer, "TurnMetricName_" + i, metricNames[i], 10, GamePalette.Muted,
+                    TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(x, 0.183f), new Vector2(x + 0.079f, 0.222f));
+                AddPresentationLabel(layer, "TurnMetricValue_" + i, metricValues[i], 20, GamePalette.Paper,
+                    TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(x, 0.115f), new Vector2(x + 0.079f, 0.178f));
+                if (i < metricNames.Length - 1)
+                    AddPresentationRail(layer, "TurnMetricDivider_" + i, new Vector2(x + 0.080f, 0.12f), new Vector2(x + 0.081f, 0.228f),
+                        new Color(GamePalette.Paper.r, GamePalette.Paper.g, GamePalette.Paper.b, 0.18f));
+            }
+
+            AddPresentationRail(layer, "TurnReportEventsDivider", new Vector2(0.57f, 0.085f), new Vector2(0.571f, 0.315f),
+                new Color(GamePalette.Paper.r, GamePalette.Paper.g, GamePalette.Paper.b, 0.2f));
+            AddPresentationLabel(layer, "TurnReportEventsTitle", "СОБЫТИЯ", 11, GamePalette.Sage,
+                TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(0.595f, 0.27f), new Vector2(0.79f, 0.315f));
+            string[] entries = report.Entries ?? Array.Empty<string>();
+            int entryCount = Math.Min(3, entries.Length);
+            if (entryCount == 0)
+                AddPresentationLabel(layer, "TurnReportNoEvents", "Спокойный ход · угроз не обнаружено", 14, GamePalette.PaperDim,
+                    TextAnchor.MiddleLeft, FontStyle.Normal, new Vector2(0.595f, 0.13f), new Vector2(0.79f, 0.26f));
+            else
+            {
+                for (int i = 0; i < entryCount; i++)
+                {
+                    string entry = entries[i] ?? "";
+                    if (entry.Length > 70) entry = entry.Substring(0, 67) + "…";
+                    float top = 0.258f - i * 0.058f;
+                    AddPresentationLabel(layer, "TurnReportEvent_" + i, "·  " + entry, 13, GamePalette.Paper,
+                        TextAnchor.MiddleLeft, FontStyle.Normal, new Vector2(0.595f, top - 0.05f), new Vector2(0.79f, top));
+                }
+            }
+            if (visibleBattleCount > 0 || report.TreatyCount > 0)
+                AddPresentationLabel(layer, "TurnReportCounts", visibleBattleCount + " видимых боёв  ·  " + report.TreatyCount + " договоров", 11, GamePalette.Muted,
+                    TextAnchor.MiddleLeft, FontStyle.Normal, new Vector2(0.595f, 0.08f), new Vector2(0.79f, 0.115f));
+
+            AddPresentationAction(layer, "TurnReportContinue", "ДАЛЬШЕ  →", GamePalette.Gold,
+                new Vector2(0.825f, 0.105f), new Vector2(0.95f, 0.18f), delegate { dismissPresentationRequested = true; });
+            if (dock != null) dock.raycastTarget = false;
+            CanvasGroup group = layer.gameObject.GetComponent<CanvasGroup>();
+            if (group == null) group = layer.gameObject.AddComponent<CanvasGroup>();
+            group.alpha = 0f;
+            float fade = 0.16f * AnimationScale;
+            float elapsed = 0f;
+            while (elapsed < fade)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                group.alpha = Mathf.Clamp01(elapsed / fade);
+                yield return null;
+            }
+            group.alpha = 1f;
+            float remaining = animationMode == 2 ? 3.2f : 1.75f;
+            while (remaining > 0f && !dismissPresentationRequested)
+            {
+                remaining -= Time.unscaledDeltaTime;
+                yield return null;
+            }
+            if (group != null) group.alpha = 0f;
+        }
+
         private void ShowTurnMilestones(Transform layer, int completedTurn, Era oldEra, Era newEra,
             List<BuildingMilestone> buildings, List<ImprovementMilestone> improvements)
         {
-            if (oldEra != newEra) PlaySoundEffect("Era_Transition");
+            bool eraTransition = oldEra != newEra;
+            if (eraTransition) PlaySoundEffect("Era_Transition");
             else if (buildings.Count > 0 || improvements.Count > 0) PlaySoundEffect("Build_Complete");
             DestroyChildren(layer);
             Image blocker = layer.GetComponent<Image>();
-            if (blocker != null) blocker.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.86f);
+            if (blocker != null) blocker.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, eraTransition ? 0.12f : 0.035f);
             Button backdrop = layer.GetComponent<Button>();
             if (backdrop == null) backdrop = layer.gameObject.AddComponent<Button>();
             backdrop.targetGraphic = blocker;
             backdrop.transition = Selectable.Transition.None;
             backdrop.onClick.RemoveAllListeners();
             backdrop.onClick.AddListener(delegate { dismissPresentationRequested = true; });
-            GameObject card = UiKit.Panel(layer, "TurnMilestones", GamePalette.InkSoft);
-            RectTransform rect = UiKit.Rect(card);
-            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = new Vector2(850, 780);
-            UiKit.Vertical(card, 26, 18);
-            CanvasGroup group = card.AddComponent<CanvasGroup>();
+
+            if (eraTransition)
+            {
+                AddPresentationArtwork(layer, "EraTransitionPanorama", "Backgrounds/Era_Transition_Background");
+                AddPresentationRail(layer, "EraTransitionVeil", Vector2.zero, Vector2.one,
+                    new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.12f));
+                Text chapter = AddPresentationLabel(layer, "EraTransitionChapter", "НОВАЯ ГЛАВА  ·  ХОД " + (completedTurn + 1), 13, GamePalette.Sage,
+                    TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(0.045f, 0.915f), new Vector2(0.64f, 0.965f));
+                Text eraTitle = AddPresentationLabel(layer, "EraTransitionTitle", EraName(newEra), 38, GamePalette.Paper,
+                    TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(0.045f, 0.84f), new Vector2(0.72f, 0.915f));
+                AddTextOutline(chapter);
+                AddTextOutline(eraTitle);
+                AddPresentationLabel(layer, "EraTransitionSubtitle", EraName(oldEra) + "  →  " + EraName(newEra) + "   ·   ваши города растут и меняют облик",
+                    17, GamePalette.Paper, TextAnchor.MiddleLeft, FontStyle.Normal, new Vector2(0.045f, 0.79f), new Vector2(0.78f, 0.84f));
+            }
+
+            AddPresentationRail(layer, "MilestoneDock", new Vector2(0.025f, 0.035f), new Vector2(0.975f, 0.305f),
+                new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.87f));
+            string title = eraTransition ? "ПУТИ НОВОЙ ЭПОХИ" : "РАБОТЫ ЗАВЕРШЕНЫ · ХОД " + completedTurn;
+            AddPresentationLabel(layer, "MilestoneTitle", title, 14, GamePalette.Gold,
+                TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(0.05f, 0.255f), new Vector2(0.77f, 0.295f));
+
+            int itemIndex = 0;
+            if (eraTransition)
+            {
+                TechnologyDefinition[] technologies = RulesCatalog.Technologies;
+                for (int i = 0; i < technologies.Length && itemIndex < 3; i++)
+                {
+                    if (technologies[i].Era != newEra) continue;
+                    AddMilestoneItem(layer, itemIndex++, technologies[i].NameRu, "новое направление исследований", null);
+                }
+            }
+            int totalMilestones = buildings.Count + improvements.Count;
+            if (eraTransition)
+            {
+                TechnologyDefinition[] technologies = RulesCatalog.Technologies;
+                for (int i = 0; i < technologies.Length; i++)
+                    if (technologies[i].Era == newEra) totalMilestones++;
+            }
+            for (int i = 0; i < buildings.Count && itemIndex < 3; i++)
+            {
+                BuildingMilestone milestone = buildings[i];
+                AddMilestoneItem(layer, itemIndex++, milestone.Definition.NameRu, milestone.CityName,
+                    BuildingArtwork(milestone.Definition.Id, newEra));
+            }
+            for (int i = 0; i < improvements.Count && itemIndex < 3; i++)
+            {
+                ImprovementMilestone milestone = improvements[i];
+                AddMilestoneItem(layer, itemIndex++, ImprovementName(milestone.Kind), "участок " + milestone.Q + ", " + milestone.R,
+                    ImprovementArtwork(milestone.Kind, newEra));
+            }
+            if (itemIndex == 0)
+                AddPresentationLabel(layer, "MilestoneNoCompletedWork", "Изменения уже видны на карте", 17, GamePalette.Paper,
+                    TextAnchor.MiddleLeft, FontStyle.Normal, new Vector2(0.055f, 0.12f), new Vector2(0.56f, 0.22f));
+            if (totalMilestones > itemIndex)
+                AddPresentationLabel(layer, "MoreMilestones", "+ ещё " + (totalMilestones - itemIndex), 13, GamePalette.Muted,
+                    TextAnchor.MiddleLeft, FontStyle.Normal, new Vector2(0.76f, 0.12f), new Vector2(0.83f, 0.2f));
+
+            AddPresentationAction(layer, "MilestoneContinue", "ПРОДОЛЖИТЬ", GamePalette.Gold,
+                new Vector2(0.84f, 0.09f), new Vector2(0.95f, 0.17f), delegate { dismissPresentationRequested = true; });
+            CanvasGroup group = layer.gameObject.GetComponent<CanvasGroup>();
+            if (group == null) group = layer.gameObject.AddComponent<CanvasGroup>();
             group.alpha = 0f;
-            UiKit.Label(card.transform, "ЛЕТОПИСЬ · ХОД " + completedTurn, 34, GamePalette.Gold, TextAnchor.MiddleCenter, true);
-            if (oldEra != newEra)
+            StartCoroutine(FadeCanvasGroup(group, 0.2f * AnimationScale));
+        }
+
+        private void AddMilestoneItem(Transform layer, int index, string title, string detail, string artwork)
+        {
+            float left = 0.055f + index * 0.225f;
+            if (!string.IsNullOrEmpty(artwork))
             {
-                UiKit.Label(card.transform, "Новая эпоха: " + EraName(oldEra) + " → " + EraName(newEra), 27, GamePalette.Paper, TextAnchor.MiddleCenter, true);
-                GameObject eras = UiKit.CreateObject("EraTransitionArt", card.transform);
-                UiKit.Horizontal(eras, 8, 12);
-                AddArtwork(eras.transform, BuildingArtwork("council", oldEra), 190);
-                UiKit.Label(eras.transform, "→", 40, GamePalette.Gold, TextAnchor.MiddleCenter, true);
-                AddArtwork(eras.transform, BuildingArtwork("council", newEra), 190);
+                Image icon = AddPresentationArtwork(layer, "MilestoneArt_" + index, artwork);
+                if (icon != null) UiKit.SetAnchors(UiKit.Rect(icon.gameObject), new Vector2(left, 0.075f), new Vector2(left + 0.055f, 0.235f), Vector2.zero, Vector2.zero);
             }
-            if (buildings.Count > 0)
+            AddPresentationLabel(layer, "MilestoneItemTitle_" + index, title, 18, GamePalette.Paper,
+                TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(left + 0.065f, 0.16f), new Vector2(left + 0.21f, 0.22f));
+            AddPresentationLabel(layer, "MilestoneItemDetail_" + index, detail, 12, GamePalette.Muted,
+                TextAnchor.MiddleLeft, FontStyle.Normal, new Vector2(left + 0.065f, 0.105f), new Vector2(left + 0.21f, 0.16f));
+            if (index < 2)
+                AddPresentationRail(layer, "MilestoneDivider_" + index, new Vector2(left + 0.215f, 0.09f), new Vector2(left + 0.216f, 0.23f),
+                    new Color(GamePalette.Paper.r, GamePalette.Paper.g, GamePalette.Paper.b, 0.18f));
+        }
+
+        private Image AddPresentationArtwork(Transform parent, string objectName, string artwork)
+        {
+            Sprite sprite = LoadArtwork(artwork);
+            if (sprite == null) return null;
+            GameObject go = UiKit.CreateObject(objectName, parent);
+            Image image = go.AddComponent<Image>();
+            image.sprite = sprite;
+            image.preserveAspect = true;
+            image.raycastTarget = false;
+            UiKit.SetAnchors(UiKit.Rect(go), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            return image;
+        }
+
+        private static Image AddPresentationRail(Transform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Color color)
+        {
+            GameObject go = UiKit.CreateObject(objectName, parent);
+            Image image = go.AddComponent<Image>();
+            image.color = color;
+            image.raycastTarget = false;
+            UiKit.SetAnchors(UiKit.Rect(go), anchorMin, anchorMax, Vector2.zero, Vector2.zero);
+            return image;
+        }
+
+        private static Text AddPresentationLabel(Transform parent, string objectName, string value, int size, Color color,
+            TextAnchor alignment, FontStyle style, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            Text text = UiKit.Label(parent, value, size, color, alignment, style == FontStyle.Bold);
+            text.gameObject.name = objectName;
+            text.fontStyle = style;
+            UiKit.SetAnchors(text.rectTransform, anchorMin, anchorMax, new Vector2(5, 1), new Vector2(-5, -1));
+            return text;
+        }
+
+        private static void AddTextOutline(Text text)
+        {
+            if (text == null) return;
+            Outline outline = text.gameObject.AddComponent<Outline>();
+            outline.effectColor = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.88f);
+            outline.effectDistance = new Vector2(1.5f, -1.5f);
+        }
+
+        private static Button AddPresentationAction(Transform parent, string objectName, string label, Color color,
+            Vector2 anchorMin, Vector2 anchorMax, Action action)
+        {
+            Button button = UiKit.Button(parent, label, action, color, 54, 15);
+            button.gameObject.name = objectName;
+            UiKit.SetAnchors(UiKit.Rect(button.gameObject), anchorMin, anchorMax, Vector2.zero, Vector2.zero);
+            return button;
+        }
+
+        private IEnumerator FadeCanvasGroup(CanvasGroup group, float duration)
+        {
+            if (group == null) yield break;
+            float elapsed = 0f;
+            while (elapsed < duration && group != null)
             {
-                UiKit.Label(card.transform, buildings.Count == 1 ? "Завершено новое здание" : "Завершены новые здания", 25, GamePalette.Paper, TextAnchor.MiddleCenter, true);
-                int count = Math.Min(buildings.Count, 3);
-                for (int i = 0; i < count; i++)
-                {
-                    GameObject row = UiKit.CreateObject("CompletedBuilding_" + i, card.transform);
-                    UiKit.Horizontal(row, 8, 12);
-                    BuildingMilestone milestone = buildings[i];
-                    AddArtwork(row.transform, BuildingArtwork(milestone.Definition.Id, newEra), 98);
-                    UiKit.Label(row.transform, milestone.Definition.NameRu + " · " + milestone.CityName, 23, GamePalette.Paper, TextAnchor.MiddleLeft, true);
-                    CanvasGroup reveal = row.AddComponent<CanvasGroup>();
-                    reveal.alpha = 0f;
-                    StartCoroutine(ScaleIn(UiKit.Rect(row), reveal, (0.24f + i * 0.08f) * AnimationScale));
-                }
-                if (buildings.Count > count) UiKit.Label(card.transform, "И ещё завершено зданий: " + (buildings.Count - count), 18, GamePalette.Muted, TextAnchor.MiddleCenter, false);
+                elapsed += Time.unscaledDeltaTime;
+                group.alpha = Mathf.Clamp01(elapsed / duration);
+                yield return null;
             }
-            if (improvements.Count > 0)
-            {
-                UiKit.Label(card.transform, "Завершены работы на клетках", 24, GamePalette.Paper, TextAnchor.MiddleCenter, true);
-                int count = Math.Min(improvements.Count, 3);
-                for (int i = 0; i < count; i++)
-                {
-                    ImprovementMilestone milestone = improvements[i];
-                    GameObject row = UiKit.CreateObject("CompletedImprovement_" + i, card.transform);
-                    UiKit.Horizontal(row, 8, 12);
-                    AddArtwork(row.transform, ImprovementArtwork(milestone.Kind, newEra), 66);
-                    string name = milestone.Kind.ToString();
-                    for (int d = 0; d < RulesCatalog.Improvements.Length; d++)
-                        if (RulesCatalog.Improvements[d].Kind == milestone.Kind) name = RulesCatalog.Improvements[d].NameRu;
-                    UiKit.Label(row.transform, name + " · клетка " + milestone.Q + ", " + milestone.R, 21, GamePalette.Paper, TextAnchor.MiddleLeft, true);
-                    CanvasGroup reveal = row.AddComponent<CanvasGroup>();
-                    reveal.alpha = 0f;
-                    StartCoroutine(ScaleIn(UiKit.Rect(row), reveal, (0.2f + i * 0.06f) * AnimationScale));
-                }
-                if (improvements.Count > count) UiKit.Label(card.transform, "И ещё завершено работ: " + (improvements.Count - count), 18, GamePalette.Muted, TextAnchor.MiddleCenter, false);
-            }
-            Text continueText = UiKit.Label(card.transform, "Коснитесь экрана, чтобы продолжить", 18, GamePalette.Muted, TextAnchor.MiddleCenter, false);
-            Button dismiss = card.AddComponent<Button>();
-            dismiss.targetGraphic = card.GetComponent<Image>();
-            dismiss.transition = Selectable.Transition.None;
-            dismiss.onClick.AddListener(delegate { dismissPresentationRequested = true; });
-            continueText.raycastTarget = false;
-            StartCoroutine(ScaleIn(card.transform as RectTransform, group, 0.2f * AnimationScale));
+            if (group != null) group.alpha = 1f;
         }
 
         private GameObject CreatePresentationLayer()
@@ -3773,105 +4039,217 @@ namespace Nasledie.Client
                 yield return null;
             }
             movingUnitIds.Clear();
-            if (blocker != null) blocker.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.72f);
+            if (blocker != null) blocker.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.02f);
             RenderGame();
         }
 
-        private IEnumerator AnimateCommandBattle(BattleResolutionEvent battle)
+        private IEnumerator AnimateCommandBattle(BattleResolutionEvent battle, int startQ, int startR)
         {
             presentationBusy = true;
             GameObject layer = CreatePresentationLayer();
-            yield return ShowBattlePresentation(layer, battle);
+            yield return PlayBattleAttack(layer, battle, startQ, startR);
             if (presentationLayer != null) Destroy(presentationLayer);
             presentationLayer = null;
             presentationBusy = false;
             RenderGame();
         }
 
-        private IEnumerator ShowBattlePresentation(GameObject layer, BattleResolutionEvent battle)
+        private IEnumerator PlayBattleAttack(GameObject layer, BattleResolutionEvent battle, int attackerStartQ, int attackerStartR)
         {
             if (layer == null || battle == null) yield break;
-            DestroyChildren(layer.transform);
             Image blocker = layer.GetComponent<Image>();
-            if (blocker != null) blocker.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.9f);
-            Button backdrop = layer.GetComponent<Button>();
-            if (backdrop == null) backdrop = layer.AddComponent<Button>();
-            backdrop.targetGraphic = blocker;
-            backdrop.transition = Selectable.Transition.None;
-            backdrop.onClick.RemoveAllListeners();
-            dismissPresentationRequested = false;
-            backdrop.onClick.AddListener(delegate { dismissPresentationRequested = true; });
+            if (blocker != null) blocker.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.025f);
+            movingUnitIds.Clear();
+            if (battle.AttackerId >= 0) movingUnitIds.Add(battle.AttackerId);
+            if (battle.DefenderId >= 0 && battle.DefenderId != battle.AttackerId) movingUnitIds.Add(battle.DefenderId);
+            RenderGame();
+            yield return new WaitForEndOfFrame();
+            Canvas.ForceUpdateCanvases();
 
-            GameObject card = UiKit.Panel(layer.transform, "BattleResolution", GamePalette.InkSoft);
-            RectTransform cardRect = UiKit.Rect(card);
-            cardRect.anchorMin = cardRect.anchorMax = new Vector2(0.5f, 0.5f);
-            cardRect.pivot = new Vector2(0.5f, 0.5f);
-            cardRect.sizeDelta = new Vector2(850, 480);
-            UiKit.Vertical(card, 24, 12);
-            CanvasGroup group = card.AddComponent<CanvasGroup>();
-            group.alpha = 0f;
-            UiKit.Label(card.transform, "СРАЖЕНИЕ · ХОД " + simulation.State.Turn, 31, GamePalette.Gold, TextAnchor.MiddleCenter, true);
-            UiKit.Label(card.transform, "Отряды встретились на клетке " + battle.CellQ + ", " + battle.CellR + ".", 21, GamePalette.Muted, TextAnchor.MiddleCenter, false);
+            DestroyChildren(layer.transform);
 
-            GameObject sides = UiKit.CreateObject("BattleSides", card.transform);
-            UiKit.Horizontal(sides, 12, 24);
-            BuildBattleSide(sides.transform, battle.AttackerKind, battle.AttackerOwnerId, battle.AttackerLoss, true);
-            UiKit.Label(sides.transform, "×", 43, GamePalette.Rust, TextAnchor.MiddleCenter, true);
-            BuildBattleSide(sides.transform, battle.DefenderKind, battle.DefenderOwnerId, battle.DefenderLoss, false);
-            UiKit.Label(card.transform, "Людские потери · атака: погибло " + Format(battle.AttackerDeathsTenths) + ", ранено " + Format(battle.AttackerWoundedTenths) +
-                " · защита: погибло " + Format(battle.DefenderDeathsTenths) + ", ранено " + Format(battle.DefenderWoundedTenths),
-                19, GamePalette.Paper, TextAnchor.MiddleCenter, false);
-            if (battle.AttackerPrisonersTenths + battle.DefenderPrisonersTenths > 0)
-                UiKit.Label(card.transform, "В плен взято · атака: " + Format(battle.AttackerPrisonersTenths) + " · защита: " + Format(battle.DefenderPrisonersTenths),
-                    19, GamePalette.Gold, TextAnchor.MiddleCenter, false);
-            UiKit.Label(card.transform, battle.AttackerWon ? "Атака удержала поле боя" : "Защитники отбили атаку", 26,
-                battle.AttackerWon ? GamePalette.Success : GamePalette.Rust, TextAnchor.MiddleCenter, true);
-            if (battle.DefenderRetreated)
-                UiKit.Label(card.transform, "Защитники отступили на безопасную клетку " + battle.RetreatQ + ", " + battle.RetreatR + ". Их сохранившаяся сила восстановится со снабжением.",
-                    19, GamePalette.Paper, TextAnchor.MiddleCenter, false);
-            else if (battle.DefenderDestroyed)
-                UiKit.Label(card.transform, "Путь к отступлению был закрыт; отряд окружён и выведен из боя.",
-                    19, GamePalette.Rust, TextAnchor.MiddleCenter, false);
-            Text continueText = UiKit.Label(card.transform, "Коснитесь экрана, чтобы продолжить", 18, GamePalette.Muted, TextAnchor.MiddleCenter, false);
-            continueText.raycastTarget = false;
-            Button cardDismiss = card.AddComponent<Button>();
-            cardDismiss.targetGraphic = card.GetComponent<Image>();
-            cardDismiss.transition = Selectable.Transition.None;
-            cardDismiss.onClick.AddListener(delegate { dismissPresentationRequested = true; });
-            StartCoroutine(ScaleIn(cardRect, group, 0.2f * AnimationScale));
-
-            float remaining = animationMode == 2 ? 1.8f : 1.0f;
-            while (remaining > 0f && !dismissPresentationRequested)
+            FocusMapHex(battle.CellQ, battle.CellR);
+            Canvas.ForceUpdateCanvases();
+            RectTransform targetHex = FindHex(battle.CellQ, battle.CellR);
+            RectTransform startHex = FindHex(attackerStartQ, attackerStartR);
+            if (targetHex == null)
             {
-                remaining -= Time.unscaledDeltaTime;
+                movingUnitIds.Clear();
+                RenderGame();
+                yield break;
+            }
+            Vector2 targetScreen = RectScreenCenter(targetHex);
+            Vector2 startScreen = startHex == null ? targetScreen + Vector2.left * MapHexWidth * 1.35f : RectScreenCenter(startHex);
+            Vector2 targetLocal, startLocal;
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(safeRoot, targetScreen, null, out targetLocal);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(safeRoot, startScreen, null, out startLocal);
+            Vector2 direction = (targetLocal - startLocal).normalized;
+            if (direction.sqrMagnitude < 0.01f) direction = Vector2.right;
+            Vector2 strikeLocal = targetLocal - direction * (MapHexWidth * 0.48f);
+
+            GameObject trailObject = UiKit.CreateObject("BattleAttackTrail", layer.transform);
+            Image trail = trailObject.AddComponent<Image>();
+            trail.color = new Color(GamePalette.Gold.r, GamePalette.Gold.g, GamePalette.Gold.b, 0.66f);
+            trail.raycastTarget = false;
+            RectTransform trailRect = UiKit.Rect(trailObject);
+            trailRect.anchorMin = trailRect.anchorMax = new Vector2(0.5f, 0.5f);
+            trailRect.pivot = new Vector2(0.5f, 0.5f);
+            trailRect.sizeDelta = new Vector2(Vector2.Distance(startLocal, strikeLocal) * 0.56f, 3f);
+            trailRect.anchoredPosition = Vector2.Lerp(startLocal, strikeLocal, 0.5f);
+            trailRect.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg);
+            CanvasGroup trailGroup = trailObject.AddComponent<CanvasGroup>();
+            trailGroup.alpha = 0.45f;
+
+            RectTransform attacker = CreateBattleUnitSprite(layer.transform, battle.AttackerKind,
+                CivilizationEra(battle.AttackerOwnerId), startLocal, "BattleAttackerMotion");
+            RectTransform defender = CreateBattleUnitSprite(layer.transform, battle.DefenderKind,
+                CivilizationEra(battle.DefenderOwnerId), targetLocal, "BattleDefenderMotion");
+            CanvasGroup defenderGroup = defender == null ? null : defender.GetComponent<CanvasGroup>();
+            Text impact = UiKit.OverlayText(layer.transform, "✦", 46, GamePalette.Gold, TextAnchor.MiddleCenter);
+            RectTransform impactRect = impact.rectTransform;
+            impactRect.anchorMin = impactRect.anchorMax = new Vector2(0.5f, 0.5f);
+            impactRect.sizeDelta = new Vector2(76, 76);
+            impactRect.anchoredPosition = targetLocal;
+            impact.transform.localScale = Vector3.one * 0.3f;
+            CanvasGroup impactGroup = impact.gameObject.AddComponent<CanvasGroup>();
+            impactGroup.alpha = 0f;
+
+            Text outcome = UiKit.OverlayText(layer.transform,
+                battle.AttackerWon ? "АТАКА" : "ОБОРОНА", 15, GamePalette.Paper, TextAnchor.MiddleCenter);
+            RectTransform outcomeRect = outcome.rectTransform;
+            outcomeRect.anchorMin = outcomeRect.anchorMax = new Vector2(0.5f, 0.5f);
+            outcomeRect.sizeDelta = new Vector2(160, 34);
+            outcomeRect.anchoredPosition = targetLocal + Vector2.up * 58f;
+            outcome.fontStyle = FontStyle.Bold;
+            CanvasGroup outcomeGroup = outcome.gameObject.AddComponent<CanvasGroup>();
+            outcomeGroup.alpha = 0f;
+
+            float approachDuration = 0.24f * AnimationScale;
+            float elapsed = 0f;
+            while (elapsed < approachDuration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.Clamp01(elapsed / approachDuration);
+                float eased = 1f - Mathf.Pow(1f - t, 3f);
+                if (attacker != null)
+                {
+                    attacker.anchoredPosition = Vector2.Lerp(startLocal, strikeLocal, eased) + Vector2.up * Mathf.Sin(t * Mathf.PI) * 12f;
+                    attacker.localScale = Vector3.one * (0.9f + 0.14f * Mathf.Sin(t * Mathf.PI));
+                }
+                if (trailGroup != null) trailGroup.alpha = 0.45f * (1f - t * 0.45f);
                 yield return null;
             }
+
+            PlaySoundEffect("Battle_Resolve");
+            elapsed = 0f;
+            float hitDuration = 0.19f * AnimationScale;
+            while (elapsed < hitDuration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.Clamp01(elapsed / hitDuration);
+                if (attacker != null) attacker.anchoredPosition = Vector2.Lerp(strikeLocal, targetLocal - direction * 19f, t);
+                impactGroup.alpha = Mathf.Sin(t * Mathf.PI);
+                impact.transform.localScale = Vector3.one * (0.6f + t * 0.65f);
+                if (defender != null) defender.anchoredPosition = targetLocal + direction * Mathf.Sin(t * Mathf.PI) * 9f;
+                yield return null;
+            }
+
+            UnitState attackerAfterBattle = UnitById(battle.AttackerId);
+            CanvasGroup attackerGroup = attacker == null ? null : attacker.GetComponent<CanvasGroup>();
+            if (!battle.AttackerWon && attackerAfterBattle == null && attackerGroup != null)
+            {
+                elapsed = 0f;
+                float fadeDuration = 0.24f * AnimationScale;
+                while (elapsed < fadeDuration)
+                {
+                    elapsed += Time.unscaledDeltaTime;
+                    float t = Mathf.Clamp01(elapsed / fadeDuration);
+                    attackerGroup.alpha = 1f - t;
+                    if (attacker != null) attacker.localScale = Vector3.one * (1f - t * 0.22f);
+                    yield return null;
+                }
+            }
+            else if (!battle.AttackerWon && attacker != null)
+            {
+                float retreatDuration = 0.28f * AnimationScale;
+                elapsed = 0f;
+                while (elapsed < retreatDuration)
+                {
+                    elapsed += Time.unscaledDeltaTime;
+                    float t = Mathf.Clamp01(elapsed / retreatDuration);
+                    attacker.anchoredPosition = Vector2.Lerp(strikeLocal, startLocal, t);
+                    yield return null;
+                }
+            }
+
+            if (battle.DefenderRetreated)
+            {
+                RectTransform retreatHex = FindHex(battle.RetreatQ, battle.RetreatR);
+                if (retreatHex != null && defender != null)
+                {
+                    Vector2 retreatLocal;
+                    RectTransformUtility.ScreenPointToLocalPointInRectangle(safeRoot, RectScreenCenter(retreatHex), null, out retreatLocal);
+                    float retreatDuration = 0.28f * AnimationScale;
+                    elapsed = 0f;
+                    while (elapsed < retreatDuration)
+                    {
+                        elapsed += Time.unscaledDeltaTime;
+                        float t = Mathf.Clamp01(elapsed / retreatDuration);
+                        defender.anchoredPosition = Vector2.Lerp(targetLocal, retreatLocal, t);
+                        defender.localScale = Vector3.one * (1f - t * 0.08f);
+                        yield return null;
+                    }
+                }
+            }
+            else if (battle.DefenderDestroyed && defenderGroup != null)
+            {
+                elapsed = 0f;
+                float fadeDuration = 0.24f * AnimationScale;
+                while (elapsed < fadeDuration)
+                {
+                    elapsed += Time.unscaledDeltaTime;
+                    float t = Mathf.Clamp01(elapsed / fadeDuration);
+                    defenderGroup.alpha = 1f - t;
+                    if (defender != null) defender.localScale = Vector3.one * (1f - t * 0.22f);
+                    yield return null;
+                }
+            }
+
+            string winner = battle.AttackerWon ? "Атака удержала позицию" : "Защитники отбили атаку";
+            string losses = "Потери: " + Format(battle.AttackerDeathsTenths + battle.DefenderDeathsTenths) + " погибло · " +
+                Format(battle.AttackerWoundedTenths + battle.DefenderWoundedTenths) + " ранено";
+            notice = winner + " · " + losses + ". Подробности сохранены в летописи.";
+            outcome.text = battle.AttackerWon ? "ПОБЕДА АТАКИ" : "ПОБЕДА ОБОРОНЫ";
+            outcomeGroup.alpha = 1f;
+            impactGroup.alpha = 0f;
+            float resultHold = 0.28f * AnimationScale;
+            while (resultHold > 0f)
+            {
+                resultHold -= Time.unscaledDeltaTime;
+                yield return null;
+            }
+            movingUnitIds.Clear();
+            RenderGame();
         }
 
-        private void BuildBattleSide(Transform parent, UnitKind kind, int ownerId, int loss, bool attacker)
+        private RectTransform CreateBattleUnitSprite(Transform parent, UnitKind kind, Era era, Vector2 position, string name)
         {
-            GameObject side = UiKit.CreateObject(attacker ? "BattleAttacker" : "BattleDefender", parent);
-            UiKit.Vertical(side, 4, 4);
-            LayoutElement sideLayout = side.AddComponent<LayoutElement>();
-            sideLayout.minWidth = 260;
-            sideLayout.preferredWidth = 300;
-            sideLayout.flexibleWidth = 1;
-            string ownerName = ownerId == simulation.State.HumanCivilizationId ? "Ваш отряд" : simulation.State.Civilization(ownerId).Name;
-            UiKit.Label(side.transform, ownerName + " · " + RulesCatalog.Unit(kind).NameRu, 21, GamePalette.Paper, TextAnchor.MiddleCenter, true);
-            GameObject figure = UiKit.CreateObject("BattleUnitArt", side.transform);
-            Image image = figure.AddComponent<Image>();
-            image.sprite = LoadArtwork(UnitArtwork(kind, CivilizationEra(ownerId)));
+            string artwork = UnitArtwork(kind, era);
+            Sprite sprite = LoadArtwork(artwork);
+            if (sprite == null) return null;
+            GameObject unit = UiKit.CreateObject(name, parent);
+            Image image = unit.AddComponent<Image>();
+            image.sprite = sprite;
             image.preserveAspect = true;
             image.raycastTarget = false;
-            LayoutElement figureLayout = figure.AddComponent<LayoutElement>();
-            figureLayout.minHeight = 150;
-            figureLayout.preferredHeight = 150;
-            figureLayout.flexibleWidth = 1;
-            UiKit.Label(side.transform, "Потери силы: " + loss, 19, loss > 0 ? GamePalette.Rust : GamePalette.Muted, TextAnchor.MiddleCenter, false);
-            CanvasGroup reveal = side.AddComponent<CanvasGroup>();
-            reveal.alpha = 1f;
-            RectTransform sideRect = UiKit.Rect(side);
-            StartCoroutine(ScaleIn(sideRect, reveal, 0.28f * AnimationScale));
+            RectTransform rect = UiKit.Rect(unit);
+            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = kind == UnitKind.SettlerWagon ? new Vector2(70, 64) : new Vector2(60, 58);
+            rect.anchoredPosition = position;
+            CanvasGroup group = unit.AddComponent<CanvasGroup>();
+            group.alpha = 1f;
+            return rect;
         }
 
         private bool IsUnitMoving(int unitId)
@@ -3886,6 +4264,25 @@ namespace Nasledie.Client
             string id = "Hex_" + q + "_" + r;
             for (int i = 0; i < rects.Length; i++) if (rects[i].name == id) return rects[i];
             return null;
+        }
+
+        private void FocusMapHex(int q, int r)
+        {
+            if (activeMapScroll == null || activeMapContent == null || activeMapViewport == null) return;
+            RectTransform hex = FindHex(q, r);
+            if (hex == null) return;
+            float contentWidth = activeMapContent.rect.width * mapZoom;
+            float contentHeight = activeMapContent.rect.height * mapZoom;
+            float viewWidth = activeMapViewport.rect.width;
+            float viewHeight = activeMapViewport.rect.height;
+            float rangeX = Mathf.Max(0f, contentWidth - viewWidth);
+            float rangeY = Mathf.Max(0f, contentHeight - viewHeight);
+            float offsetX = hex.anchoredPosition.x * mapZoom - viewWidth * 0.5f;
+            float offsetY = -hex.anchoredPosition.y * mapZoom - viewHeight * 0.5f;
+            float horizontal = rangeX <= 0f ? 0.5f : Mathf.Clamp01(offsetX / rangeX);
+            float vertical = rangeY <= 0f ? 0.5f : 1f - Mathf.Clamp01(offsetY / rangeY);
+            activeMapScroll.normalizedPosition = new Vector2(horizontal, vertical);
+            mapScrollPosition = activeMapScroll.normalizedPosition;
         }
 
         private Vector2 HexScreenPosition(int q, int r)
