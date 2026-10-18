@@ -94,6 +94,9 @@ namespace Nasledie.Core
             GameFactory.RebuildVisibility(state);
             for (int i = lines.Count - 1; i >= 0; i--) AppendLog(state, lines[i]);
             AppendLog(state, "Ход " + (state.Turn - 1) + " завершён. Откройте отчёт, чтобы увидеть источники изменений.");
+            if (state.TurnStateHashes == null) state.TurnStateHashes = Array.Empty<string>();
+            Array.Resize(ref state.TurnStateHashes, state.TurnStateHashes.Length + 1);
+            state.TurnStateHashes[state.TurnStateHashes.Length - 1] = (state.Turn - 1) + ":" + CampaignFingerprint.TurnState(state);
         }
 
         private void ResolveWoundedUnits(GameState state, List<string> lines)
@@ -1056,7 +1059,25 @@ namespace Nasledie.Core
             SelectAiGoal("defense", defense, ref selected, ref best);
             SelectAiGoal("recovery", recovery, ref selected, ref best);
             SelectAiGoal("expansion", expansion, ref selected, ref best);
+            int runnerUp = int.MinValue;
+            string runnerUpGoal = string.Empty;
+            RecordAiRunnerUp("science", science, selected, ref runnerUpGoal, ref runnerUp);
+            RecordAiRunnerUp("trade", trade, selected, ref runnerUpGoal, ref runnerUp);
+            RecordAiRunnerUp("culture", culture, selected, ref runnerUpGoal, ref runnerUp);
+            RecordAiRunnerUp("quality", quality, selected, ref runnerUpGoal, ref runnerUp);
+            RecordAiRunnerUp("defense", defense, selected, ref runnerUpGoal, ref runnerUp);
+            RecordAiRunnerUp("recovery", recovery, selected, ref runnerUpGoal, ref runnerUp);
+            RecordAiRunnerUp("expansion", expansion, selected, ref runnerUpGoal, ref runnerUp);
+            civ.StrategicGoalScore = best;
+            civ.StrategicRunnerUpGoal = runnerUpGoal;
+            civ.StrategicRunnerUpScore = runnerUp == int.MinValue ? 0 : runnerUp;
             return selected;
+        }
+
+        private static void RecordAiRunnerUp(string goal, int score, string selected, ref string runnerUpGoal, ref int runnerUp)
+        {
+            if (goal == selected) return;
+            if (score > runnerUp) { runnerUp = score; runnerUpGoal = goal; }
         }
 
         private static void SelectAiGoal(string goal, int score, ref string selected, ref int best)

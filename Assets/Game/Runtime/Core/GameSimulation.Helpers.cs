@@ -35,6 +35,7 @@ namespace Nasledie.Core
             state.CommandJournal[state.CommandJournal.Length - 1] = entry;
             if (state.CommandJournal.Length > 2000)
             {
+                state.CommandJournalTruncated = true;
                 string[] retained = new string[2000];
                 Array.Copy(state.CommandJournal, state.CommandJournal.Length - retained.Length, retained, 0, retained.Length);
                 state.CommandJournal = retained;
@@ -588,6 +589,11 @@ namespace Nasledie.Core
         private static bool IsKnownToCivilization(HexCell cell, int civilizationId)
         {
             return cell != null && (cell.ExploredByMask & (1 << civilizationId)) != 0;
+        }
+
+        private static bool IsVisibleToCivilization(HexCell cell, int civilizationId)
+        {
+            return cell != null && (cell.VisibleToMask & (1 << civilizationId)) != 0;
         }
 
         private static UnitState WeakestMilitaryUnit(GameState state, int civilizationId)

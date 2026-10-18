@@ -12,6 +12,8 @@ namespace Nasledie.Client
     public sealed class GameBootstrap : MonoBehaviour
     {
         private enum ScreenPage { Overview, City, Research, Diplomacy, Laws, Events, Victory, Chronicle }
+        private enum TutorialObjective { ViewCity, AssignWorkers, Research, CityProject, LandImprovement, RecruitSettler, ViewDiplomacy, ViewEvents, ViewVictory, ViewChronicle }
+        private enum MapOverlay { Political, Food, Production, Defense }
 
         private sealed class BuildingMilestone
         {
@@ -50,7 +52,9 @@ namespace Nasledie.Client
             public readonly string Title;
             public readonly string Body;
             public readonly ScreenPage Page;
-            public TutorialStep(string title, string body, ScreenPage page) { Title = title; Body = body; Page = page; }
+            public readonly TutorialObjective Objective;
+            public TutorialStep(string title, string body, ScreenPage page, TutorialObjective objective)
+            { Title = title; Body = body; Page = page; Objective = objective; }
         }
 
         private sealed class HexTileGesture : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPointerExitHandler
@@ -81,16 +85,16 @@ namespace Nasledie.Client
 
         private static readonly TutorialStep[] TutorialSteps =
         {
-            new TutorialStep("Проверьте город", "Откройте карточку столицы и сравните население, запас еды, здоровье и выпуск за ход. В этой игре прежде всего нужно удержать устойчивую жизнь города.", ScreenPage.City),
-            new TutorialStep("Настройте работников", "Посмотрите, сколько жителей занято фермерами, ремесленниками и специалистами. Переводите работников только тогда, когда понимаете, какой выпуск вы потеряете и какой получите.", ScreenPage.City),
-            new TutorialStep("Выберите исследование", "Изучите технологию под ближайшую задачу: сельское хозяйство и медицина стабилизируют города, письменность и школы открывают дипломатические и научные решения.", ScreenPage.Research),
-            new TutorialStep("Поставьте городской проект", "Выберите здание или общественный проект. Производство города накапливается в одной очереди; несколько проектов не строятся одновременно.", ScreenPage.City),
-            new TutorialStep("Улучшите свою землю", "Выберите принадлежащую городу клетку и откройте доступные улучшения. Фермы, мастерские, парки и укрепления дают разные долгосрочные эффекты.", ScreenPage.City),
-            new TutorialStep("Расширяйтесь безопасно", "Поселенческий обоз стоит еды и жителей. До отправки проверьте, что город сохранит рабочую силу, а путь к свободной территории открыт.", ScreenPage.City),
-            new TutorialStep("Познакомьтесь с соседями", "Сравните отношения, доверие и угрозу. Маршрут, гарантия, помощь и посредничество могут дать выгоду; война требует отдельной законной цели и ухудшает положение обеих сторон.", ScreenPage.Diplomacy),
-            new TutorialStep("Решайте события", "События объясняют причины проблем и предлагают несколько ответов. Перед выбором проверьте, что именно будет потрачено и какой показатель изменится.", ScreenPage.Events),
-            new TutorialStep("Выберите путь победы", "Сравните благополучие, науку, культуру и дипломатию. Подготовьте один путь заранее, но продолжайте поддерживать еду, казну и доверие.", ScreenPage.Victory),
-            new TutorialStep("Читайте итоги хода", "Летопись показывает, что изменилось и почему. Сверьте её с прогнозом города, затем выберите следующий шаг. Кампания заканчивается активной победой или итогом наследия.", ScreenPage.Chronicle)
+            new TutorialStep("Проверьте город", "Откройте карточку столицы и сравните население, запас еды, здоровье и выпуск за ход. В этой игре прежде всего нужно удержать устойчивую жизнь города.", ScreenPage.City, TutorialObjective.ViewCity),
+            new TutorialStep("Настройте работников", "Измените распределение хотя бы одного жителя между фермерами, ремесленниками и специалистами. Сравните прогноз выпуска до и после назначения.", ScreenPage.City, TutorialObjective.AssignWorkers),
+            new TutorialStep("Выберите исследование", "Изучите технологию под ближайшую задачу: сельское хозяйство и медицина стабилизируют города, письменность и школы открывают дипломатические и научные решения.", ScreenPage.Research, TutorialObjective.Research),
+            new TutorialStep("Поставьте городской проект", "Выберите доступное здание или общественный проект. Производство города накапливается в одной очереди; несколько проектов не строятся одновременно.", ScreenPage.City, TutorialObjective.CityProject),
+            new TutorialStep("Улучшите свою землю", "Запустите улучшение принадлежащей городу клетки. Фермы, мастерские, парки и укрепления дают разные долгосрочные эффекты.", ScreenPage.City, TutorialObjective.LandImprovement),
+            new TutorialStep("Расширяйтесь безопасно", "Начните набор поселенческого обоза. Он стоит еды и жителей: перед этим проверьте, что город сохранит рабочую силу, а путь к свободной территории открыт.", ScreenPage.City, TutorialObjective.RecruitSettler),
+            new TutorialStep("Познакомьтесь с соседями", "Откройте дипломатию и сравните отношения, доверие и угрозу. Маршрут, гарантия, помощь и посредничество могут дать выгоду; война ухудшает положение обеих сторон.", ScreenPage.Diplomacy, TutorialObjective.ViewDiplomacy),
+            new TutorialStep("Решайте события", "Откройте журнал событий и проверьте, как игра показывает цену и последствия решений. Если сейчас нет события, изучите карточки ожидающих решений и вернитесь позже.", ScreenPage.Events, TutorialObjective.ViewEvents),
+            new TutorialStep("Выберите путь победы", "Сравните благополучие, науку, культуру и дипломатию. Подготовьте один путь заранее, но продолжайте поддерживать еду, казну и доверие.", ScreenPage.Victory, TutorialObjective.ViewVictory),
+            new TutorialStep("Читайте итоги хода", "Откройте летопись и найдите отчёт хода: изменения еды, населения, казны, знаний, влияния и культуры. Сверьте его с прогнозом города.", ScreenPage.Chronicle, TutorialObjective.ViewChronicle)
         };
 
         private GameSimulation simulation;
@@ -134,6 +138,11 @@ namespace Nasledie.Client
         private string guideSearchQuery = "";
         private int guideCategoryIndex;
         private int tutorialStepIndex;
+        private int tutorialCompletedMask;
+        private MapOverlay mapOverlay;
+        private int textScaleIndex = 1;
+        private bool highContrast;
+        private bool hapticsEnabled;
         private string notice = "";
         private Rect lastSafeArea;
         private int lastScreenWidth;
@@ -172,6 +181,13 @@ namespace Nasledie.Client
             soundEffectsVolumeStep = Mathf.Clamp(PlayerPrefs.GetInt("nasledie.sfx.volume", 1), 0, SoundEffectsVolumeSteps.Length - 1);
             animationMode = Mathf.Clamp(PlayerPrefs.GetInt("jericho.animation.mode", 1), 0, 2);
             mapZoom = Mathf.Clamp(PlayerPrefs.GetFloat("jericho.map.zoom", 1f), 0.65f, 1.5f);
+            mapOverlay = (MapOverlay)Mathf.Clamp(PlayerPrefs.GetInt("jericho.map.overlay", 0), 0, 3);
+            textScaleIndex = Mathf.Clamp(PlayerPrefs.GetInt("jericho.accessibility.text", 1), 0, 3);
+            highContrast = PlayerPrefs.GetInt("jericho.accessibility.contrast", 0) != 0;
+            hapticsEnabled = PlayerPrefs.GetInt("jericho.accessibility.haptics", 1) != 0;
+            tutorialCompletedMask = PlayerPrefs.GetInt("jericho.tutorial.completed", 0);
+            UiKit.TextScaleIndex = textScaleIndex;
+            UiKit.HighContrast = highContrast;
             selectedPace = (GamePace)Mathf.Clamp(PlayerPrefs.GetInt("jericho.campaign.pace", (int)GamePace.Standard), 0, 2);
             selectedNationId = PlayerPrefs.GetString("jericho.campaign.nation", "jericho");
             tutorialStepIndex = Mathf.Clamp(PlayerPrefs.GetInt("jericho.tutorial.step", 0), 0, TutorialSteps.Length);
@@ -293,7 +309,7 @@ namespace Nasledie.Client
 
         private void AddNavButton(Transform parent, string label, ScreenPage page)
         {
-            Button button = UiKit.Button(parent, label, delegate { currentPage = page; notice = ""; RenderGame(); }, GamePalette.InkSoft, 110, 17);
+            Button button = UiKit.Button(parent, label, delegate { currentPage = page; MarkTutorialPageVisited(page); notice = ""; RenderGame(); }, GamePalette.InkSoft, 110, 17);
             button.GetComponent<LayoutElement>().flexibleWidth = 1f;
         }
 
@@ -555,6 +571,9 @@ namespace Nasledie.Client
             UiKit.Button(content.transform, soundEffectsEnabled ? "ЗВУКОВЫЕ ЭФФЕКТЫ · ВКЛЮЧЕНЫ" : "ЗВУКОВЫЕ ЭФФЕКТЫ · ВЫКЛЮЧЕНЫ", ToggleSoundEffects, GamePalette.Teal, 68, 22);
             UiKit.Button(content.transform, SoundEffectsVolumeLabel() + " · ИЗМЕНИТЬ", CycleSoundEffectsVolume, GamePalette.InkSoft, 68, 21);
             UiKit.Button(content.transform, AnimationModeLabel() + " · ИЗМЕНИТЬ", CycleAnimationMode, GamePalette.InkSoft, 68, 21);
+            UiKit.Button(content.transform, TextScaleLabel() + " · ИЗМЕНИТЬ", CycleTextScale, GamePalette.InkSoft, 68, 21);
+            UiKit.Button(content.transform, highContrast ? "ВЫСОКИЙ КОНТРАСТ · ВКЛЮЧЕН" : "ВЫСОКИЙ КОНТРАСТ · ВЫКЛЮЧЕН", ToggleHighContrast, GamePalette.InkSoft, 68, 21);
+            UiKit.Button(content.transform, hapticsEnabled ? "ВИБРООТКЛИК · ВКЛЮЧЁН" : "ВИБРООТКЛИК · ВЫКЛЮЧЕН", ToggleHaptics, GamePalette.InkSoft, 68, 21);
             UiKit.Button(content.transform, "ТЕМП НОВОЙ КАМПАНИИ: " + PaceName(selectedPace) + " · ИЗМЕНИТЬ", CyclePace, GamePalette.InkSoft, 68, 21);
             UiKit.Label(content.transform, PaceDescription(selectedPace) +
                 (simulation == null ? "" : "\nТекущая кампания: " + PaceName(simulation.State.Pace) + " · её темп не меняется."),
@@ -562,7 +581,65 @@ namespace Nasledie.Client
             UiKit.Label(content.transform, "Экран: альбомная ориентация · safe area для вырезов iPhone включена.\nАвтосохранение: " +
                 (SaveService.HasSave ? "кампания найдена" : "появится после первого хода"), 21, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             UiKit.Label(content.transform, "Сложность: " + DifficultyName(selectedDifficulty) + " · меняется перед новой кампанией.", 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            UiKit.Label(content.transform, "Размер текста меняет подписи и кнопки. Высокий контраст усиливает вторичный текст. Виброотклик зависит от поддержки устройства.",
+                18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            UiKit.Button(content.transform, "СКОПИРОВАТЬ ОТЧЁТ ДИАГНОСТИКИ", CopyDiagnosticsToClipboard, GamePalette.InkSoft, 68, 19);
+            UiKit.Button(content.transform, "СОХРАНИТЬ ОТЧЁТ ДИАГНОСТИКИ В ФАЙЛ", SaveDiagnosticsToFile, GamePalette.InkSoft, 68, 19);
             UiKit.Button(content.transform, "НАЗАД", ShowMenu, GamePalette.Teal, 70, 22);
+        }
+
+        private void CopyDiagnosticsToClipboard()
+        {
+            GUIUtility.systemCopyBuffer = SaveService.BuildDiagnostics(simulation == null ? null : simulation.State);
+            notice = "Отчёт диагностики скопирован в буфер обмена.";
+            ShowSettings();
+        }
+
+        private void SaveDiagnosticsToFile()
+        {
+            try
+            {
+                string path = SaveService.SaveDiagnosticsFile(simulation == null ? null : simulation.State);
+                notice = "Отчёт диагностики сохранён: " + path;
+            }
+            catch (Exception exception)
+            {
+                notice = "Не удалось сохранить отчёт: " + exception.Message;
+            }
+            ShowSettings();
+        }
+
+        private string TextScaleLabel()
+        {
+            string[] names = { "90%", "100%", "115%", "130%" };
+            return "РАЗМЕР ТЕКСТА · " + names[textScaleIndex];
+        }
+
+        private void CycleTextScale()
+        {
+            textScaleIndex = (textScaleIndex + 1) % 4;
+            UiKit.TextScaleIndex = textScaleIndex;
+            PlayerPrefs.SetInt("jericho.accessibility.text", textScaleIndex);
+            PlayerPrefs.Save();
+            ShowSettings();
+        }
+
+        private void ToggleHighContrast()
+        {
+            highContrast = !highContrast;
+            UiKit.HighContrast = highContrast;
+            PlayerPrefs.SetInt("jericho.accessibility.contrast", highContrast ? 1 : 0);
+            PlayerPrefs.Save();
+            ShowSettings();
+        }
+
+        private void ToggleHaptics()
+        {
+            hapticsEnabled = !hapticsEnabled;
+            PlayerPrefs.SetInt("jericho.accessibility.haptics", hapticsEnabled ? 1 : 0);
+            PlayerPrefs.Save();
+            if (hapticsEnabled && SystemInfo.supportsVibration) Handheld.Vibrate();
+            ShowSettings();
         }
 
         private string AnimationModeLabel()
@@ -963,11 +1040,15 @@ namespace Nasledie.Client
                     20, GamePalette.Teal, TextAnchor.MiddleCenter, true);
                 UiKit.Label(content.transform, step.Title, 34, GamePalette.Paper, TextAnchor.MiddleCenter, true);
                 UiKit.Label(content.transform, step.Body, 22, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
-                UiKit.Label(content.transform, "Сделайте это в своём темпе. Шаги можно проходить за большее или меньшее число ходов.",
+                bool completed = IsTutorialObjectiveComplete(step.Objective);
+                UiKit.Label(content.transform, completed
+                    ? "✓ Шаг выполнен. Обучение сохраняет прогресс на этом устройстве."
+                    : "Цель шага: " + TutorialObjectiveLabel(step.Objective) + ". Выполните действие в игре или пропустите шаг.",
                     18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
                 if (simulation != null)
                     UiKit.Button(content.transform, "ОТКРЫТЬ НУЖНУЮ ВКЛАДКУ", OpenTutorialDestination, GamePalette.Teal, 62, 20);
-                UiKit.Button(content.transform, "Я ПОСМОТРЕЛ · СЛЕДУЮЩИЙ ШАГ", AdvanceTutorial, GamePalette.Gold, 62, 20);
+                UiKit.Button(content.transform, "СЛЕДУЮЩИЙ ШАГ", AdvanceTutorial, GamePalette.Gold, 62, 20);
+                if (!completed) UiKit.Button(content.transform, "ПРОПУСТИТЬ ЭТОТ ШАГ", SkipTutorialStep, GamePalette.InkSoft, 54, 18);
                 if (tutorialStepIndex > 0) UiKit.Button(content.transform, "ПРЕДЫДУЩИЙ ШАГ", PreviousTutorialStep, GamePalette.InkSoft, 54, 18);
             }
             UiKit.Button(content.transform, "ОТКРЫТЬ ЭНЦИКЛОПЕДИЮ", ShowEncyclopedia, GamePalette.Ink, 58, 19);
@@ -978,16 +1059,66 @@ namespace Nasledie.Client
         {
             if (simulation == null || tutorialStepIndex >= TutorialSteps.Length) return;
             currentPage = TutorialSteps[tutorialStepIndex].Page;
+            MarkTutorialPageVisited(currentPage);
             menuHost.gameObject.SetActive(false);
             RenderGame();
         }
 
         private void AdvanceTutorial()
         {
+            if (tutorialStepIndex < TutorialSteps.Length && !IsTutorialObjectiveComplete(TutorialSteps[tutorialStepIndex].Objective)) return;
             tutorialStepIndex = Mathf.Clamp(tutorialStepIndex + 1, 0, TutorialSteps.Length);
             PlayerPrefs.SetInt("jericho.tutorial.step", tutorialStepIndex);
             PlayerPrefs.Save();
             ShowGuidedTutorial();
+        }
+
+        private void SkipTutorialStep()
+        {
+            if (tutorialStepIndex >= TutorialSteps.Length) return;
+            MarkTutorialObjective(TutorialSteps[tutorialStepIndex].Objective);
+            AdvanceTutorial();
+        }
+
+        private bool IsTutorialObjectiveComplete(TutorialObjective objective)
+        {
+            return (tutorialCompletedMask & (1 << (int)objective)) != 0;
+        }
+
+        private void MarkTutorialObjective(TutorialObjective objective)
+        {
+            tutorialCompletedMask |= 1 << (int)objective;
+            PlayerPrefs.SetInt("jericho.tutorial.completed", tutorialCompletedMask);
+            PlayerPrefs.Save();
+        }
+
+        private void MarkTutorialPageVisited(ScreenPage page)
+        {
+            if (tutorialStepIndex >= TutorialSteps.Length) return;
+            TutorialObjective objective = TutorialSteps[tutorialStepIndex].Objective;
+            bool matching = (page == ScreenPage.City && objective == TutorialObjective.ViewCity) ||
+                (page == ScreenPage.Diplomacy && objective == TutorialObjective.ViewDiplomacy) ||
+                (page == ScreenPage.Events && objective == TutorialObjective.ViewEvents) ||
+                (page == ScreenPage.Victory && objective == TutorialObjective.ViewVictory) ||
+                (page == ScreenPage.Chronicle && objective == TutorialObjective.ViewChronicle);
+            if (matching) MarkTutorialObjective(objective);
+        }
+
+        private static string TutorialObjectiveLabel(TutorialObjective objective)
+        {
+            switch (objective)
+            {
+                case TutorialObjective.ViewCity: return "откройте страницу города";
+                case TutorialObjective.AssignWorkers: return "измените назначение работников";
+                case TutorialObjective.Research: return "выберите технологию";
+                case TutorialObjective.CityProject: return "запустите городской проект";
+                case TutorialObjective.LandImprovement: return "запустите улучшение клетки";
+                case TutorialObjective.RecruitSettler: return "начните набор поселенческого обоза";
+                case TutorialObjective.ViewDiplomacy: return "откройте дипломатию";
+                case TutorialObjective.ViewEvents: return "откройте журнал событий";
+                case TutorialObjective.ViewVictory: return "откройте условия победы";
+                default: return "откройте летопись";
+            }
         }
 
         private void PreviousTutorialStep()
@@ -1001,7 +1132,9 @@ namespace Nasledie.Client
         private void ResetTutorial()
         {
             tutorialStepIndex = 0;
+            tutorialCompletedMask = 0;
             PlayerPrefs.SetInt("jericho.tutorial.step", tutorialStepIndex);
+            PlayerPrefs.SetInt("jericho.tutorial.completed", tutorialCompletedMask);
             PlayerPrefs.Save();
             ShowGuidedTutorial();
         }
@@ -1198,6 +1331,36 @@ namespace Nasledie.Client
             }
         }
 
+        private string AiDecisionExplanation(CivilizationState rival)
+        {
+            if (rival == null) return "Соперник ещё не сформировал стратегический курс.";
+            string goal = AiGoalName(rival.StrategicGoal);
+            string reason = rival.StrategicGoalScore > 0
+                ? "Курс «" + goal + "» получил " + rival.StrategicGoalScore + " очков; следующий — «" + AiGoalName(rival.StrategicRunnerUpGoal) + "» с " + rival.StrategicRunnerUpScore + "."
+                : "Долгосрочный курс соперника — «" + goal + "».";
+            reason += " Оценка учитывает специализацию лидера, путь победы, учреждения, состояние городов и приоритеты кризиса.";
+            bool atWar = false;
+            for (int i = 0; i < simulation.State.Conflicts.Length; i++)
+            {
+                ConflictState conflict = simulation.State.Conflicts[i];
+                if (conflict.Active && conflict.Phase == 2 &&
+                    (conflict.AggressorId == rival.Id || conflict.DefenderId == rival.Id)) atWar = true;
+            }
+            int foodRisk = 0;
+            for (int i = 0; i < simulation.State.Cities.Length; i++)
+            {
+                CityState city = simulation.State.Cities[i];
+                if (city.OwnerId != rival.Id) continue;
+                CityYield yield = EconomyCalculator.Calculate(simulation.State, city);
+                if (city.FoodShortageTurns > 0 || city.FoodTenths + yield.FoodTenths < city.PopulationTenths * 2) foodRisk++;
+            }
+            if (atWar) reason += " Идёт война: оборона временно получает больший приоритет.";
+            if (foodRisk > 0) reason += " Городов с риском нехватки еды: " + foodRisk + ".";
+            if (rival.ConsecutiveDeficitTurns > 0 || rival.DebtTenths > 0)
+                reason += " Дефицит казны и долг усиливают курс восстановления.";
+            return reason;
+        }
+
         private void StartNewCampaign()
         {
             if (SaveService.HasSave)
@@ -1257,6 +1420,7 @@ namespace Nasledie.Client
         private void RenderGame()
         {
             if (simulation == null) { ShowMenu(); return; }
+            MarkTutorialPageVisited(currentPage);
             CaptureMapScrollPosition();
             AchievementDefinition[] earned = AchievementService.Evaluate(simulation.State);
             if (earned.Length > 0)
@@ -1493,12 +1657,17 @@ namespace Nasledie.Client
                 GameObject rivalRow = UiKit.CreateObject("RivalLeader_" + civ.Id, civCard.transform);
                 UiKit.Horizontal(rivalRow, 4, 10);
                 if (rivalNation != null) AddCityBuildingArtwork(rivalRow.transform, rivalNation.LeaderArtKey, 58);
-                Text rivalLabel = UiKit.Label(rivalRow.transform,
+                GameObject rivalInfo = UiKit.CreateObject("RivalInfo_" + civ.Id, rivalRow.transform);
+                UiKit.Vertical(rivalInfo, 0, 2);
+                LayoutElement rivalInfoLayout = rivalInfo.AddComponent<LayoutElement>();
+                rivalInfoLayout.flexibleWidth = 1f;
+                Text rivalLabel = UiKit.Label(rivalInfo.transform,
                     (rivalNation == null ? civ.Name : rivalNation.LeaderNameRu + " · " + rivalNation.LeaderTitleRu + " · " + civ.Name) +
                     (rivalNation == null ? "" : " · " + rivalNation.BonusDescription) + " · курс: " + AiGoalName(civ.StrategicGoal) +
                     " · отношение " + civ.Relations[playerId(state)] + " · городов " + CountCities(state, civ.Id),
                     20, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
                 rivalLabel.GetComponent<LayoutElement>().flexibleWidth = 1f;
+                UiKit.Label(rivalInfo.transform, "Почему: " + AiDecisionExplanation(civ), 16, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             }
             UiKit.Button(civCard.transform, "ОТКРЫТЬ ДИПЛОМАТИЮ", delegate { currentPage = ScreenPage.Diplomacy; RenderGame(); }, GamePalette.Ink, 60, 22);
         }
@@ -1508,6 +1677,12 @@ namespace Nasledie.Client
         private void AddMap(Transform parent)
         {
             GameObject card = UiKit.Card(parent, "Территории · нажмите на гекс, чтобы выбрать город, клетку или отряд", 688);
+            GameObject overlayRow = UiKit.CreateObject("MapOverlayControls", card.transform);
+            UiKit.Horizontal(overlayRow, 4, 6);
+            AddMapOverlayButton(overlayRow.transform, MapOverlay.Political, "ВЛАДЕНИЕ");
+            AddMapOverlayButton(overlayRow.transform, MapOverlay.Food, "ЕДА");
+            AddMapOverlayButton(overlayRow.transform, MapOverlay.Production, "ПРОИЗВОДСТВО");
+            AddMapOverlayButton(overlayRow.transform, MapOverlay.Defense, "ОБОРОНА");
             GameObject zoomRow = UiKit.CreateObject("MapZoomControls", card.transform);
             UiKit.Horizontal(zoomRow, 4, 8);
             UiKit.Button(zoomRow.transform, "−", delegate { SetMapZoom(mapZoom - 0.1f, true); }, GamePalette.Ink, 42, 21);
@@ -1554,10 +1729,83 @@ namespace Nasledie.Client
                 HexCell cell = state.Cells[i];
                 CreateHex(content.transform, cell, humanMask);
             }
-            UiKit.Label(card.transform, "⌂ центр города · отдельные клетки — районы · ● войско · ◇ обоз · F ферма · T лес · = дорога. Цвет границ показывает владельца, тёмные клетки скрыты туманом.",
+            UiKit.Label(card.transform, MapOverlayLegend() + "\n⌂ центр города · отдельные клетки — районы · ● войско · ◇ обоз · F ферма · T лес · = дорога. Тёмные клетки скрыты туманом.",
                 18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             UiKit.Label(card.transform, "Карту можно перетаскивать и увеличивать двумя пальцами. Удержание показывает подсказку; двойное нажатие на свой город открывает управление.",
                 16, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+        }
+
+        private void AddMapOverlayButton(Transform parent, MapOverlay overlay, string label)
+        {
+            Color color = mapOverlay == overlay ? GamePalette.Teal : GamePalette.Ink;
+            UiKit.Button(parent, label, delegate
+            {
+                mapOverlay = overlay;
+                PlayerPrefs.SetInt("jericho.map.overlay", (int)mapOverlay);
+                PlayerPrefs.Save();
+                RenderGame();
+            }, color, 50, 14);
+        }
+
+        private string MapOverlayLegend()
+        {
+            switch (mapOverlay)
+            {
+                case MapOverlay.Food: return "Слой еды: цвет показывает пищевой потенциал рельефа; улучшение учитывается только на видимой клетке.";
+                case MapOverlay.Production: return "Слой производства: цвет показывает ремесленный потенциал; улучшение учитывается только на видимой клетке.";
+                case MapOverlay.Defense: return "Слой обороны: показаны ваши отряды, укрепления и только видимые вражеские отряды.";
+                default: return "Слой владения: цвет территории показывает владельца клетки.";
+            }
+        }
+
+        private Color MapOverlayColor(HexCell cell, bool explored, bool visible)
+        {
+            if (!explored) return new Color(0.15f, 0.22f, 0.22f, 1f);
+            if (mapOverlay == MapOverlay.Political) return TerrainColor(cell.Terrain);
+            if (mapOverlay == MapOverlay.Defense)
+            {
+                if (!visible) return Color.Lerp(TerrainColor(cell.Terrain), GamePalette.Ink, 0.48f);
+                UnitState unit = UnitAt(cell.Q, cell.R);
+                if (unit != null) return unit.OwnerId == simulation.State.HumanCivilizationId ? GamePalette.Gold : GamePalette.Danger;
+                if (cell.Improvement == ImprovementKind.Fortification && cell.Damage < 75) return GamePalette.Rust;
+                return GamePalette.Hex("34443F");
+            }
+
+            int score;
+            if (mapOverlay == MapOverlay.Food)
+            {
+                switch (cell.Terrain)
+                {
+                    case TerrainKind.Meadow: score = 4; break;
+                    case TerrainKind.River:
+                    case TerrainKind.Coast: score = 3; break;
+                    case TerrainKind.Plains: score = 2; break;
+                    case TerrainKind.Arid:
+                    case TerrainKind.Swamp: score = 0; break;
+                    default: score = 1; break;
+                }
+                if (visible && cell.Damage < 75)
+                {
+                    if (cell.Improvement == ImprovementKind.Farm) score += 2;
+                    if (cell.Improvement == ImprovementKind.IrrigatedFarm) score += 3;
+                }
+                return score >= 5 ? GamePalette.Hex("B7D276") : score >= 3 ? GamePalette.Hex("769F68") : score >= 1 ? GamePalette.Hex("5B705D") : GamePalette.Hex("705B48");
+            }
+
+            switch (cell.Terrain)
+            {
+                case TerrainKind.Hills:
+                case TerrainKind.Forest: score = 4; break;
+                case TerrainKind.Plains:
+                case TerrainKind.Meadow: score = 2; break;
+                default: score = 1; break;
+            }
+            if (visible && cell.Damage < 75)
+            {
+                if (cell.Improvement == ImprovementKind.Workshop) score += 3;
+                if (cell.Improvement == ImprovementKind.Forestry) score += 2;
+            }
+            return score >= 5 ? GamePalette.Hex("D6A96B") : score >= 3 ? GamePalette.Hex("A78457") : GamePalette.Hex("625C4D");
         }
 
         private void SetMapZoom(float value, bool persist)
@@ -1633,17 +1881,17 @@ namespace Nasledie.Client
             HexTileGraphic graphic = tile.AddComponent<HexTileGraphic>();
             bool explored = (cell.ExploredByMask & humanMask) != 0;
             bool visible = (cell.VisibleToMask & humanMask) != 0;
-            graphic.color = explored ? TerrainColor(cell.Terrain) : new Color(0.15f, 0.22f, 0.22f, 1f);
+            graphic.color = MapOverlayColor(cell, explored, visible);
             if (!visible && explored) graphic.color = Color.Lerp(graphic.color, GamePalette.Ink, 0.42f);
             Color ownerColor = OwnerColor(cell.OwnerId);
-            if (cell.OwnerId >= 0 && explored) graphic.color = Color.Lerp(graphic.color, ownerColor, 0.24f);
+            if (cell.OwnerId >= 0 && visible && mapOverlay == MapOverlay.Political) graphic.color = Color.Lerp(graphic.color, ownerColor, 0.24f);
             bool selected = (cell.Q == selectedQ && cell.R == selectedR);
-            CityState city = CityAt(cell.Q, cell.R);
-            CityState districtCity = string.IsNullOrEmpty(cell.DistrictBuildingId) ? null : simulation.State.City(cell.DistrictCityId);
-            CityState districtProjectCity = DistrictProjectCityAt(cell.Q, cell.R);
-            CityState improvementProjectCity = ImprovementProjectCityAt(cell.Q, cell.R);
+            CityState city = visible ? CityAt(cell.Q, cell.R) : null;
+            CityState districtCity = !visible || string.IsNullOrEmpty(cell.DistrictBuildingId) ? null : simulation.State.City(cell.DistrictCityId);
+            CityState districtProjectCity = visible ? DistrictProjectCityAt(cell.Q, cell.R) : null;
+            CityState improvementProjectCity = visible ? ImprovementProjectCityAt(cell.Q, cell.R) : null;
             if (selected || (city != null && city.Id == selectedCityId)) graphic.EdgeColor = GamePalette.Gold;
-            else if (cell.OwnerId == simulation.State.HumanCivilizationId) graphic.EdgeColor = new Color(0.69f, 0.8f, 0.57f, 1f);
+            else if (visible && cell.OwnerId == simulation.State.HumanCivilizationId) graphic.EdgeColor = new Color(0.69f, 0.8f, 0.57f, 1f);
             else graphic.EdgeColor = new Color(0.12f, 0.18f, 0.17f, 1f);
             Button button = tile.AddComponent<Button>();
             button.targetGraphic = graphic;
@@ -1664,8 +1912,8 @@ namespace Nasledie.Client
                 else if (districtCity != null) marker = "▥";
                 else if (districtProjectCity != null) marker = "+";
                 else if (improvementProjectCity != null) marker = "+";
-                else if (cell.Improvement != ImprovementKind.None && cell.Damage < 75) marker = ImprovementMark(cell.Improvement);
-                else if (cell.Resource != ResourceKind.None) marker = ResourceMark(cell.Resource);
+                else if (visible && cell.Improvement != ImprovementKind.None && cell.Damage < 75) marker = ImprovementMark(cell.Improvement);
+                else if (visible && cell.Resource != ResourceKind.None) marker = ResourceMark(cell.Resource);
             }
             if (!string.IsNullOrEmpty(marker))
             {
@@ -1802,10 +2050,11 @@ namespace Nasledie.Client
             }
             selectedQ = q;
             selectedR = r;
-            CityState city = CityAt(q, r);
             HexCell selectedCell = simulation.State.Cell(q, r);
-            bool selectedDistrict = city == null && selectedCell != null && !string.IsNullOrEmpty(selectedCell.DistrictBuildingId);
-            CityState districtProjectCity = city == null ? DistrictProjectCityAt(q, r) : null;
+            bool cellVisible = selectedCell != null && (selectedCell.VisibleToMask & (1 << simulation.State.HumanCivilizationId)) != 0;
+            CityState city = cellVisible ? CityAt(q, r) : null;
+            bool selectedDistrict = cellVisible && city == null && !string.IsNullOrEmpty(selectedCell.DistrictBuildingId);
+            CityState districtProjectCity = cellVisible && city == null ? DistrictProjectCityAt(q, r) : null;
             bool selectedProjectPlot = !selectedDistrict && districtProjectCity != null;
             if (selectedDistrict) city = simulation.State.City(selectedCell.DistrictCityId);
             else if (selectedProjectPlot) city = districtProjectCity;
@@ -1827,7 +2076,7 @@ namespace Nasledie.Client
                 RenderGame();
                 return;
             }
-            UnitState ownUnit = UnitAt(q, r);
+            UnitState ownUnit = cellVisible ? UnitAt(q, r) : null;
             if (ownUnit != null && ownUnit.OwnerId == simulation.State.HumanCivilizationId)
             {
                 selectedUnitId = ownUnit.Id;
@@ -1869,16 +2118,18 @@ namespace Nasledie.Client
                 return;
             }
             HexCell cell = simulation.State.Cell(q, r);
-            notice = cell == null ? "Клетки здесь нет." : cell.OwnerId == simulation.State.HumanCivilizationId ? "Выбрана клетка. Откройте управление городом, чтобы назначить улучшение." : "Клетка выбрана.";
+            notice = cell == null ? "Клетки здесь нет." : cellVisible && cell.OwnerId == simulation.State.HumanCivilizationId
+                ? "Выбрана клетка. Откройте управление городом, чтобы назначить улучшение." : "Клетка выбрана.";
             RenderGame();
         }
 
         private CityState CityForMapHex(int q, int r)
         {
+            HexCell cell = simulation == null ? null : simulation.State.Cell(q, r);
+            if (cell == null || (cell.VisibleToMask & (1 << simulation.State.HumanCivilizationId)) == 0) return null;
             CityState city = CityAt(q, r);
             if (city != null) return city;
-            HexCell cell = simulation == null ? null : simulation.State.Cell(q, r);
-            if (cell != null && !string.IsNullOrEmpty(cell.DistrictBuildingId)) return simulation.State.City(cell.DistrictCityId);
+            if (!string.IsNullOrEmpty(cell.DistrictBuildingId)) return simulation.State.City(cell.DistrictCityId);
             CityState districtProject = DistrictProjectCityAt(q, r);
             return districtProject ?? ImprovementProjectCityAt(q, r);
         }
@@ -2571,8 +2822,37 @@ namespace Nasledie.Client
                 TargetId = targetId, Value = value, Text = text, Q = q, R = r, Sequence = sequence
             });
             notice = result.Message;
-            if (result.Accepted) PlayCommandSound(kind, value);
+            if (result.Accepted)
+            {
+                PlayCommandSound(kind, value);
+                MarkTutorialCommand(kind, value, text);
+                if (hapticsEnabled && SystemInfo.supportsVibration && kind != CommandKind.SetWorkers && kind != CommandKind.AutoAssignWorkers)
+                    Handheld.Vibrate();
+            }
             RenderGame();
+        }
+
+        private void MarkTutorialCommand(CommandKind kind, int value, string text)
+        {
+            if (tutorialStepIndex >= TutorialSteps.Length) return;
+            switch (TutorialSteps[tutorialStepIndex].Objective)
+            {
+                case TutorialObjective.AssignWorkers:
+                    if (kind == CommandKind.SetWorkers || kind == CommandKind.AutoAssignWorkers) MarkTutorialObjective(TutorialObjective.AssignWorkers);
+                    break;
+                case TutorialObjective.Research:
+                    if (kind == CommandKind.ChooseTechnology) MarkTutorialObjective(TutorialObjective.Research);
+                    break;
+                case TutorialObjective.CityProject:
+                    if (kind == CommandKind.SetProject && !string.IsNullOrEmpty(text) && text != "cancel") MarkTutorialObjective(TutorialObjective.CityProject);
+                    break;
+                case TutorialObjective.LandImprovement:
+                    if (kind == CommandKind.BuildImprovement) MarkTutorialObjective(TutorialObjective.LandImprovement);
+                    break;
+                case TutorialObjective.RecruitSettler:
+                    if (kind == CommandKind.Recruit && value == (int)UnitKind.SettlerWagon) MarkTutorialObjective(TutorialObjective.RecruitSettler);
+                    break;
+            }
         }
 
         private void PlayCommandSound(CommandKind kind, int value)

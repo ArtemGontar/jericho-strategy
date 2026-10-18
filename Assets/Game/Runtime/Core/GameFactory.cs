@@ -93,6 +93,7 @@ namespace Nasledie.Core
             state.EventLog = new[] { "Ход 1 · Столица готова к развитию. Выберите приоритет и завершите ход.", "Ход 1 · Люди, здоровье, еда и доверие важнее площади завоёванной земли." };
             state.LastPlayerBalanceTenths = 0;
             RebuildVisibility(state);
+            state.RulesetHash = CampaignFingerprint.Rules();
             return state;
         }
 

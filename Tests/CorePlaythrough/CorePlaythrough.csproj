@@ -15,5 +15,6 @@
     <Compile Include="FreshDiplomaticVictoryScenario.cs" />
     <Compile Include="AiActiveVictoryBalanceScenario.cs" />
     <Compile Include="MechanicsRegressionScenario.cs" />
+    <Compile Include="CampaignReplayScenario.cs" />
   </ItemGroup>
 </Project>

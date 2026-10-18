@@ -89,6 +89,18 @@ namespace Nasledie.Client
     {
         private static Font runtimeFont;
         public static Action ButtonClickHandler;
+        public static int TextScaleIndex;
+        public static bool HighContrast;
+        private static readonly float[] TextScales = { 0.9f, 1f, 1.15f, 1.3f };
+        public static float TextScale { get { return TextScales[Mathf.Clamp(TextScaleIndex, 0, TextScales.Length - 1)]; } }
+
+        public static Color AccessibleTextColor(Color color)
+        {
+            if (!HighContrast) return color;
+            if (color == GamePalette.Muted || color == GamePalette.PaperDim)
+                return Color.white;
+            return color;
+        }
         public static Font Font
         {
             get
@@ -126,9 +138,9 @@ namespace Nasledie.Client
             Text text = go.AddComponent<Text>();
             text.font = Font;
             text.text = value ?? "";
-            int renderSize = Mathf.Max(12, Mathf.RoundToInt(size * 1.45f));
+            int renderSize = Mathf.Max(12, Mathf.RoundToInt(size * 1.45f * TextScale));
             text.fontSize = renderSize;
-            text.color = color;
+            text.color = AccessibleTextColor(color);
             text.alignment = align;
             text.fontStyle = bold ? FontStyle.Bold : FontStyle.Normal;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
@@ -176,8 +188,9 @@ namespace Nasledie.Client
                 Debug.LogError("JERICHO: кнопка без действия была отключена: " + label);
             }
             LayoutElement layout = go.AddComponent<LayoutElement>();
-            layout.minHeight = height;
-            layout.preferredHeight = height;
+            float accessibleHeight = Mathf.Max(height * TextScale, 48f);
+            layout.minHeight = accessibleHeight;
+            layout.preferredHeight = accessibleHeight;
             layout.flexibleWidth = 1f;
             Text text = Label(go.transform, label, fontSize, GamePalette.Paper, TextAnchor.MiddleCenter, true);
             RectTransform textRect = text.rectTransform;
@@ -274,8 +287,8 @@ namespace Nasledie.Client
             Text label = go.AddComponent<Text>();
             label.font = Font;
             label.text = text;
-            label.fontSize = size;
-            label.color = color;
+            label.fontSize = Mathf.Max(12, Mathf.RoundToInt(size * TextScale));
+            label.color = AccessibleTextColor(color);
             label.alignment = alignment;
             label.fontStyle = FontStyle.Bold;
             label.horizontalOverflow = HorizontalWrapMode.Wrap;
@@ -306,7 +319,7 @@ namespace Nasledie.Client
             public string Payload = string.Empty;
         }
 
-        private const int CurrentSaveVersion = 8;
+        private const int CurrentSaveVersion = 10;
         private static string DirectoryPath { get { return Path.Combine(Application.persistentDataPath, "NasledieSaves"); } }
         private static string AutoPath(int slot) { return Path.Combine(DirectoryPath, "autosave_" + slot + ".json"); }
         private static string ManualPath(int slot) { return Path.Combine(DirectoryPath, "manual_" + slot + ".json"); }
@@ -416,6 +429,60 @@ namespace Nasledie.Client
         public static bool HasSave
         {
             get { return HasManualSave || HasAutoSave(0) || HasAutoSave(1) || HasAutoSave(2); }
+        }
+
+        public static string BuildDiagnostics(GameState state)
+        {
+            var report = new StringBuilder(16384);
+            report.AppendLine("JERICHO campaign diagnostics");
+            report.AppendLine("UTC: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
+            report.AppendLine("Build: " + Application.version + " · Unity " + Application.unityVersion);
+            report.AppendLine("Platform: " + Application.platform + " · OS: " + SystemInfo.operatingSystem + " · Device: " + SystemInfo.deviceModel);
+            report.AppendLine("Ruleset hash: " + CampaignFingerprint.Rules());
+            if (state == null)
+            {
+                report.AppendLine("Campaign: not loaded");
+                return report.ToString();
+            }
+
+            string stateHash = CampaignFingerprint.State(state);
+            CivilizationState player = state.Civilization(state.HumanCivilizationId);
+            report.AppendLine("Seed: " + state.Seed + " · turn: " + state.Turn + "/" + state.MaximumTurn + " · pace: " + state.Pace);
+            report.AppendLine("Difficulty: " + (player == null ? "unknown" : player.Difficulty.ToString()) +
+                " · nation: " + (player == null ? "unknown" : player.NationId) + " · finished: " + state.IsFinished);
+            report.AppendLine("Save schema: " + state.SaveVersion + " · rules version: " + state.RulesVersion +
+                " · saved rules hash: " + (string.IsNullOrEmpty(state.RulesetHash) ? "missing" : state.RulesetHash));
+            report.AppendLine("State hash: " + stateHash);
+            report.AppendLine("Completed-turn checkpoints: " + (state.TurnStateHashes == null ? 0 : state.TurnStateHashes.Length));
+            report.AppendLine("Journal entries: " + (state.CommandJournal == null ? 0 : state.CommandJournal.Length) +
+                " · truncated: " + state.CommandJournalTruncated);
+            CampaignReplayResult replay = CampaignReplay.Verify(state);
+            report.AppendLine("Replay: " + replay.Message);
+            if (!string.IsNullOrEmpty(replay.ReplayHash)) report.AppendLine("Replay hash: " + replay.ReplayHash);
+            if (state.CommandJournal != null)
+            {
+                report.AppendLine("Recent player commands:");
+                int first = Math.Max(0, state.CommandJournal.Length - 100);
+                for (int i = first; i < state.CommandJournal.Length; i++) report.AppendLine(state.CommandJournal[i]);
+            }
+            report.AppendLine("Recent event log:");
+            if (state.EventLog != null)
+            {
+                int first = Math.Max(0, state.EventLog.Length - 80);
+                for (int i = first; i < state.EventLog.Length; i++) report.AppendLine(state.EventLog[i]);
+            }
+            return report.ToString();
+        }
+
+        public static string SaveDiagnosticsFile(GameState state)
+        {
+            string directory = Path.Combine(Application.persistentDataPath, "Diagnostics");
+            Directory.CreateDirectory(directory);
+            int seed = state == null ? 0 : state.Seed;
+            string name = "jericho_diagnostic_" + seed + "_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss", System.Globalization.CultureInfo.InvariantCulture) + ".txt";
+            string path = Path.Combine(directory, name);
+            File.WriteAllText(path, BuildDiagnostics(state), Encoding.UTF8);
+            return path;
         }
 
         private static void Write(string path, GameState state)
@@ -614,6 +681,16 @@ namespace Nasledie.Client
                             Array.Resize(ref civ.PrisonersHeldByCivilizationTenths, state.Civilizations.Length);
                     }
                 state.SaveVersion = 8;
+            }
+            if (state.SaveVersion <= 8)
+            {
+                if (string.IsNullOrEmpty(state.RulesetHash)) state.RulesetHash = CampaignFingerprint.Rules();
+                state.SaveVersion = 9;
+            }
+            if (state.SaveVersion <= 9)
+            {
+                if (state.TurnStateHashes == null) state.TurnStateHashes = Array.Empty<string>();
+                state.SaveVersion = 10;
             }
         }
 

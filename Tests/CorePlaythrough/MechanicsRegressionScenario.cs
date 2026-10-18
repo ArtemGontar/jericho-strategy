@@ -1096,6 +1096,7 @@ internal static class MechanicsRegressionScenario
                 Readiness = 100, SupplyBasisPoints = 10000, MovementLeft = 2 }
         };
         state.Conflicts = new[] { new ConflictState { Id = state.NextEntityId++, AggressorId = rivalId, DefenderId = playerId, Phase = 2, Active = true } };
+        GameFactory.RebuildVisibility(state);
 
         simulation.EndTurn();
         state = simulation.State;

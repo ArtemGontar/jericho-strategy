@@ -19,6 +19,12 @@ internal static class Program
                 AiActiveVictoryBalanceScenario.Run(Console.WriteLine);
                 return 0;
             }
+            if (args != null && args.Length > 0 && args[0] == "replay")
+            {
+                CampaignReplayScenario.Run(Console.WriteLine);
+                return 0;
+            }
+            CampaignReplayScenario.Run(Console.WriteLine);
             RunCampaignPaceAcceptance();
             RunAllDifficultiesToCompletion();
             AiActiveVictoryBalanceScenario.Run(Console.WriteLine);

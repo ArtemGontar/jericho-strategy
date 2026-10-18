@@ -486,11 +486,17 @@ namespace Nasledie.Core
                     if (!conflict.Active || conflict.Phase != 2 || (conflict.AggressorId != civ.Id && conflict.DefenderId != civ.Id)) continue;
                     int targetOwner = conflict.AggressorId == civ.Id ? conflict.DefenderId : conflict.AggressorId;
                     CityState targetCity = null;
-                    if (conflict.AggressorId == civ.Id) targetCity = state.City(conflict.OccupationCityId);
+                    if (conflict.AggressorId == civ.Id)
+                    {
+                        targetCity = state.City(conflict.OccupationCityId);
+                        if (targetCity != null && !IsVisibleToCivilization(state.Cell(targetCity.Q, targetCity.R), civ.Id)) targetCity = null;
+                    }
                     if (targetCity == null)
                     {
                         for (int j = 0; j < state.Cities.Length; j++)
-                            if (state.Cities[j].OwnerId == targetOwner && (targetCity == null || state.Cities[j].AdministrativeLoad > targetCity.AdministrativeLoad)) targetCity = state.Cities[j];
+                            if (state.Cities[j].OwnerId == targetOwner &&
+                                IsVisibleToCivilization(state.Cell(state.Cities[j].Q, state.Cities[j].R), civ.Id) &&
+                                (targetCity == null || state.Cities[j].AdministrativeLoad > targetCity.AdministrativeLoad)) targetCity = state.Cities[j];
                     }
                     if (targetCity == null) continue;
                     for (int u = 0; u < state.Units.Length; u++)

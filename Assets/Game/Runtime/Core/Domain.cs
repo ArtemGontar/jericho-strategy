@@ -197,6 +197,9 @@ namespace Nasledie.Core
         public int LastTurnKnowledgeOutputTenths;
         public int StrategyHoldTurns;
         public string StrategicGoal = "quality";
+        public int StrategicGoalScore;
+        public string StrategicRunnerUpGoal = string.Empty;
+        public int StrategicRunnerUpScore;
         public string[] KnownTechnologies = Array.Empty<string>();
         public string[] Laws = Array.Empty<string>();
         public int[] TechnologyProgressTenths = new int[25];
@@ -377,8 +380,9 @@ namespace Nasledie.Core
     [Serializable]
     public sealed class GameState
     {
-        public int SaveVersion = 8;
+        public int SaveVersion = 10;
         public int RulesVersion = 1;
+        public string RulesetHash = string.Empty;
         public int Seed;
         public int Turn = 1;
         public int MaximumTurn = 80;
@@ -405,6 +409,8 @@ namespace Nasledie.Core
         public TurnReport[] Reports = Array.Empty<TurnReport>();
         public string[] EventLog = Array.Empty<string>();
         public string[] CommandJournal = Array.Empty<string>();
+        public bool CommandJournalTruncated;
+        public string[] TurnStateHashes = Array.Empty<string>();
         public int LastPlayerBalanceTenths;
         public int BattlesThisTurn;
         public int TreatiesThisTurn;
@@ -450,6 +456,7 @@ namespace Nasledie.Core
             copy.Reports = (TurnReport[])Reports.Clone();
             copy.EventLog = (string[])EventLog.Clone();
             copy.CommandJournal = CommandJournal == null ? Array.Empty<string>() : (string[])CommandJournal.Clone();
+            copy.TurnStateHashes = TurnStateHashes == null ? Array.Empty<string>() : (string[])TurnStateHashes.Clone();
             return copy;
         }
     }
