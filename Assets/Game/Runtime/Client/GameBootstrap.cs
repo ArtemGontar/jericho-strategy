@@ -139,6 +139,7 @@ namespace Nasledie.Client
         private int guideCategoryIndex;
         private int tutorialStepIndex;
         private int tutorialCompletedMask;
+        private string tutorialFeedback = "";
         private MapOverlay mapOverlay;
         private int textScaleIndex = 1;
         private bool highContrast;
@@ -238,35 +239,44 @@ namespace Nasledie.Client
 
             GameObject background = UiKit.CreateObject("Background", safeRoot);
             Image backgroundImage = background.AddComponent<Image>();
-            backgroundImage.color = GamePalette.Ink;
+            backgroundImage.sprite = Resources.Load<Sprite>("Art/Backgrounds/Menu_Background");
+            backgroundImage.preserveAspect = false;
+            backgroundImage.color = new Color(1f, 1f, 1f, 0.24f);
+            backgroundImage.raycastTarget = false;
             UiKit.SetAnchors(UiKit.Rect(background), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             background.transform.SetAsFirstSibling();
+            GameObject backgroundBase = UiKit.CreateObject("BackgroundBase", safeRoot);
+            Image backgroundBaseImage = backgroundBase.AddComponent<Image>();
+            backgroundBaseImage.color = GamePalette.Ink;
+            backgroundBaseImage.raycastTarget = false;
+            UiKit.SetAnchors(UiKit.Rect(backgroundBase), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            backgroundBase.transform.SetAsFirstSibling();
 
             GameObject headerObject = UiKit.Panel(safeRoot, "Header", GamePalette.InkSoft);
             header = UiKit.Rect(headerObject);
-            UiKit.SetAnchors(header, new Vector2(0, 0.88f), Vector2.one, new Vector2(0, 0), Vector2.zero);
+            UiKit.SetAnchors(header, new Vector2(0, 0.90f), Vector2.one, new Vector2(0, 0), Vector2.zero);
             UiKit.Vertical(headerObject, 8, 0);
-            titleLabel = UiKit.Label(headerObject.transform, "JERICHO", 30, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+            titleLabel = UiKit.Label(headerObject.transform, "JERICHO", 26, GamePalette.Gold, TextAnchor.MiddleLeft, true);
             LayoutElement titleLayout = titleLabel.GetComponent<LayoutElement>();
-            titleLayout.minHeight = 32;
-            titleLayout.preferredHeight = 34;
-            resourceLabel = UiKit.Label(headerObject.transform, "", 16, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            titleLayout.minHeight = 30;
+            titleLayout.preferredHeight = 32;
+            resourceLabel = UiKit.Label(headerObject.transform, "", 14, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             LayoutElement resourceLayout = resourceLabel.GetComponent<LayoutElement>();
-            resourceLayout.minHeight = 25;
-            resourceLayout.preferredHeight = 26;
-            noticeLabel = UiKit.Label(headerObject.transform, "", 15, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            resourceLayout.minHeight = 20;
+            resourceLayout.preferredHeight = 22;
+            noticeLabel = UiKit.Label(headerObject.transform, "", 13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             LayoutElement noticeLayout = noticeLabel.GetComponent<LayoutElement>();
-            noticeLayout.minHeight = 20;
-            noticeLayout.preferredHeight = 22;
+            noticeLayout.minHeight = 18;
+            noticeLayout.preferredHeight = 18;
 
             GameObject pageObject = UiKit.CreateObject("PageHost", safeRoot);
             pageHost = UiKit.Rect(pageObject);
-            UiKit.SetAnchors(pageHost, new Vector2(0, 0.24f), new Vector2(1, 0.88f), Vector2.zero, Vector2.zero);
+            UiKit.SetAnchors(pageHost, new Vector2(0, 0.15f), new Vector2(1, 0.90f), Vector2.zero, Vector2.zero);
             pageObject.SetActive(false);
 
             GameObject navObject = UiKit.Panel(safeRoot, "Navigation", GamePalette.Ink);
             navHost = UiKit.Rect(navObject);
-            UiKit.SetAnchors(navHost, new Vector2(0, 0.12f), new Vector2(1, 0.24f), Vector2.zero, Vector2.zero);
+            UiKit.SetAnchors(navHost, new Vector2(0, 0.075f), new Vector2(1, 0.15f), Vector2.zero, Vector2.zero);
             UiKit.Horizontal(navObject, 4, 4);
             AddNavButton(navObject.transform, "МИР", ScreenPage.Overview);
             AddNavButton(navObject.transform, "ГОРОД", ScreenPage.City);
@@ -279,12 +289,12 @@ namespace Nasledie.Client
 
             GameObject actionObject = UiKit.Panel(safeRoot, "TurnActions", GamePalette.InkSoft);
             actionHost = UiKit.Rect(actionObject);
-            UiKit.SetAnchors(actionHost, Vector2.zero, new Vector2(1, 0.12f), Vector2.zero, Vector2.zero);
+            UiKit.SetAnchors(actionHost, Vector2.zero, new Vector2(1, 0.075f), Vector2.zero, Vector2.zero);
             UiKit.Horizontal(actionObject, 4, 4);
-            Button menuButton = UiKit.Button(actionObject.transform, "МЕНЮ", ShowMenu, GamePalette.Ink, 110, 16);
-            Button saveButton = UiKit.Button(actionObject.transform, "СОХРАНИТЬ", SaveManual, GamePalette.Ink, 110, 16);
-            Button achievementsButton = UiKit.Button(actionObject.transform, "СПРАВКА", ShowEncyclopedia, GamePalette.Ink, 110, 15);
-            Button endButton = UiKit.Button(actionObject.transform, "ЗАВЕРШИТЬ ХОД", EndTurn, GamePalette.Teal, 110, 17);
+            Button menuButton = UiKit.Button(actionObject.transform, "МЕНЮ", ShowMenu, GamePalette.Ink, 58, 14);
+            Button saveButton = UiKit.Button(actionObject.transform, "СОХРАНИТЬ", SaveManual, GamePalette.Ink, 58, 14);
+            Button achievementsButton = UiKit.Button(actionObject.transform, "СПРАВКА", ShowEncyclopedia, GamePalette.Ink, 58, 14);
+            Button endButton = UiKit.Button(actionObject.transform, "ЗАВЕРШИТЬ ХОД", EndTurn, GamePalette.Teal, 58, 15);
             menuButton.GetComponent<LayoutElement>().flexibleWidth = 0.48f;
             saveButton.GetComponent<LayoutElement>().flexibleWidth = 0.72f;
             achievementsButton.GetComponent<LayoutElement>().flexibleWidth = 0.66f;
@@ -309,7 +319,7 @@ namespace Nasledie.Client
 
         private void AddNavButton(Transform parent, string label, ScreenPage page)
         {
-            Button button = UiKit.Button(parent, label, delegate { currentPage = page; MarkTutorialPageVisited(page); notice = ""; RenderGame(); }, GamePalette.InkSoft, 110, 17);
+            Button button = UiKit.Button(parent, label, delegate { currentPage = page; MarkTutorialPageVisited(page); notice = ""; RenderGame(); }, GamePalette.InkSoft, 52, 13);
             button.GetComponent<LayoutElement>().flexibleWidth = 1f;
         }
 
@@ -328,56 +338,40 @@ namespace Nasledie.Client
 
             GameObject shade = UiKit.CreateObject("MenuTextShade", menuHost);
             Image shadeImage = shade.AddComponent<Image>();
-            shadeImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.38f);
+            shadeImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.76f);
             shadeImage.raycastTarget = false;
-            UiKit.SetAnchors(UiKit.Rect(shade), Vector2.zero, new Vector2(0.56f, 1f), Vector2.zero, Vector2.zero);
+            UiKit.SetAnchors(UiKit.Rect(shade), Vector2.zero, new Vector2(0.48f, 1f), Vector2.zero, Vector2.zero);
 
-            GameObject menu = UiKit.ScrollView(menuHost, "MenuScroll");
-            RectTransform menuScroll = menu.transform.parent.parent as RectTransform;
-            if (menuScroll != null) UiKit.SetAnchors(menuScroll, Vector2.zero, new Vector2(0.56f, 1f), Vector2.zero, Vector2.zero);
-            UiKit.Vertical(menu, 24, 18);
-            AddArtwork(menu.transform, "Jericho_Logo", 178);
-            UiKit.Label(menu.transform, "JERICHO", 64, GamePalette.Gold, TextAnchor.MiddleCenter, true);
-            UiKit.Label(menu.transform, "От первого поселения — к цивилизации, которую выбирают строить.", 26, GamePalette.Paper, TextAnchor.MiddleCenter, false);
-            UiKit.Label(menu.transform, "Экономика · люди · культура · договоры · решения с последствиями", 22, GamePalette.Muted, TextAnchor.MiddleCenter, false);
-            UiKit.Label(menu.transform, "Профиль · " + AchievementService.SelectedTitle + " · слава " + AchievementService.Renown + " · достижений " + AchievementService.UnlockedCount + "/" + AchievementService.Definitions.Length,
-                18, GamePalette.Gold, TextAnchor.MiddleCenter, true);
-            AddArtwork(menu.transform, AchievementService.SelectedTitleArtwork, 82);
-            NationDefinition selectedNation = NationCatalog.Get(selectedNationId);
-            AddArtwork(menu.transform, selectedNation.LeaderArtKey, 154);
-            UiKit.Label(menu.transform, selectedNation.LeaderNameRu + " · " + selectedNation.LeaderTitleRu, 25, GamePalette.Gold, TextAnchor.MiddleCenter, true);
-            UiKit.Label(menu.transform, selectedNation.LeaderBiographyRu + "\n\n" + selectedNation.LeaderHistoricalNoteRu,
-                18, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            AddArtwork(menu.transform, selectedNation.ArtKey, 92);
-            UiKit.Button(menu.transform, "НАЦИЯ: " + selectedNation.NameRu + " · ВЫБРАТЬ", CycleNation, GamePalette.InkSoft, 68, 22);
-            BuildingDefinition uniqueDistrict = RulesCatalog.Building(selectedNation.UniqueDistrictBuildingId);
-            UiKit.Label(menu.transform, selectedNation.IdentityDescription + "\n\nУникальный район: " + uniqueDistrict.NameRu + " — " + BuildingEffectSummary(uniqueDistrict) +
-                ". Учебный центр: " + selectedNation.CampusNameRu + " — " + selectedNation.CampusBonusDescriptionRu + "\n" +
-                selectedNation.BonusTitle + " · " + selectedNation.BonusDescription + ".", 18,
-                GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Button(menu.transform, musicEnabled ? "МУЗЫКА: ВКЛЮЧЕНА" : "МУЗЫКА: ВЫКЛЮЧЕНА", ToggleMusic, GamePalette.InkSoft, 54, 18);
-            UiKit.Button(menu.transform, "ДОСТИЖЕНИЯ И НАГРАДЫ", ShowAchievements, GamePalette.InkSoft, 66, 21);
-            UiKit.Button(menu.transform, "НАСТРОЙКИ", ShowSettings, GamePalette.InkSoft, 62, 21);
-            Button savesButton = UiKit.Button(menu.transform, "УПРАВЛЕНИЕ СОХРАНЕНИЯМИ", ShowSaves, GamePalette.InkSoft, 62, 19);
-            savesButton.interactable = SaveService.HasSave;
-            UiKit.Button(menu.transform, "ЭНЦИКЛОПЕДИЯ И ПОДСКАЗКИ", ShowEncyclopedia, GamePalette.InkSoft, 62, 21);
+            GameObject menu = UiKit.CreateObject("MainMenuContent", menuHost);
+            UiKit.SetAnchors(UiKit.Rect(menu), new Vector2(0.045f, 0.035f), new Vector2(0.455f, 0.965f), Vector2.zero, Vector2.zero);
+            UiKit.Vertical(menu, 20, 9);
+            AddArtwork(menu.transform, "Jericho_Logo", 112);
+            UiKit.Label(menu.transform, "JERICHO", 52, GamePalette.Gold, TextAnchor.MiddleCenter, true);
+            UiKit.Label(menu.transform, "От первого поселения — к цивилизации, которую выбирают строить.", 20, GamePalette.Paper, TextAnchor.MiddleCenter, false);
+            UiKit.Label(menu.transform, "Профиль · " + AchievementService.SelectedTitle + " · слава " + AchievementService.Renown +
+                " · достижения " + AchievementService.UnlockedCount + "/" + AchievementService.Definitions.Length,
+                15, GamePalette.Gold, TextAnchor.MiddleCenter, true);
 
             if (simulation != null)
             {
-                UiKit.Button(menu.transform, "ВЕРНУТЬСЯ В КАМПАНИЮ", delegate { menuHost.gameObject.SetActive(false); RenderGame(); }, GamePalette.Teal, 92, 27);
-                UiKit.Button(menu.transform, "СОХРАНИТЬ И ПРОДОЛЖИТЬ", delegate { SaveManual(); menuHost.gameObject.SetActive(false); RenderGame(); }, GamePalette.InkSoft, 76, 23);
-                UiKit.Button(menu.transform, "В ГЛАВНОЕ МЕНЮ", delegate { simulation = null; ShowMenu(); }, GamePalette.InkSoft, 70, 22);
+                UiKit.Button(menu.transform, "ПРОДОЛЖИТЬ КАМПАНИЮ", delegate { menuHost.gameObject.SetActive(false); RenderGame(); }, GamePalette.Teal, 60, 20);
+                UiKit.Button(menu.transform, "СОХРАНИТЬ И ПРОДОЛЖИТЬ", delegate { SaveManual(); menuHost.gameObject.SetActive(false); RenderGame(); }, GamePalette.InkSoft, 54, 18);
+                UiKit.Button(menu.transform, "НАСТРОЙКИ", ShowSettings, GamePalette.InkSoft, 52, 18);
+                UiKit.Button(menu.transform, "ДОСТИЖЕНИЯ И НАГРАДЫ", ShowAchievements, GamePalette.InkSoft, 52, 17);
+                UiKit.Button(menu.transform, "СПРАВКА И ЭНЦИКЛОПЕДИЯ", ShowEncyclopedia, GamePalette.InkSoft, 52, 18);
+                UiKit.Button(menu.transform, "УПРАВЛЕНИЕ СОХРАНЕНИЯМИ", ShowSaves, GamePalette.InkSoft, 52, 16);
+                UiKit.Button(menu.transform, "В ГЛАВНОЕ МЕНЮ", delegate { simulation = null; ShowMenu(); }, GamePalette.InkSoft, 52, 18);
                 return;
             }
 
-            UiKit.Button(menu.transform, "НОВАЯ КАМПАНИЯ", StartNewCampaign, GamePalette.Teal, 96, 30);
-            Button continueButton = UiKit.Button(menu.transform, "ПРОДОЛЖИТЬ", LoadCampaign, GamePalette.InkSoft, 80, 26);
+            UiKit.Button(menu.transform, "НОВАЯ КАМПАНИЯ", StartNewCampaign, GamePalette.Teal, 64, 22);
+            Button continueButton = UiKit.Button(menu.transform, "ПРОДОЛЖИТЬ", LoadCampaign, GamePalette.InkSoft, 56, 19);
             continueButton.interactable = SaveService.HasSave;
-            UiKit.Button(menu.transform, "СЛОЖНОСТЬ: " + DifficultyName(selectedDifficulty), CycleDifficulty, GamePalette.InkSoft, 70, 22);
-            UiKit.Button(menu.transform, "ТЕМП: " + PaceName(selectedPace), CyclePace, GamePalette.InkSoft, 70, 22);
-            UiKit.Label(menu.transform, PaceDescription(selectedPace), 18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-            UiKit.Button(menu.transform, "КАК ИГРАТЬ", ShowTutorial, GamePalette.InkSoft, 70, 22);
-            UiKit.Label(menu.transform, "Демо · 4 древние культуры с персонажами и уникальными районами · 5 путей к победе · офлайн", 20, GamePalette.Muted, TextAnchor.MiddleCenter, false);
+            if (SaveService.HasSave) UiKit.Button(menu.transform, "УПРАВЛЕНИЕ СОХРАНЕНИЯМИ", ShowSaves, GamePalette.InkSoft, 52, 16);
+            UiKit.Button(menu.transform, "НАСТРОЙКИ", ShowSettings, GamePalette.InkSoft, 52, 18);
+            UiKit.Button(menu.transform, "ДОСТИЖЕНИЯ И НАГРАДЫ", ShowAchievements, GamePalette.InkSoft, 52, 18);
+            UiKit.Button(menu.transform, "ЭНЦИКЛОПЕДИЯ", ShowEncyclopedia, GamePalette.InkSoft, 52, 18);
+            UiKit.Button(menu.transform, "КАК ИГРАТЬ", ShowTutorial, GamePalette.InkSoft, 52, 18);
         }
 
         private void InitializeSoundtrack()
@@ -561,31 +555,72 @@ namespace Nasledie.Client
 
         private void ShowSettings()
         {
-            PrepareUtilityOverlay();
+            PrepareUtilityOverlay("Backgrounds/Settings_Background");
             activeUtilityScreen = "settings";
-            GameObject content = UiKit.ScrollView(menuHost, "SettingsScroll");
-            UiKit.Label(content.transform, "НАСТРОЙКИ", 44, GamePalette.Gold, TextAnchor.MiddleCenter, true);
-            UiKit.Label(content.transform, "Выбор сохраняется на этом устройстве.", 20, GamePalette.Muted, TextAnchor.MiddleCenter, false);
-            UiKit.Button(content.transform, musicEnabled ? "МУЗЫКА · ВКЛЮЧЕНА" : "МУЗЫКА · ВЫКЛЮЧЕНА", ToggleMusic, GamePalette.Teal, 68, 22);
-            UiKit.Button(content.transform, MusicVolumeLabel() + " · ИЗМЕНИТЬ", CycleMusicVolume, GamePalette.InkSoft, 68, 21);
-            UiKit.Button(content.transform, soundEffectsEnabled ? "ЗВУКОВЫЕ ЭФФЕКТЫ · ВКЛЮЧЕНЫ" : "ЗВУКОВЫЕ ЭФФЕКТЫ · ВЫКЛЮЧЕНЫ", ToggleSoundEffects, GamePalette.Teal, 68, 22);
-            UiKit.Button(content.transform, SoundEffectsVolumeLabel() + " · ИЗМЕНИТЬ", CycleSoundEffectsVolume, GamePalette.InkSoft, 68, 21);
-            UiKit.Button(content.transform, AnimationModeLabel() + " · ИЗМЕНИТЬ", CycleAnimationMode, GamePalette.InkSoft, 68, 21);
-            UiKit.Button(content.transform, TextScaleLabel() + " · ИЗМЕНИТЬ", CycleTextScale, GamePalette.InkSoft, 68, 21);
-            UiKit.Button(content.transform, highContrast ? "ВЫСОКИЙ КОНТРАСТ · ВКЛЮЧЕН" : "ВЫСОКИЙ КОНТРАСТ · ВЫКЛЮЧЕН", ToggleHighContrast, GamePalette.InkSoft, 68, 21);
-            UiKit.Button(content.transform, hapticsEnabled ? "ВИБРООТКЛИК · ВКЛЮЧЁН" : "ВИБРООТКЛИК · ВЫКЛЮЧЕН", ToggleHaptics, GamePalette.InkSoft, 68, 21);
-            UiKit.Button(content.transform, "ТЕМП НОВОЙ КАМПАНИИ: " + PaceName(selectedPace) + " · ИЗМЕНИТЬ", CyclePace, GamePalette.InkSoft, 68, 21);
-            UiKit.Label(content.transform, PaceDescription(selectedPace) +
-                (simulation == null ? "" : "\nТекущая кампания: " + PaceName(simulation.State.Pace) + " · её темп не меняется."),
-                19, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(content.transform, "Экран: альбомная ориентация · safe area для вырезов iPhone включена.\nАвтосохранение: " +
-                (SaveService.HasSave ? "кампания найдена" : "появится после первого хода"), 21, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(content.transform, "Сложность: " + DifficultyName(selectedDifficulty) + " · меняется перед новой кампанией.", 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-            UiKit.Label(content.transform, "Размер текста меняет подписи и кнопки. Высокий контраст усиливает вторичный текст. Виброотклик зависит от поддержки устройства.",
-                18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-            UiKit.Button(content.transform, "СКОПИРОВАТЬ ОТЧЁТ ДИАГНОСТИКИ", CopyDiagnosticsToClipboard, GamePalette.InkSoft, 68, 19);
-            UiKit.Button(content.transform, "СОХРАНИТЬ ОТЧЁТ ДИАГНОСТИКИ В ФАЙЛ", SaveDiagnosticsToFile, GamePalette.InkSoft, 68, 19);
-            UiKit.Button(content.transform, "НАЗАД", ShowMenu, GamePalette.Teal, 70, 22);
+            GameObject panel = UtilityPanel("SettingsPanel", new Vector2(0.055f, 0.045f), new Vector2(0.945f, 0.955f));
+            UiKit.Vertical(panel, 24, 10);
+            UiKit.Label(panel.transform, "НАСТРОЙКИ", 42, GamePalette.Gold, TextAnchor.MiddleCenter, true);
+            UiKit.Label(panel.transform, "Настройте звук и отображение. Изменения сохраняются на этом устройстве.",
+                18, GamePalette.PaperDim, TextAnchor.MiddleCenter, false);
+
+            GameObject columns = UiKit.CreateObject("SettingsColumns", panel.transform);
+            LayoutElement columnsLayout = columns.AddComponent<LayoutElement>();
+            columnsLayout.flexibleHeight = 1f;
+            UiKit.Horizontal(columns, 0, 16);
+
+            GameObject sound = UtilityCard(columns.transform, "ЗВУК");
+            UiKit.Label(sound.transform, "Музыка сопровождает эпохи. Эффекты подтверждают действия и события.",
+                17, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+            UiKit.Button(sound.transform, musicEnabled ? "МУЗЫКА · ВКЛЮЧЕНА" : "МУЗЫКА · ВЫКЛЮЧЕНА", ToggleMusic, GamePalette.Teal, 58, 18);
+            UiKit.Button(sound.transform, MusicVolumeLabel() + " · ИЗМЕНИТЬ", CycleMusicVolume, GamePalette.Ink, 58, 17);
+            UiKit.Button(sound.transform, soundEffectsEnabled ? "ЭФФЕКТЫ · ВКЛЮЧЕНЫ" : "ЭФФЕКТЫ · ВЫКЛЮЧЕНЫ", ToggleSoundEffects, GamePalette.Teal, 58, 18);
+            UiKit.Button(sound.transform, SoundEffectsVolumeLabel() + " · ИЗМЕНИТЬ", CycleSoundEffectsVolume, GamePalette.Ink, 58, 17);
+
+            GameObject access = UtilityCard(columns.transform, "ИЗОБРАЖЕНИЕ И ДОСТУПНОСТЬ");
+            UiKit.Button(access.transform, AnimationModeLabel() + " · ИЗМЕНИТЬ", CycleAnimationMode, GamePalette.Ink, 58, 16);
+            UiKit.Button(access.transform, TextScaleLabel() + " · ИЗМЕНИТЬ", CycleTextScale, GamePalette.Ink, 58, 17);
+            UiKit.Button(access.transform, highContrast ? "ВЫСОКИЙ КОНТРАСТ · ВКЛЮЧЁН" : "ВЫСОКИЙ КОНТРАСТ · ВЫКЛЮЧЕН", ToggleHighContrast, GamePalette.Ink, 58, 16);
+            UiKit.Button(access.transform, hapticsEnabled ? "ВИБРООТКЛИК · ВКЛЮЧЁН" : "ВИБРООТКЛИК · ВЫКЛЮЧЕН", ToggleHaptics, GamePalette.Ink, 58, 16);
+            UiKit.Label(access.transform, "Альбомный экран · safe area iPhone включена · виброотклик зависит от устройства.",
+                16, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+
+            GameObject options = UiKit.CreateObject("CampaignOptions", panel.transform);
+            UiKit.Horizontal(options, 0, 12);
+            Button pace = UiKit.Button(options.transform, "ТЕМП НОВОЙ КАМПАНИИ · " + PaceName(selectedPace), CyclePace, GamePalette.InkSoft, 54, 16);
+            pace.GetComponent<LayoutElement>().flexibleWidth = 1.3f;
+            UiKit.Label(options.transform, "Сложность: " + DifficultyName(selectedDifficulty) + " · выбирается при настройке новой кампании.",
+                16, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+
+            GameObject footer = UiKit.CreateObject("SettingsFooter", panel.transform);
+            UiKit.Horizontal(footer, 0, 12);
+            UiKit.Button(footer.transform, "СКОПИРОВАТЬ ДИАГНОСТИКУ", CopyDiagnosticsToClipboard, GamePalette.Ink, 54, 15);
+            UiKit.Button(footer.transform, "СОХРАНИТЬ ДИАГНОСТИКУ В ФАЙЛ", SaveDiagnosticsToFile, GamePalette.Ink, 54, 15);
+            UiKit.Button(panel.transform, "НАЗАД", ShowMenu, GamePalette.Teal, 56, 18);
+            if (!string.IsNullOrEmpty(notice)) UiKit.Label(panel.transform, notice, 15, GamePalette.Gold, TextAnchor.MiddleCenter, true);
+        }
+
+        private GameObject UtilityPanel(string name, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            GameObject panel = UiKit.CreateObject(name, menuHost);
+            Image image = panel.AddComponent<Image>();
+            image.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.82f);
+            image.raycastTarget = false;
+            UiKit.SetAnchors(UiKit.Rect(panel), anchorMin, anchorMax, Vector2.zero, Vector2.zero);
+            return panel;
+        }
+
+        private GameObject UtilityCard(Transform parent, string title)
+        {
+            GameObject card = UiKit.CreateObject("UtilityCard_" + title, parent);
+            Image image = card.AddComponent<Image>();
+            image.color = new Color(GamePalette.InkSoft.r, GamePalette.InkSoft.g, GamePalette.InkSoft.b, 0.78f);
+            image.raycastTarget = false;
+            LayoutElement layout = card.AddComponent<LayoutElement>();
+            layout.flexibleWidth = 1f;
+            layout.flexibleHeight = 1f;
+            UiKit.Vertical(card, 14, 8);
+            UiKit.Label(card.transform, title, 22, GamePalette.Gold, TextAnchor.MiddleCenter, true);
+            return card;
         }
 
         private void CopyDiagnosticsToClipboard()
@@ -659,7 +694,7 @@ namespace Nasledie.Client
 
         private void ShowAchievements()
         {
-            PrepareUtilityOverlay();
+            PrepareUtilityOverlay("Backgrounds/Victory_Background");
             activeUtilityScreen = "achievements";
             GameObject content = UiKit.ScrollView(menuHost, "AchievementsScroll");
             UiKit.Label(content.transform, "ДОСТИЖЕНИЯ И НАГРАДЫ", 42, GamePalette.Gold, TextAnchor.MiddleCenter, true);
@@ -691,7 +726,7 @@ namespace Nasledie.Client
 
         private void ShowSaves()
         {
-            PrepareUtilityOverlay();
+            PrepareUtilityOverlay("Backgrounds/Archive_Background");
             activeUtilityScreen = "saves";
             GameObject content = UiKit.ScrollView(menuHost, "SaveSlotsScroll");
             UiKit.Label(content.transform, "СОХРАНЕНИЯ", 44, GamePalette.Gold, TextAnchor.MiddleCenter, true);
@@ -755,11 +790,16 @@ namespace Nasledie.Client
             RenderGame();
         }
 
-        private void PrepareUtilityOverlay()
+        private void PrepareUtilityOverlay(string backgroundArtKey = "Backgrounds/Menu_Background")
         {
             DestroyChildren(menuHost);
             menuHost.gameObject.SetActive(true);
-            SetUtilityBackground(null);
+            SetUtilityBackground(backgroundArtKey);
+            GameObject shade = UiKit.CreateObject("UtilityBackdropShade", menuHost);
+            Image shadeImage = shade.AddComponent<Image>();
+            shadeImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.32f);
+            shadeImage.raycastTarget = false;
+            UiKit.SetAnchors(UiKit.Rect(shade), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             if (pageHost != null) pageHost.gameObject.SetActive(false);
             if (navHost != null) navHost.gameObject.SetActive(false);
             if (actionHost != null) actionHost.gameObject.SetActive(false);
@@ -1021,10 +1061,16 @@ namespace Nasledie.Client
 
         private void ShowGuidedTutorial()
         {
-            PrepareUtilityOverlay();
+            PrepareUtilityOverlay("Backgrounds/Tutorial_Background");
             activeUtilityScreen = "tutorial";
-            GameObject content = UiKit.ScrollView(menuHost, "GuidedTutorialScroll");
-            UiKit.Vertical(content, 20, 10);
+            GameObject tutorialPanel = UiKit.CreateObject("TutorialPanel", menuHost);
+            Image tutorialPanelImage = tutorialPanel.AddComponent<Image>();
+            tutorialPanelImage.color = new Color(GamePalette.InkSoft.r, GamePalette.InkSoft.g, GamePalette.InkSoft.b, 0.84f);
+            tutorialPanelImage.raycastTarget = false;
+            UiKit.SetAnchors(UiKit.Rect(tutorialPanel), Vector2.zero, new Vector2(0.62f, 1f), Vector2.zero, Vector2.zero);
+            GameObject content = UiKit.CreateObject("GuidedTutorialContent", menuHost);
+            UiKit.SetAnchors(UiKit.Rect(content), new Vector2(0.025f, 0.025f), new Vector2(0.595f, 0.975f), Vector2.zero, Vector2.zero);
+            UiKit.Vertical(content, 16, 6);
             UiKit.Label(content.transform, "ОБУЧЕНИЕ · 10 ШАГОВ", 40, GamePalette.Gold, TextAnchor.MiddleCenter, true);
             if (tutorialStepIndex >= TutorialSteps.Length)
             {
@@ -1041,10 +1087,14 @@ namespace Nasledie.Client
                 UiKit.Label(content.transform, step.Title, 34, GamePalette.Paper, TextAnchor.MiddleCenter, true);
                 UiKit.Label(content.transform, step.Body, 22, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
                 bool completed = IsTutorialObjectiveComplete(step.Objective);
-                UiKit.Label(content.transform, completed
+                string objectiveStatus = completed
                     ? "✓ Шаг выполнен. Обучение сохраняет прогресс на этом устройстве."
-                    : "Цель шага: " + TutorialObjectiveLabel(step.Objective) + ". Выполните действие в игре или пропустите шаг.",
-                    18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                    : simulation == null
+                        ? "Ознакомительный режим: кнопка «Следующий шаг» листает уроки. Практическую цель можно выполнить после начала кампании."
+                        : "Цель шага: " + TutorialObjectiveLabel(step.Objective) + ". Выполните её в кампании или пропустите шаг.";
+                UiKit.Label(content.transform, objectiveStatus, 18, completed ? GamePalette.Success : GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                if (!string.IsNullOrEmpty(tutorialFeedback))
+                    UiKit.Label(content.transform, tutorialFeedback, 17, GamePalette.Gold, TextAnchor.MiddleLeft, true);
                 if (simulation != null)
                     UiKit.Button(content.transform, "ОТКРЫТЬ НУЖНУЮ ВКЛАДКУ", OpenTutorialDestination, GamePalette.Teal, 62, 20);
                 UiKit.Button(content.transform, "СЛЕДУЮЩИЙ ШАГ", AdvanceTutorial, GamePalette.Gold, 62, 20);
@@ -1066,7 +1116,15 @@ namespace Nasledie.Client
 
         private void AdvanceTutorial()
         {
-            if (tutorialStepIndex < TutorialSteps.Length && !IsTutorialObjectiveComplete(TutorialSteps[tutorialStepIndex].Objective)) return;
+            if (tutorialStepIndex >= TutorialSteps.Length) return;
+            TutorialStep current = TutorialSteps[tutorialStepIndex];
+            if (simulation != null && !IsTutorialObjectiveComplete(current.Objective))
+            {
+                tutorialFeedback = "Сначала " + TutorialObjectiveLabel(current.Objective) + ". Откройте нужную вкладку или воспользуйтесь кнопкой «Пропустить этот шаг».";
+                ShowGuidedTutorial();
+                return;
+            }
+            tutorialFeedback = "";
             tutorialStepIndex = Mathf.Clamp(tutorialStepIndex + 1, 0, TutorialSteps.Length);
             PlayerPrefs.SetInt("jericho.tutorial.step", tutorialStepIndex);
             PlayerPrefs.Save();
@@ -1088,6 +1146,7 @@ namespace Nasledie.Client
         private void MarkTutorialObjective(TutorialObjective objective)
         {
             tutorialCompletedMask |= 1 << (int)objective;
+            tutorialFeedback = "✓ Цель выполнена. Теперь можно перейти дальше.";
             PlayerPrefs.SetInt("jericho.tutorial.completed", tutorialCompletedMask);
             PlayerPrefs.Save();
         }
@@ -1133,6 +1192,7 @@ namespace Nasledie.Client
         {
             tutorialStepIndex = 0;
             tutorialCompletedMask = 0;
+            tutorialFeedback = "";
             PlayerPrefs.SetInt("jericho.tutorial.step", tutorialStepIndex);
             PlayerPrefs.SetInt("jericho.tutorial.completed", tutorialCompletedMask);
             PlayerPrefs.Save();
@@ -1143,7 +1203,7 @@ namespace Nasledie.Client
 
         private void ShowEncyclopedia(string articleId)
         {
-            PrepareUtilityOverlay();
+            PrepareUtilityOverlay("Backgrounds/Archive_Background");
             activeUtilityScreen = "encyclopedia";
             GameObject content = UiKit.ScrollView(menuHost, "EncyclopediaScroll");
             UiKit.Vertical(content, 22, 12);
@@ -1252,7 +1312,8 @@ namespace Nasledie.Client
         private void CycleDifficulty()
         {
             selectedDifficulty = (Difficulty)(((int)selectedDifficulty + 1) % 4);
-            ShowMenu();
+            if (activeUtilityScreen == "new_game") ShowNewCampaignConfirmation();
+            else ShowMenu();
         }
 
         private void CycleNation()
@@ -1271,6 +1332,7 @@ namespace Nasledie.Client
             PlayerPrefs.SetInt("jericho.campaign.pace", (int)selectedPace);
             PlayerPrefs.Save();
             if (activeUtilityScreen == "settings") ShowSettings();
+            else if (activeUtilityScreen == "new_game") ShowNewCampaignConfirmation();
             else ShowMenu();
         }
 
@@ -1363,38 +1425,46 @@ namespace Nasledie.Client
 
         private void StartNewCampaign()
         {
-            if (SaveService.HasSave)
-            {
-                ShowNewCampaignConfirmation();
-                return;
-            }
-            CreateNewCampaign();
+            ShowNewCampaignConfirmation();
         }
 
         private void ShowNewCampaignConfirmation()
         {
-            PrepareUtilityOverlay();
+            PrepareUtilityOverlay("Backgrounds/Campaign_Background");
             activeUtilityScreen = "new_game";
-            GameObject content = UiKit.ScrollView(menuHost, "NewCampaignConfirmation");
-            UiKit.Label(content.transform, "НОВАЯ КАМПАНИЯ", 44, GamePalette.Gold, TextAnchor.MiddleCenter, true);
+            GameObject panel = UtilityPanel("NewCampaignPanel", new Vector2(0.045f, 0.04f), new Vector2(0.955f, 0.96f));
+            UiKit.Vertical(panel, 22, 10);
+            UiKit.Label(panel.transform, "НОВАЯ КАМПАНИЯ", 40, GamePalette.Gold, TextAnchor.MiddleCenter, true);
             NationDefinition selectedNation = NationCatalog.Get(selectedNationId);
             BuildingDefinition uniqueDistrict = RulesCatalog.Building(selectedNation.UniqueDistrictBuildingId);
-            AddArtwork(content.transform, selectedNation.LeaderArtKey, 160);
-            UiKit.Label(content.transform, selectedNation.LeaderNameRu + " · " + selectedNation.LeaderTitleRu, 26, GamePalette.Gold, TextAnchor.MiddleCenter, true);
-            UiKit.Label(content.transform, selectedNation.LeaderHistoricalNoteRu + "\n\nУникальный район: " +
-                uniqueDistrict.NameRu + " — " + BuildingEffectSummary(uniqueDistrict) + ". Учебный центр: " + selectedNation.CampusNameRu +
-                " — " + selectedNation.CampusBonusDescriptionRu,
-                20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            AddArtwork(content.transform, selectedNation.ArtKey, 104);
-            UiKit.Button(content.transform, "НАЦИЯ: " + selectedNation.NameRu + " · ИЗМЕНИТЬ", CycleNation, GamePalette.InkSoft, 66, 21);
-            UiKit.Label(content.transform, selectedNation.BonusTitle + " · " + selectedNation.BonusDescription + ".\n\n" +
-                "Начать новую партию на сложности «" + DifficultyName(selectedDifficulty) + "»?\n\n" +
-                DifficultyDescription(selectedDifficulty) + "\n\nТемп: «" + PaceName(selectedPace) + "». " + PaceDescription(selectedPace) + "\n\n" +
-                "Текущие автосохранения останутся доступны в управлении слотами, но последующие ходы новой партии начнут вытеснять их по очереди. Ручное сохранение хранится отдельно.",
-                23, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Button(content.transform, "НАЧАТЬ НОВУЮ КАМПАНИЮ", CreateNewCampaign, GamePalette.Teal, 78, 22);
-            UiKit.Button(content.transform, "ОТКРЫТЬ СОХРАНЕНИЯ", ShowSaves, GamePalette.InkSoft, 66, 21);
-            UiKit.Button(content.transform, "ОТМЕНА", ShowMenu, GamePalette.Rust, 66, 21);
+            GameObject columns = UiKit.CreateObject("CampaignSetupColumns", panel.transform);
+            LayoutElement columnsLayout = columns.AddComponent<LayoutElement>();
+            columnsLayout.flexibleHeight = 1f;
+            UiKit.Horizontal(columns, 0, 22);
+
+            GameObject culture = UtilityCard(columns.transform, selectedNation.NameRu.ToUpperInvariant());
+            AddArtwork(culture.transform, selectedNation.LeaderArtKey, 170);
+            UiKit.Label(culture.transform, selectedNation.LeaderNameRu + " · " + selectedNation.LeaderTitleRu,
+                22, GamePalette.Gold, TextAnchor.MiddleCenter, true);
+            UiKit.Label(culture.transform, selectedNation.LeaderHistoricalNoteRu, 17, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            UiKit.Button(culture.transform, "СМЕНИТЬ КУЛЬТУРУ · " + selectedNation.NameRu, CycleNation, GamePalette.Ink, 54, 17);
+            UiKit.Label(culture.transform, "Уникальный район · " + uniqueDistrict.NameRu + " — " + BuildingEffectSummary(uniqueDistrict) +
+                ". Учебный центр · " + selectedNation.CampusNameRu + ". " + selectedNation.BonusTitle + " — " + selectedNation.BonusDescription + ".",
+                16, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+
+            GameObject rules = UtilityCard(columns.transform, "УСЛОВИЯ ПАРТИИ");
+            UiKit.Button(rules.transform, "СЛОЖНОСТЬ · " + DifficultyName(selectedDifficulty), CycleDifficulty, GamePalette.Ink, 54, 17);
+            UiKit.Label(rules.transform, DifficultyDescription(selectedDifficulty), 16, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+            UiKit.Button(rules.transform, "ТЕМП · " + PaceName(selectedPace), CyclePace, GamePalette.Ink, 54, 17);
+            UiKit.Label(rules.transform, PaceDescription(selectedPace), 16, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+            if (SaveService.HasSave)
+                UiKit.Label(rules.transform, "Старые ручные сохранения сохранятся. Автослоты будут обновляться ходами новой кампании.",
+                    15, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            UiKit.Button(panel.transform, "НАЧАТЬ КАМПАНИЮ", CreateNewCampaign, GamePalette.Teal, 60, 20);
+            GameObject footer = UiKit.CreateObject("CampaignSetupFooter", panel.transform);
+            UiKit.Horizontal(footer, 0, 12);
+            if (SaveService.HasSave) UiKit.Button(footer.transform, "УПРАВЛЕНИЕ СОХРАНЕНИЯМИ", ShowSaves, GamePalette.InkSoft, 52, 16);
+            UiKit.Button(footer.transform, "ОТМЕНА", ShowMenu, GamePalette.Rust, 52, 18);
         }
 
         private void CreateNewCampaign()
@@ -1435,18 +1505,61 @@ namespace Nasledie.Client
             actionHost.gameObject.SetActive(!simulation.State.IsFinished);
             UpdateHeader();
             DestroyChildren(pageHost);
-            GameObject content = UiKit.ScrollView(pageHost, "PageScroll");
-            RenderContextHint(content.transform);
+            GameObject shell = UiKit.CreateObject("CampaignShell", pageHost);
+            UiKit.SetAnchors(UiKit.Rect(shell), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            UiKit.Horizontal(shell, 8, 8);
+
+            GameObject mapPane = UiKit.CreateObject("WorldMapPane", shell.transform);
+            LayoutElement mapPaneLayout = mapPane.AddComponent<LayoutElement>();
+            mapPaneLayout.flexibleWidth = 2.25f;
+            mapPaneLayout.flexibleHeight = 1f;
+            mapPaneLayout.minWidth = 0f;
+            UiKit.Vertical(mapPane, 0, 0);
+            AddMap(mapPane.transform);
+
+            GameObject detailPane = UiKit.CreateObject("StrategyPanel", shell.transform);
+            Image detailBackground = detailPane.AddComponent<Image>();
+            detailBackground.sprite = LoadArtwork(PageBackgroundArtwork(currentPage));
+            detailBackground.color = Color.white;
+            detailBackground.raycastTarget = false;
+            LayoutElement detailPaneLayout = detailPane.GetComponent<LayoutElement>();
+            if (detailPaneLayout == null) detailPaneLayout = detailPane.AddComponent<LayoutElement>();
+            detailPaneLayout.flexibleWidth = 1f;
+            detailPaneLayout.flexibleHeight = 1f;
+            detailPaneLayout.minWidth = 300f;
+            GameObject detailShade = UiKit.CreateObject("StrategyPanelShade", detailPane.transform);
+            Image detailShadeImage = detailShade.AddComponent<Image>();
+            detailShadeImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.44f);
+            detailShadeImage.raycastTarget = false;
+            UiKit.SetAnchors(UiKit.Rect(detailShade), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            GameObject detailContent = UiKit.ScrollView(detailPane.transform, "StrategyPanelScroll");
+            UiKit.Vertical(detailContent, 12, 10);
+            if (currentPage != ScreenPage.Overview) RenderContextHint(detailContent.transform);
             switch (currentPage)
             {
-                case ScreenPage.Overview: RenderOverview(content.transform); break;
-                case ScreenPage.City: RenderCity(content.transform); break;
-                case ScreenPage.Research: RenderResearch(content.transform); break;
-                case ScreenPage.Diplomacy: RenderDiplomacy(content.transform); break;
-                case ScreenPage.Laws: RenderLaws(content.transform); break;
-                case ScreenPage.Events: RenderEvents(content.transform); break;
-                case ScreenPage.Victory: RenderVictory(content.transform); break;
-                case ScreenPage.Chronicle: RenderChronicle(content.transform); break;
+                case ScreenPage.Overview: RenderOverview(detailContent.transform); break;
+                case ScreenPage.City: RenderCity(detailContent.transform); break;
+                case ScreenPage.Research: RenderResearch(detailContent.transform); break;
+                case ScreenPage.Diplomacy: RenderDiplomacy(detailContent.transform); break;
+                case ScreenPage.Laws: RenderLaws(detailContent.transform); break;
+                case ScreenPage.Events: RenderEvents(detailContent.transform); break;
+                case ScreenPage.Victory: RenderVictory(detailContent.transform); break;
+                case ScreenPage.Chronicle: RenderChronicle(detailContent.transform); break;
+            }
+        }
+
+        private static string PageBackgroundArtwork(ScreenPage page)
+        {
+            switch (page)
+            {
+                case ScreenPage.City: return "Backgrounds/City_Background";
+                case ScreenPage.Research: return "Backgrounds/Research_Background";
+                case ScreenPage.Diplomacy: return "Backgrounds/Diplomacy_Background";
+                case ScreenPage.Laws: return "Backgrounds/Archive_Background";
+                case ScreenPage.Events: return "Backgrounds/Events_Background";
+                case ScreenPage.Victory: return "Backgrounds/Victory_Background";
+                case ScreenPage.Chronicle: return "Backgrounds/Archive_Background";
+                default: return "Backgrounds/City_Background";
             }
         }
 
@@ -1455,10 +1568,10 @@ namespace Nasledie.Client
             GameState state = simulation.State;
             CivilizationState player = state.Civilization(state.HumanCivilizationId);
             titleLabel.text = "JERICHO     ·     ХОД " + state.Turn + "/" + state.MaximumTurn + "     ·     " + EraName(player.Era);
-            resourceLabel.text = player.Name + " · " + AchievementService.SelectedTitle + "     |     Казна " + Format(player.TreasuryTenths) +
-                "     ·     Знания " + Format(player.KnowledgeTenths) +
-                "     ·     Влияние " + Format(player.InfluenceTenths) +
-                "     ·     Культура " + player.CulturePrestige;
+            resourceLabel.text = player.Name + "  ·  Казна " + Format(player.TreasuryTenths) +
+                "  ·  Знания " + Format(player.KnowledgeTenths) +
+                "  ·  Влияние " + Format(player.InfluenceTenths) +
+                "  ·  Культура " + player.CulturePrestige + "  ·  " + AchievementService.SelectedTitle;
             noticeLabel.text = notice;
             noticeLabel.color = notice.IndexOf("не", StringComparison.OrdinalIgnoreCase) >= 0 || notice.IndexOf("нехват", StringComparison.OrdinalIgnoreCase) >= 0
                 ? GamePalette.Danger : GamePalette.Muted;
@@ -1603,9 +1716,11 @@ namespace Nasledie.Client
                 articleId = "chronicle";
             }
 
-            GameObject card = UiKit.Card(parent, "ПОДСКАЗКА · " + title);
-            UiKit.Label(card.transform, message, 19, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Button(card.transform, "ПОЧЕМУ ТАК ПРОИСХОДИТ · ЧИТАТЬ", delegate { ShowEncyclopedia(articleId); }, GamePalette.Ink, 52, 17);
+            GameObject card = UiKit.Panel(parent, "ContextHint", new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.72f));
+            UiKit.Vertical(card, 9, 4);
+            UiKit.Label(card.transform, "ПОДСКАЗКА · " + title, 17, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+            UiKit.Label(card.transform, message, 14, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            UiKit.Button(card.transform, "ПОЧЕМУ · СПРАВКА", delegate { ShowEncyclopedia(articleId); }, GamePalette.Ink, 44, 12);
         }
 
         private void RenderOverview(Transform parent)
@@ -1613,70 +1728,59 @@ namespace Nasledie.Client
             GameState state = simulation.State;
             CivilizationState player = state.Civilization(state.HumanCivilizationId);
             NationDefinition nation = player == null ? null : NationCatalog.Get(player.NationId);
-            UiKit.Label(parent, "Карта государства", 32, GamePalette.Gold, TextAnchor.MiddleLeft, true);
-            if (tutorialStepIndex < TutorialSteps.Length)
-            {
-                TutorialStep step = TutorialSteps[tutorialStepIndex];
-                GameObject tutorial = UiKit.Card(parent, "ОБУЧЕНИЕ · ШАГ " + (tutorialStepIndex + 1) + "/" + TutorialSteps.Length + " · " + step.Title);
-                UiKit.Label(tutorial.transform, "Подсказки рассчитаны примерно на первые 10 ходов и сохраняют ваш прогресс.",
-                    18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-                UiKit.Button(tutorial.transform, "ОТКРЫТЬ ПОШАГОВОЕ ОБУЧЕНИЕ", ShowTutorial, GamePalette.Gold, 54, 18);
-            }
             if (nation != null)
             {
-                GameObject leaderCard = UiKit.CreateObject("PlayerLeader", parent);
-                UiKit.Horizontal(leaderCard, 4, 10);
-                AddCityBuildingArtwork(leaderCard.transform, nation.LeaderArtKey, 58);
-                Text leaderLabel = UiKit.Label(leaderCard.transform,
-                    nation.LeaderNameRu + " · " + nation.LeaderTitleRu + "\n" + nation.NameRu + " · " + nation.BonusTitle + " · " + nation.BonusDescription,
-                    20, GamePalette.Paper, TextAnchor.MiddleLeft, true);
-                leaderLabel.GetComponent<LayoutElement>().flexibleWidth = 1f;
+                GameObject leaderCard = UiKit.Card(parent, "ВАШ НАРОД · " + nation.NameRu);
+                GameObject leaderRow = UiKit.CreateObject("PlayerLeader", leaderCard.transform);
+                UiKit.Horizontal(leaderRow, 0, 8);
+                AddCityBuildingArtwork(leaderRow.transform, nation.LeaderArtKey, 72);
+                GameObject leaderText = UiKit.CreateObject("LeaderDescription", leaderRow.transform);
+                UiKit.Vertical(leaderText, 0, 3);
+                LayoutElement leaderTextLayout = leaderText.AddComponent<LayoutElement>();
+                leaderTextLayout.flexibleWidth = 1f;
+                UiKit.Label(leaderText.transform, nation.LeaderNameRu + " · " + nation.LeaderTitleRu, 17, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                UiKit.Label(leaderText.transform, nation.BonusTitle + " · " + nation.BonusDescription, 13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             }
-            AddMap(parent);
+
             CityState selected = SelectedCity();
             if (selected != null)
             {
-                GameObject card = UiKit.Card(parent, selected.Name + " · город " + selected.Id);
+                GameObject card = UiKit.Card(parent, "СТОЛИЦА · " + selected.Name);
                 UiKit.Label(card.transform, "Население " + Format(selected.PopulationTenths) + " / " + Format(selected.HousingTenths) +
-                    "     Еда " + Format(selected.FoodTenths) + "     Здоровье " + selected.Health + "     Доверие " + selected.Trust,
-                    22, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                    "\nЕда " + Format(selected.FoodTenths) + " · здоровье " + selected.Health + " · доверие " + selected.Trust,
+                    15, GamePalette.Paper, TextAnchor.MiddleLeft, false);
                 CityYield yield = simulation.PreviewCity(selected.Id);
-                UiKit.Label(card.transform, "За ход: еда " + Format(yield.FoodTenths) + " · производство " + yield.Production +
-                    " · знания " + Format(yield.KnowledgeTenths) + " · казна " + Format(yield.TreasuryTenths), 21, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-                UiKit.Button(card.transform, "УПРАВЛЯТЬ ГОРОДОМ", delegate { currentPage = ScreenPage.City; RenderGame(); }, GamePalette.Ink, 62, 22);
+                UiKit.Label(card.transform, "Прогноз за ход\nЕда " + Format(yield.FoodTenths) + " · производство " + yield.Production +
+                    " · знания " + Format(yield.KnowledgeTenths) + " · казна " + Format(yield.TreasuryTenths), 13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                UiKit.Button(card.transform, "ОТКРЫТЬ ГОРОД", delegate { currentPage = ScreenPage.City; RenderGame(); }, GamePalette.Ink, 48, 13);
             }
-            RenderPendingAlerts(parent);
-            RenderGlobalCrisis(parent);
-            RenderUnits(parent);
-            GameObject civCard = UiKit.Card(parent, "Соседи и развитие мира");
-            for (int i = 0; i < state.Civilizations.Length; i++)
+
+            if (tutorialStepIndex < TutorialSteps.Length)
             {
-                CivilizationState civ = state.Civilizations[i];
-                if (civ.Id == state.HumanCivilizationId) continue;
-                NationDefinition rivalNation = NationCatalog.Get(civ.NationId);
-                GameObject rivalRow = UiKit.CreateObject("RivalLeader_" + civ.Id, civCard.transform);
-                UiKit.Horizontal(rivalRow, 4, 10);
-                if (rivalNation != null) AddCityBuildingArtwork(rivalRow.transform, rivalNation.LeaderArtKey, 58);
-                GameObject rivalInfo = UiKit.CreateObject("RivalInfo_" + civ.Id, rivalRow.transform);
-                UiKit.Vertical(rivalInfo, 0, 2);
-                LayoutElement rivalInfoLayout = rivalInfo.AddComponent<LayoutElement>();
-                rivalInfoLayout.flexibleWidth = 1f;
-                Text rivalLabel = UiKit.Label(rivalInfo.transform,
-                    (rivalNation == null ? civ.Name : rivalNation.LeaderNameRu + " · " + rivalNation.LeaderTitleRu + " · " + civ.Name) +
-                    (rivalNation == null ? "" : " · " + rivalNation.BonusDescription) + " · курс: " + AiGoalName(civ.StrategicGoal) +
-                    " · отношение " + civ.Relations[playerId(state)] + " · городов " + CountCities(state, civ.Id),
-                    20, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
-                rivalLabel.GetComponent<LayoutElement>().flexibleWidth = 1f;
-                UiKit.Label(rivalInfo.transform, "Почему: " + AiDecisionExplanation(civ), 16, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                TutorialStep step = TutorialSteps[tutorialStepIndex];
+                GameObject tutorial = UiKit.Card(parent, "ПУТЕВОДИТЕЛЬ · " + (tutorialStepIndex + 1) + "/" + TutorialSteps.Length);
+                UiKit.Label(tutorial.transform, step.Title + "\n" + TutorialObjectiveLabel(step.Objective), 14, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                UiKit.Button(tutorial.transform, "ПРОДОЛЖИТЬ ОБУЧЕНИЕ", ShowTutorial, GamePalette.Gold, 48, 13);
             }
-            UiKit.Button(civCard.transform, "ОТКРЫТЬ ДИПЛОМАТИЮ", delegate { currentPage = ScreenPage.Diplomacy; RenderGame(); }, GamePalette.Ink, 60, 22);
+
+            GameObject worldCard = UiKit.Card(parent, "МИР И ЦЕЛИ");
+            UiKit.Label(worldCard.transform, CountCities(state, player.Id) + " городов · " + (state.Civilizations.Length - 1) + " соседних держав\n" +
+                "Текущий курс: " + AiGoalName(player.StrategicGoal) + " · эпоха " + EraName(player.Era),
+                14, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            UiKit.Button(worldCard.transform, "ДИПЛОМАТИЯ", delegate { currentPage = ScreenPage.Diplomacy; RenderGame(); }, GamePalette.Ink, 46, 12);
+            UiKit.Button(worldCard.transform, "НАУКА И ПОБЕДА", delegate { currentPage = ScreenPage.Research; RenderGame(); }, GamePalette.Ink, 46, 12);
         }
 
         private static int playerId(GameState state) { return state.HumanCivilizationId; }
 
         private void AddMap(Transform parent)
         {
-            GameObject card = UiKit.Card(parent, "Территории · нажмите на гекс, чтобы выбрать город, клетку или отряд", 688);
+            float logicalHeight = Screen.height / Mathf.Max(0.1f, canvas.scaleFactor);
+            float logicalWidth = Screen.width / Mathf.Max(0.1f, canvas.scaleFactor);
+            float mapViewportHeight = Mathf.Clamp(logicalHeight * 0.46f, 420f, 600f);
+            float mapCardHeight = mapViewportHeight + 190f;
+            GameObject card = UiKit.Card(parent, "МИР · ВЫБЕРИТЕ КЛЕТКУ", mapCardHeight);
+            card.GetComponent<LayoutElement>().flexibleHeight = 1f;
             GameObject overlayRow = UiKit.CreateObject("MapOverlayControls", card.transform);
             UiKit.Horizontal(overlayRow, 4, 6);
             AddMapOverlayButton(overlayRow.transform, MapOverlay.Political, "ВЛАДЕНИЕ");
@@ -1685,15 +1789,22 @@ namespace Nasledie.Client
             AddMapOverlayButton(overlayRow.transform, MapOverlay.Defense, "ОБОРОНА");
             GameObject zoomRow = UiKit.CreateObject("MapZoomControls", card.transform);
             UiKit.Horizontal(zoomRow, 4, 8);
-            UiKit.Button(zoomRow.transform, "−", delegate { SetMapZoom(mapZoom - 0.1f, true); }, GamePalette.Ink, 42, 21);
-            UiKit.Label(zoomRow.transform, "МАСШТАБ " + Mathf.RoundToInt(mapZoom * 100f) + "%", 18, GamePalette.PaperDim, TextAnchor.MiddleCenter, true);
-            UiKit.Button(zoomRow.transform, "+", delegate { SetMapZoom(mapZoom + 0.1f, true); }, GamePalette.Ink, 42, 21);
-            UiKit.Button(zoomRow.transform, "СБРОС", delegate { SetMapZoom(1f, true); }, GamePalette.Ink, 42, 17);
+            HorizontalLayoutGroup zoomLayout = zoomRow.GetComponent<HorizontalLayoutGroup>();
+            zoomLayout.childForceExpandWidth = false;
+            Button zoomOut = UiKit.Button(zoomRow.transform, "−", delegate { SetMapZoom(mapZoom - 0.1f, true); }, GamePalette.Ink, 42, 18);
+            Button zoomIn = UiKit.Button(zoomRow.transform, "+", delegate { SetMapZoom(mapZoom + 0.1f, true); }, GamePalette.Ink, 42, 18);
+            Button zoomReset = UiKit.Button(zoomRow.transform, "СБРОС", delegate { SetMapZoom(1f, true); }, GamePalette.Ink, 42, 12);
+            SetToolbarButtonWidth(zoomOut, 52f);
+            SetToolbarButtonWidth(zoomIn, 52f);
+            SetToolbarButtonWidth(zoomReset, 78f);
+            Text zoomLabel = UiKit.Label(zoomRow.transform, "МАСШТАБ " + Mathf.RoundToInt(mapZoom * 100f) + "%", 13, GamePalette.PaperDim, TextAnchor.MiddleCenter, true);
+            zoomLabel.GetComponent<LayoutElement>().flexibleWidth = 1f;
             GameObject scrollObject = UiKit.CreateObject("MapScroll", card.transform);
             LayoutElement mapHeight = scrollObject.AddComponent<LayoutElement>();
-            mapHeight.minHeight = 610;
-            mapHeight.preferredHeight = 610;
+            mapHeight.minHeight = mapViewportHeight;
+            mapHeight.preferredHeight = mapViewportHeight;
             mapHeight.flexibleWidth = 1f;
+            mapHeight.flexibleHeight = 1f;
             ScrollRect scroll = scrollObject.AddComponent<ScrollRect>();
             scroll.horizontal = true;
             scroll.vertical = true;
@@ -1704,7 +1815,7 @@ namespace Nasledie.Client
             activeMapViewport = viewportRect;
             UiKit.SetAnchors(viewportRect, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             Image background = viewport.AddComponent<Image>();
-            background.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.8f);
+            background.color = GamePalette.Hex("31565A");
             viewport.AddComponent<RectMask2D>();
             GameObject content = UiKit.CreateObject("HexContent", viewport.transform);
             RectTransform contentRect = UiKit.Rect(content);
@@ -1714,8 +1825,7 @@ namespace Nasledie.Client
             contentRect.anchorMax = new Vector2(0, 1);
             contentRect.pivot = new Vector2(0, 1);
             contentRect.anchoredPosition = Vector2.zero;
-            float safeWidth = Screen.width / Mathf.Max(0.1f, canvas.scaleFactor);
-            float contentWidth = Mathf.Max(1060f, safeWidth - 96f);
+            float contentWidth = Mathf.Max(960f, logicalWidth * 0.69f - 80f);
             contentRect.sizeDelta = new Vector2(contentWidth, 650);
             contentRect.anchoredPosition = new Vector2((contentWidth - 1060f) * 0.5f, 0f);
             scroll.viewport = viewportRect;
@@ -1729,10 +1839,17 @@ namespace Nasledie.Client
                 HexCell cell = state.Cells[i];
                 CreateHex(content.transform, cell, humanMask);
             }
-            UiKit.Label(card.transform, MapOverlayLegend() + "\n⌂ центр города · отдельные клетки — районы · ● войско · ◇ обоз · F ферма · T лес · = дорога. Тёмные клетки скрыты туманом.",
-                18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-            UiKit.Label(card.transform, "Карту можно перетаскивать и увеличивать двумя пальцами. Удержание показывает подсказку; двойное нажатие на свой город открывает управление.",
-                16, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            UiKit.Label(card.transform, "⌂ город · районы и улучшения на клетках · отряды можно выбрать и переместить · тёмные клетки скрыты туманом.\n" + MapOverlayLegend(),
+                12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+        }
+
+        private static void SetToolbarButtonWidth(Button button, float width)
+        {
+            LayoutElement layout = button.GetComponent<LayoutElement>();
+            if (layout == null) return;
+            layout.minWidth = width;
+            layout.preferredWidth = width;
+            layout.flexibleWidth = 0f;
         }
 
         private void AddMapOverlayButton(Transform parent, MapOverlay overlay, string label)

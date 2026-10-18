@@ -106,9 +106,13 @@ namespace Nasledie.EditorTools
             }
             if (Resources.Load<Sprite>("Art/Jericho_Logo") == null) throw new BuildFailedException("Не найден логотип JERICHO.");
             if (Resources.Load<Sprite>("Art/AppIcon_iOS") == null) throw new BuildFailedException("Не найдена иконка iOS.");
-            RequireSprite("Art/Backgrounds/Menu_Background", "панорама главного меню");
-            RequireSprite("Art/Backgrounds/Victory_Background", "иллюстрация победы");
-            RequireSprite("Art/Backgrounds/Defeat_Background", "иллюстрация итогов поражения");
+            string[] backgrounds = { "Menu_Background", "Settings_Background", "Tutorial_Background", "Campaign_Background",
+                "City_Background", "Research_Background", "Diplomacy_Background", "Events_Background", "Archive_Background",
+                "Victory_Background", "Defeat_Background" };
+            string[] backgroundNames = { "главное меню", "настройки", "обучение", "настройка кампании", "город", "исследования",
+                "дипломатия", "события", "архив", "победа", "итоги поражения" };
+            for (int i = 0; i < backgrounds.Length; i++)
+                RequireSprite("Art/Backgrounds/" + backgrounds[i], "фон экрана «" + backgroundNames[i] + "»");
             string[] musicTracks = { "Nasledie_Theme", "Theme_Cities", "Theme_ConnectedLands", "Theme_Industry", "Theme_Synthesis" };
             for (int i = 0; i < musicTracks.Length; i++)
                 RequireAudioClip("Audio/" + musicTracks[i], "музыкальная тема эпохи " + eras[i]);

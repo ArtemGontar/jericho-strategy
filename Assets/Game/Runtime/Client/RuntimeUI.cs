@@ -138,7 +138,7 @@ namespace Nasledie.Client
             Text text = go.AddComponent<Text>();
             text.font = Font;
             text.text = value ?? "";
-            int renderSize = Mathf.Max(12, Mathf.RoundToInt(size * 1.45f * TextScale));
+            int renderSize = Mathf.Max(12, Mathf.RoundToInt(size * TextScale));
             text.fontSize = renderSize;
             text.color = AccessibleTextColor(color);
             text.alignment = align;
@@ -152,12 +152,14 @@ namespace Nasledie.Client
             string[] paragraphs = (value ?? "").Split('\n');
             int lineCount = Math.Max(1, paragraphs.Length);
             RectTransform parentRect = parent as RectTransform;
+            Canvas parentCanvas = parent.GetComponentInParent<Canvas>();
+            float logicalScreenWidth = parentCanvas == null ? Screen.width : Screen.width / Mathf.Max(0.1f, parentCanvas.scaleFactor);
             float estimatedWidth = parentRect != null && parentRect.rect.width > 0f
-                ? parentRect.rect.width : Mathf.Max(360f, Screen.width * 0.48f);
+                ? parentRect.rect.width : Mathf.Max(280f, logicalScreenWidth * 0.30f);
             int charactersPerLine = Mathf.Max(18, Mathf.FloorToInt(estimatedWidth / (renderSize * 0.58f)));
             for (int i = 0; i < paragraphs.Length; i++) lineCount += Math.Max(0, Mathf.CeilToInt(paragraphs[i].Length / (float)charactersPerLine) - 1);
-            layout.minHeight = renderSize + 12;
-            layout.preferredHeight = Mathf.Max(renderSize + 16, lineCount * renderSize * 1.25f + 16);
+            layout.minHeight = renderSize + 8;
+            layout.preferredHeight = Mathf.Max(renderSize + 12, lineCount * renderSize * 1.16f + 8);
             layout.flexibleWidth = 1f;
             return text;
         }
