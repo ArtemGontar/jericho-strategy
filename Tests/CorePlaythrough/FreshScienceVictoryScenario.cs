@@ -21,6 +21,7 @@ internal static class FreshScienceVictoryScenario
             GameSimulation simulation = GameSimulation.NewCampaign(seeds[i], Difficulty.Calm);
             int playerId = simulation.State.HumanCivilizationId;
             int turns = 0;
+            int scienceProjectStartTurn = -1;
             while (!simulation.State.IsFinished && turns < simulation.State.MaximumTurn)
             {
                 int turnBefore = simulation.State.Turn;
@@ -31,6 +32,12 @@ internal static class FreshScienceVictoryScenario
                 TryStartScientificProject(simulation, playerId);
                 MoveSettlers(simulation, playerId);
                 EstablishTradeRoute(simulation, playerId);
+                ManageBudget(simulation, playerId);
+                if (scienceProjectStartTurn < 0)
+                    for (int cityIndex = 0; cityIndex < simulation.State.Cities.Length; cityIndex++)
+                        if (simulation.State.Cities[cityIndex].OwnerId == playerId && simulation.State.Cities[cityIndex].Project != null &&
+                            simulation.State.Cities[cityIndex].Project.Kind == ProjectKind.ScientificProject)
+                            scienceProjectStartTurn = turnBefore;
 
                 simulation.EndTurn();
                 turns++;
@@ -58,7 +65,14 @@ internal static class FreshScienceVictoryScenario
                 ", era " + player.Era + ", technologies " + string.Join(",", player.KnownTechnologies) + ", cities " + CountCities(simulation.State, playerId) +
                 ", universities " + universityCities + ", academy " + hasAcademy + ", science turns " + player.ScienceProjectTurns +
                 ", project cities " + activeScienceProjects + ", prestige " + player.CulturePrestige + ", treasury " + player.TreasuryTenths);
-            Require(simulation.State.WinningPath == VictoryPath.Scientific, "fresh campaign did not use the scientific victory");
+            Require(simulation.State.WinningPath == VictoryPath.Scientific, "fresh campaign did not use the scientific victory; seed " + seeds[i] +
+                " ended on turn " + simulation.State.Turn + " by " + VictoryEvaluator.PathName(simulation.State.WinningPath) +
+                " with winner " + simulation.State.WinnerCivilizationId + ", era " + player.Era + ", technologies " +
+                string.Join(",", player.KnownTechnologies) + ", cities " + CountCities(simulation.State, playerId) +
+                ", universities " + universityCities + ", academy " + hasAcademy + ", science turns " + player.ScienceProjectTurns +
+                ", project cities " + activeScienceProjects + ", project start turn " + scienceProjectStartTurn +
+                ", knowledge outputs " + player.PreviousTurnKnowledgeOutputTenths + "/" + player.LastTurnKnowledgeOutputTenths +
+                ", treasury " + player.TreasuryTenths + ".");
             Require(simulation.State.Turn <= simulation.State.MaximumTurn, "science victory went beyond the configured turn limit");
             Require(player.Knows("computing_networks") && player.Knows("open_science"), "science victory skipped a required final technology");
             Require(universityCities >= 2 && hasAcademy, "science victory lacked its two universities or academy");
@@ -126,9 +140,9 @@ internal static class FreshScienceVictoryScenario
             if (city.OwnerId != playerId) continue;
             CityYield yield = EconomyCalculator.Calculate(simulation.State, city);
             string focus;
-            if (city.Project != null && city.Project.Kind != ProjectKind.None) focus = "industry";
+            if (city.Project != null && city.Project.Kind == ProjectKind.ScientificProject) focus = "science";
+            else if (city.Project != null && city.Project.Kind != ProjectKind.None) focus = "industry";
             else if (city.FoodTenths < city.PopulationTenths * 2 && yield.FoodTenths < city.PopulationTenths) focus = "food";
-            else if (player.TreasuryTenths < 0) focus = "trade";
             else focus = "science";
 
             simulation.Issue(new GameCommand
@@ -198,6 +212,15 @@ internal static class FreshScienceVictoryScenario
             CommandResult result = simulation.Issue(new GameCommand { Kind = CommandKind.BeginVictoryProject, ActorId = playerId, EntityId = city.Id, Value = (int)VictoryPath.Scientific });
             if (result.Accepted) return;
         }
+    }
+
+    private static void ManageBudget(GameSimulation simulation, int playerId)
+    {
+        CivilizationState player = simulation.State.Civilization(playerId);
+        if ((player.TreasuryTenths < 200 || player.ConsecutiveDeficitTurns > 0) && player.TaxRate != TaxRate.High)
+            simulation.Issue(new GameCommand { Kind = CommandKind.SetTax, ActorId = playerId, Value = (int)TaxRate.High });
+        else if (player.TreasuryTenths >= 1500 && player.TaxRate == TaxRate.High)
+            simulation.Issue(new GameCommand { Kind = CommandKind.SetTax, ActorId = playerId, Value = (int)TaxRate.Normal });
     }
 
     private static void MoveSettlers(GameSimulation simulation, int playerId)

@@ -54,17 +54,27 @@ namespace Nasledie.Core
             { 2, 2 }, { 10, 2 }, { 2, 10 }, { 10, 10 }
         };
 
-        private static readonly string[] CivilizationNames = { "Долина", "Архивари", "Лига рек", "Союз садов" };
-        private static readonly string[] Archetypes = { "Попечитель", "Учёный", "Торговец", "Стратег безопасности" };
-        private static readonly string[] CityNames = { "Светлый берег", "Каменный круг", "Вольный порт", "Тихие сады" };
-
         public static GameState NewGame(int seed, Difficulty difficulty)
         {
+            return NewGame(seed, difficulty, GamePace.Standard, "jericho");
+        }
+
+        public static GameState NewGame(int seed, Difficulty difficulty, GamePace pace)
+        {
+            return NewGame(seed, difficulty, pace, "jericho");
+        }
+
+        public static GameState NewGame(int seed, Difficulty difficulty, GamePace pace, string playerNationId)
+        {
+            NationDefinition selectedNation = NationCatalog.Get(playerNationId);
+            if (selectedNation == null) selectedNation = NationCatalog.GetAt(0);
+            playerNationId = selectedNation.Id;
             var state = new GameState
             {
                 Seed = seed,
                 Turn = 1,
-                MaximumTurn = 80,
+                Pace = pace,
+                MaximumTurn = GamePacing.MaximumTurn(pace),
                 HumanCivilizationId = 0,
                 SelectedCityId = 1,
                 Crisis = new CrisisState { Kind = CrisisKind.None }
@@ -72,7 +82,7 @@ namespace Nasledie.Core
 
             var rng = new DeterministicRandom((uint)seed);
             state.Cells = GenerateMap(rng);
-            state.Civilizations = CreateCivilizations(difficulty);
+            state.Civilizations = CreateCivilizations(difficulty, playerNationId);
             state.Cities = CreateCapitals(state);
             state.NextEntityId = state.Cities.Length + 1;
             state.Units = Array.Empty<UnitState>();
@@ -86,16 +96,18 @@ namespace Nasledie.Core
             return state;
         }
 
-        private static CivilizationState[] CreateCivilizations(Difficulty difficulty)
+        private static CivilizationState[] CreateCivilizations(Difficulty difficulty, string playerNationId)
         {
             var civilizations = new CivilizationState[4];
             for (int i = 0; i < civilizations.Length; i++)
             {
+                NationDefinition nation = NationCatalog.ForCivilizationIndex(i, playerNationId);
                 civilizations[i] = new CivilizationState
                 {
                     Id = i,
-                    Name = CivilizationNames[i],
-                    Archetype = Archetypes[i],
+                    Name = nation.NameRu,
+                    NationId = nation.Id,
+                    Archetype = nation.Archetype,
                     IsHuman = i == 0,
                     Difficulty = difficulty,
                     TreasuryTenths = i == 0 ? 120 : 120,
@@ -113,8 +125,8 @@ namespace Nasledie.Core
                     TechnologyProgressTenths = new int[RulesCatalog.Technologies.Length],
                     KnownTechnologies = i == 0 ? new[] { "agriculture" } : new[] { "agriculture" },
                     ActiveResearchIndex = RulesCatalog.TechnologyIndex(i == 0 ? "writing" : "agriculture"),
-                    StrategicGoal = i == 1 ? "science" : i == 2 ? "trade" : i == 3 ? "quality" : "player",
-                    StrategyHoldTurns = 5
+                    StrategicGoal = i == 0 ? "player" : nation.StrategicGoal,
+                    StrategyHoldTurns = 0
                 };
                 civilizations[i].CompletedTechnologies = 1;
             }
@@ -133,7 +145,7 @@ namespace Nasledie.Core
                 {
                     Id = i + 1,
                     OwnerId = i,
-                    Name = CityNames[i],
+                    Name = NationCatalog.Get(state.Civilizations[i].NationId).CapitalName,
                     Q = q,
                     R = r,
                     PopulationTenths = 60,
@@ -157,7 +169,10 @@ namespace Nasledie.Core
                     CompletedCulturalIds = Array.Empty<string>()
                 };
                 cities[i] = city;
-                state.Civilizations[i].AdministrativeCapacity = 2;
+                int startingCapacity = 2;
+                if (i > 0 && state.Civilizations[i].Difficulty == Difficulty.Strong) startingCapacity = 3;
+                else if (i > 0 && state.Civilizations[i].Difficulty == Difficulty.Trial) startingCapacity = 4;
+                state.Civilizations[i].AdministrativeCapacity = startingCapacity;
             }
 
             foreach (HexCell cell in state.Cells)
@@ -181,8 +196,23 @@ namespace Nasledie.Core
                     {
                         HexCell cell = state.Cells[i];
                         int distance = HexGrid.Distance(cell.Q, cell.R, cities[civilizationId].Q, cities[civilizationId].R);
-                        if (distance == 0 || distance > 2 || (cell.OwnerId >= 0 && cell.OwnerId != civilizationId) ||
+                        if (distance != 2 || (cell.OwnerId >= 0 && cell.OwnerId != civilizationId) ||
                             cell.Improvement != ImprovementKind.None) continue;
+                        bool preferredTerrain = terrainPass == 0 ? cell.Terrain == TerrainKind.Meadow : terrainPass == 1 ? cell.Terrain == TerrainKind.Plains : cell.Terrain == TerrainKind.Arid;
+                        if (!preferredTerrain) continue;
+                        cell.OwnerId = civilizationId;
+                        cell.Improvement = ImprovementKind.Farm;
+                        cell.ImprovementLevel = 1;
+                        starterFarms++;
+                    }
+                }
+                for (int terrainPass = 0; terrainPass < 3 && starterFarms < 2; terrainPass++)
+                {
+                    for (int i = 0; i < state.Cells.Length && starterFarms < 2; i++)
+                    {
+                        HexCell cell = state.Cells[i];
+                        int distance = HexGrid.Distance(cell.Q, cell.R, cities[civilizationId].Q, cities[civilizationId].R);
+                        if (distance != 1 || (cell.OwnerId >= 0 && cell.OwnerId != civilizationId) || cell.Improvement != ImprovementKind.None) continue;
                         bool preferredTerrain = terrainPass == 0 ? cell.Terrain == TerrainKind.Meadow : terrainPass == 1 ? cell.Terrain == TerrainKind.Plains : cell.Terrain == TerrainKind.Arid;
                         if (!preferredTerrain) continue;
                         cell.OwnerId = civilizationId;

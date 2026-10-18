@@ -25,6 +25,8 @@ namespace Nasledie.Core
         public int ProductionCost;
         public int UpkeepTenths;
         public string RequiredTechnology;
+        public string RequiredNationId;
+        public string ArtKey;
         public int HousingTenths;
         public int FoodStorageTurns;
         public int KnowledgePerScholar;
@@ -38,6 +40,13 @@ namespace Nasledie.Core
         public int WorkerPlaces;
         public int TradeSlots;
         public int Defense;
+        public int FlatFoodTenths;
+        public int FlatKnowledgeTenths;
+        public int FlatTreasuryTenths;
+        public int FlatCulturePrestige;
+        public int HealthPerTurn;
+        public int EducationPerTurn;
+        public int SafetyPerTurn;
         public bool UniqueEmpireBuilding;
         public bool CulturalObject;
     }
@@ -143,7 +152,15 @@ namespace Nasledie.Core
             Building("exchange_house", "Дом обмена", "House of Exchange", 20, 20, "trade_league", culturePerArtist: 4, culturalObject: true),
             Building("academy", "Академия", "Academy", 16, 30, "computing_networks", knowledgePerScholar: 5, education: 15, workerPlaceRole: (int)WorkerRole.Scholar, workerPlaces: 2),
             Building("barracks", "Казармы", "Barracks", 14, 15, "stone", defense: 10),
-            Building("assembly", "Ассамблея", "Assembly", 26, 25, "international_assembly", adminCapacity: 1, unique: true)
+            Building("assembly", "Ассамблея", "Assembly", 26, 25, "international_assembly", adminCapacity: 1, unique: true),
+            Building("jericho_spring_tower", "Башня источника", "Spring Tower", 12, 5, "stone", unique: true,
+                requiredNationId: "jericho", artKey: "UniqueDistricts/District_Jericho_SpringTower", flatFoodTenths: 10, safetyPerTurn: 1),
+            Building("sumer_ziggurat_archive", "Зиккуратовый архив", "Ziggurat Archive", 16, 10, "writing", unique: true,
+                requiredNationId: "sumer", artKey: "UniqueDistricts/District_Sumer_Ziggurat", flatKnowledgeTenths: 10, flatCulturePrestige: 1),
+            Building("egypt_nilometer", "Двор нилометра", "Nilometer Court", 18, 10, "irrigation", unique: true,
+                requiredNationId: "egypt", artKey: "UniqueDistricts/District_Egypt_Nilometer", flatFoodTenths: 20),
+            Building("indus_great_bath", "Большая купальня", "Great Bath", 20, 10, "public_health", unique: true,
+                requiredNationId: "indus", artKey: "UniqueDistricts/District_Indus_GreatBath", healthPerTurn: 2)
         };
 
         public static readonly ImprovementDefinition[] Improvements =
@@ -203,16 +220,23 @@ namespace Nasledie.Core
             int housingTenths = 0, int foodStorageTurns = 0, int knowledgePerScholar = 0, int treasuryPerMerchant = 0,
             int culturePerArtist = 0, int health = 0, int education = 0, int safety = 0, int adminCapacity = 0,
             int workerPlaceRole = -1, int workerPlaces = 0, int tradeSlots = 0, int defense = 0,
-            bool unique = false, bool culturalObject = false)
+            bool unique = false, bool culturalObject = false, string requiredNationId = null, string artKey = null,
+            int flatFoodTenths = 0, int flatKnowledgeTenths = 0, int flatTreasuryTenths = 0,
+            int flatCulturePrestige = 0, int healthPerTurn = 0, int educationPerTurn = 0, int safetyPerTurn = 0)
         {
             return new BuildingDefinition
             {
                 Id = id, NameRu = ru, NameEn = en, ProductionCost = cost, UpkeepTenths = upkeep,
-                RequiredTechnology = tech, HousingTenths = housingTenths, FoodStorageTurns = foodStorageTurns,
+                RequiredTechnology = tech, RequiredNationId = requiredNationId, ArtKey = artKey,
+                HousingTenths = housingTenths, FoodStorageTurns = foodStorageTurns,
                 KnowledgePerScholar = knowledgePerScholar, TreasuryPerMerchant = treasuryPerMerchant,
                 CulturePerArtist = culturePerArtist, Health = health, Education = education, Safety = safety,
                 AdminCapacity = adminCapacity, WorkerPlaceRole = workerPlaceRole, WorkerPlaces = workerPlaces,
-                TradeSlots = tradeSlots, Defense = defense, UniqueEmpireBuilding = unique, CulturalObject = culturalObject
+                TradeSlots = tradeSlots, Defense = defense, FlatFoodTenths = flatFoodTenths,
+                FlatKnowledgeTenths = flatKnowledgeTenths, FlatTreasuryTenths = flatTreasuryTenths,
+                FlatCulturePrestige = flatCulturePrestige, HealthPerTurn = healthPerTurn,
+                EducationPerTurn = educationPerTurn, SafetyPerTurn = safetyPerTurn,
+                UniqueEmpireBuilding = unique, CulturalObject = culturalObject
             };
         }
 

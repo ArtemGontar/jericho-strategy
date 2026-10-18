@@ -5,6 +5,7 @@ using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using UnityEngine.Events;
 using UnityEngine.Scripting;
+using Nasledie.Core;
 
 namespace Nasledie.Client
 {
@@ -283,7 +284,7 @@ namespace Nasledie.Client
 
     public static class SaveService
     {
-        private const int CurrentSaveVersion = 2;
+        private const int CurrentSaveVersion = 4;
         private static string DirectoryPath { get { return Path.Combine(Application.persistentDataPath, "NasledieSaves"); } }
         private static string AutoPath(int slot) { return Path.Combine(DirectoryPath, "autosave_" + slot + ".json"); }
         private static string ManualPath { get { return Path.Combine(DirectoryPath, "campaign.json"); } }
@@ -503,7 +504,7 @@ namespace Nasledie.Client
 
         private static void Migrate(GameState state)
         {
-            if (state.SaveVersion == 1)
+            if (state.SaveVersion <= 1)
             {
                 if ((state.WinningCivilizationIds == null || state.WinningCivilizationIds.Length == 0) && state.IsFinished && state.WinnerCivilizationId >= 0)
                     state.WinningCivilizationIds = new[] { state.WinnerCivilizationId };
@@ -516,6 +517,14 @@ namespace Nasledie.Client
                     }
                 state.SaveVersion = 2;
             }
+            if (state.SaveVersion <= 2)
+            {
+                state.Pace = GamePace.Standard;
+                state.MaximumTurn = GamePacing.MaximumTurn(GamePace.Standard);
+                state.SaveVersion = 3;
+            }
+            if (state.SaveVersion <= 3)
+                state.SaveVersion = 4;
         }
     }
 }

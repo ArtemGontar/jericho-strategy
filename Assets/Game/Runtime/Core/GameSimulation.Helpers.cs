@@ -41,6 +41,22 @@ namespace Nasledie.Core
             if (state.Civilizations == null || state.Civilizations.Length == 0) throw new InvalidOperationException("Нет цивилизаций.");
             if (state.Cities == null || state.Cells == null || state.Units == null) throw new InvalidOperationException("Повреждена карта или список сущностей.");
             if (state.HumanCivilizationId < 0 || state.HumanCivilizationId >= state.Civilizations.Length) throw new InvalidOperationException("Игрок не найден.");
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell cell = state.Cells[i];
+                if (cell == null) throw new InvalidOperationException("На карте есть пустая клетка.");
+                cell.DistrictBuildingId = cell.DistrictBuildingId ?? "";
+                if (string.IsNullOrEmpty(cell.DistrictBuildingId))
+                {
+                    cell.DistrictCityId = -1;
+                    cell.DistrictLevel = 0;
+                    continue;
+                }
+                CityState districtCity = state.City(cell.DistrictCityId);
+                if (districtCity == null || RulesCatalog.Building(cell.DistrictBuildingId) == null)
+                    throw new InvalidOperationException("У городского района нет действующего города или здания.");
+                cell.DistrictLevel = Math.Max(1, districtCity.BuildingLevel(cell.DistrictBuildingId));
+            }
             var entityIds = new HashSet<int>();
             int maximumEntityId = 0;
             for (int i = 0; i < state.Cities.Length; i++)
@@ -147,6 +163,146 @@ namespace Nasledie.Core
             int count = 0;
             for (int i = 0; i < state.Cities.Length; i++) if (state.Cities[i].OwnerId == civilizationId) count++;
             return count;
+        }
+
+        private static void RestoreNationAndDistrictData(GameState state)
+        {
+            if (state.Civilizations == null) return;
+            var usedNations = new HashSet<string>();
+            for (int i = 0; i < state.Civilizations.Length; i++)
+            {
+                CivilizationState civilization = state.Civilizations[i];
+                if (civilization == null) continue;
+                NationDefinition nation = NationCatalog.Get(civilization.NationId);
+                if (nation != null && civilization.NationId != nation.Id)
+                {
+                    civilization.NationId = nation.Id;
+                    civilization.Name = nation.NameRu;
+                    CityState capital = null;
+                    if (state.Cities != null)
+                        for (int city = 0; city < state.Cities.Length; city++)
+                        {
+                            CityState candidate = state.Cities[city];
+                            if (candidate != null && candidate.OwnerId == civilization.Id && (capital == null || candidate.Id < capital.Id)) capital = candidate;
+                        }
+                    if (capital != null) capital.Name = nation.CapitalName;
+                }
+                if (nation == null || usedNations.Contains(nation.Id))
+                {
+                    nation = NationCatalog.GetAt(i);
+                    civilization.NationId = nation.Id;
+                    civilization.Name = nation.NameRu;
+                }
+                usedNations.Add(nation.Id);
+            }
+
+            if (state.Cells == null || state.Cities == null) return;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell cell = state.Cells[i];
+                if (cell == null) continue;
+                cell.DistrictBuildingId = cell.DistrictBuildingId ?? "";
+                if (string.IsNullOrEmpty(cell.DistrictBuildingId))
+                {
+                    cell.DistrictCityId = -1;
+                    cell.DistrictLevel = 0;
+                }
+            }
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityState city = state.Cities[i];
+                if (city == null || city.BuildingIds == null) continue;
+                for (int building = 0; building < city.BuildingIds.Length; building++)
+                    if (city.BuildingLevel(city.BuildingIds[building]) > 0)
+                        PlaceDistrict(state, city, city.BuildingIds[building]);
+            }
+        }
+
+        private static bool HasDistrictPlot(GameState state, CityState city, string buildingId)
+        {
+            if (FindDistrictCell(state, city, buildingId) != null) return true;
+            return FindDistrictCell(state, city, null) != null;
+        }
+
+        private static bool PlaceDistrict(GameState state, CityState city, string buildingId)
+        {
+            HexCell cell = FindDistrictCell(state, city, buildingId);
+            if (cell == null) cell = FindDistrictCell(state, city, null);
+            if (cell == null) return false;
+            if (cell.OwnerId < 0) cell.OwnerId = city.OwnerId;
+            cell.DistrictCityId = city.Id;
+            cell.DistrictBuildingId = buildingId;
+            cell.DistrictLevel = Math.Max(1, city.BuildingLevel(buildingId));
+            RevealDistrictCell(state, city, cell);
+            return true;
+        }
+
+        private static bool PlaceDistrict(GameState state, CityState city, string buildingId, int preferredQ, int preferredR)
+        {
+            HexCell cell = state.Cell(preferredQ, preferredR);
+            if (cell == null || !DistrictPlotAvailable(state, city, cell, buildingId))
+                return PlaceDistrict(state, city, buildingId);
+            if (cell.OwnerId < 0) cell.OwnerId = city.OwnerId;
+            cell.DistrictCityId = city.Id;
+            cell.DistrictBuildingId = buildingId;
+            cell.DistrictLevel = Math.Max(1, city.BuildingLevel(buildingId));
+            RevealDistrictCell(state, city, cell);
+            return true;
+        }
+
+        private static void RevealDistrictCell(GameState state, CityState city, HexCell cell)
+        {
+            int mask = 1 << city.OwnerId;
+            cell.VisibleToMask |= mask;
+            cell.ExploredByMask |= mask;
+            cell.LastSeenTurn = state.Turn;
+        }
+
+        private static HexCell FindDistrictCell(GameState state, CityState city, string buildingId)
+        {
+            HexCell best = null;
+            int bestDistance = int.MaxValue;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell cell = state.Cells[i];
+                if (cell == null) continue;
+                if (!string.IsNullOrEmpty(buildingId) && cell.DistrictCityId == city.Id && cell.DistrictBuildingId == buildingId)
+                {
+                    cell.DistrictLevel = Math.Max(1, city.BuildingLevel(buildingId));
+                    return cell;
+                }
+                if (!DistrictPlotAvailable(state, city, cell, buildingId)) continue;
+                int distance = HexGrid.Distance(cell.Q, cell.R, city.Q, city.R);
+
+                if (distance < bestDistance || (distance == bestDistance && (best == null || cell.Q < best.Q || (cell.Q == best.Q && cell.R < best.R))))
+                {
+                    best = cell;
+                    bestDistance = distance;
+                }
+            }
+            return best;
+        }
+
+        private static bool DistrictPlotAvailable(GameState state, CityState city, HexCell cell, string buildingId)
+        {
+            if (cell == null || city == null) return false;
+            if (cell.DistrictCityId == city.Id && cell.DistrictBuildingId == buildingId && !string.IsNullOrEmpty(buildingId)) return true;
+            if (cell.DistrictCityId >= 0 || !string.IsNullOrEmpty(cell.DistrictBuildingId)) return false;
+            if (cell.OwnerId >= 0 && cell.OwnerId != city.OwnerId) return false;
+            int distance = HexGrid.Distance(cell.Q, cell.R, city.Q, city.R);
+            if (distance < 1 || distance > 4) return false;
+            if (cell.Terrain == TerrainKind.Mountain || cell.Terrain == TerrainKind.Water || cell.Terrain == TerrainKind.Swamp) return false;
+            if (cell.Improvement != ImprovementKind.None || cell.Resource != ResourceKind.None) return false;
+            for (int c = 0; c < state.Cities.Length; c++)
+                if (state.Cities[c].Q == cell.Q && state.Cities[c].R == cell.R) return false;
+            for (int c = 0; c < state.Cities.Length; c++)
+            {
+                CityState other = state.Cities[c];
+                if (other.Id == city.Id || other.OwnerId != city.OwnerId || other.Project == null ||
+                    other.Project.Kind != ProjectKind.Building || !other.Project.DistrictPlotReserved) continue;
+                if (other.Project.TargetQ == cell.Q && other.Project.TargetR == cell.R) return false;
+            }
+            return true;
         }
 
         private static int CountOwnedBuilding(GameState state, int civilizationId, string buildingId)
@@ -518,7 +674,11 @@ namespace Nasledie.Core
 
         private static string NextCityName(GameState state, int ownerId)
         {
-            string[] names = { "Новый берег", "Дальний сад", "Сосновый круг", "Речные ворота", "Тихая гавань", "Зелёный холм" };
+            CivilizationState civilization = state.Civilization(ownerId);
+            NationDefinition nation = civilization == null ? null : NationCatalog.Get(civilization.NationId);
+            string[] names = nation == null || nation.AdditionalCityNames.Length == 0
+                ? new[] { "Новый берег", "Дальний сад", "Сосновый круг", "Речные ворота", "Тихая гавань", "Зелёный холм" }
+                : nation.AdditionalCityNames;
             int ordinal = 0;
             for (int i = 0; i < state.Cities.Length; i++) if (state.Cities[i].OwnerId == ownerId) ordinal++;
             string candidate = names[Math.Max(0, ordinal - 1) % names.Length];

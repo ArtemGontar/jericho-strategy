@@ -102,6 +102,30 @@ namespace Nasledie.Core
             result.SafetyChange += city.BuildingLevel("barracks") + city.BuildingLevel("road_services");
             result.EducationChange += (schoolLevel > 0 ? 1 : 0) + (universityLevel > 0 ? 2 : 0) + (academyLevel > 0 ? 2 : 0);
 
+            for (int i = 0; i < RulesCatalog.Buildings.Length; i++)
+            {
+                BuildingDefinition district = RulesCatalog.Buildings[i];
+                if (string.IsNullOrEmpty(district.RequiredNationId) || district.RequiredNationId != civilization.NationId) continue;
+                int level = city.BuildingLevel(district.Id);
+                if (level <= 0) continue;
+                result.FoodTenths += Scale(district.FlatFoodTenths * level, efficiency);
+                result.KnowledgeTenths += Scale(district.FlatKnowledgeTenths * level, efficiency);
+                result.TreasuryTenths += Scale(district.FlatTreasuryTenths * level, efficiency);
+                result.CulturePrestige += Scale(district.FlatCulturePrestige * level, efficiency);
+                result.HealthChange += district.HealthPerTurn * level;
+                result.EducationChange += district.EducationPerTurn * level;
+                result.SafetyChange += district.SafetyPerTurn * level;
+            }
+            NationDefinition nationDefinition = NationCatalog.Get(civilization.NationId);
+            int campusLevels = schoolLevel + universityLevel + academyLevel;
+            if (nationDefinition != null && campusLevels > 0)
+            {
+                result.KnowledgeTenths += Scale(nationDefinition.CampusKnowledgeTenthsPerLevel * campusLevels, efficiency);
+                result.TreasuryTenths += Scale(nationDefinition.CampusTreasuryTenthsPerLevel * campusLevels, efficiency);
+                result.CulturePrestige += Scale(nationDefinition.CampusCulturePrestigePerLevel * campusLevels, efficiency);
+                result.EducationChange += nationDefinition.CampusEducationPerLevel * campusLevels;
+            }
+
             if (civilization.HasLaw("open_markets")) result.TreasuryTenths = result.TreasuryTenths * 115 / 100;
             if (civilization.HasLaw("reserve_market") && city.FoodStoreCapacityTenths > city.PopulationTenths * 2)
                 result.FoodTenths += 10;
@@ -121,6 +145,13 @@ namespace Nasledie.Core
 
             int taxMultiplier = civilization.TaxRate == TaxRate.Low ? 7000 : civilization.TaxRate == TaxRate.High ? 13500 : 10000;
             result.TreasuryTenths = result.TreasuryTenths * taxMultiplier / 10000;
+            switch (civilization.NationId)
+            {
+                case "jericho": result.FoodTenths = result.FoodTenths * 110 / 100; break;
+                case "sumer": result.KnowledgeTenths = result.KnowledgeTenths * 110 / 100; break;
+                case "egypt": result.CulturePrestige = result.CulturePrestige * 110 / 100; break;
+                case "indus": result.TreasuryTenths = result.TreasuryTenths * 110 / 100; break;
+            }
             if (!civilization.IsHuman)
             {
                 int difficultyRate = civilization.Difficulty == Difficulty.Calm ? 9500 : civilization.Difficulty == Difficulty.Strong ? 11250 : civilization.Difficulty == Difficulty.Trial ? 13000 : 10000;

@@ -17,11 +17,22 @@ namespace Nasledie.Core
         public GameSimulation(GameState state)
         {
             State = state ?? throw new ArgumentNullException("state");
+            RestoreNationAndDistrictData(State);
         }
 
         public static GameSimulation NewCampaign(int seed, Difficulty difficulty)
         {
             return new GameSimulation(GameFactory.NewGame(seed, difficulty));
+        }
+
+        public static GameSimulation NewCampaign(int seed, Difficulty difficulty, GamePace pace)
+        {
+            return new GameSimulation(GameFactory.NewGame(seed, difficulty, pace));
+        }
+
+        public static GameSimulation NewCampaign(int seed, Difficulty difficulty, GamePace pace, string playerNationId)
+        {
+            return new GameSimulation(GameFactory.NewGame(seed, difficulty, pace, playerNationId));
         }
 
         public CommandResult Issue(GameCommand command)
@@ -194,6 +205,8 @@ namespace Nasledie.Core
             }
             BuildingDefinition building = RulesCatalog.Building(targetId);
             if (building == null) return CommandResult.Reject("unknown_building", "Такого здания нет в каталоге.");
+            if (!string.IsNullOrEmpty(building.RequiredNationId) && building.RequiredNationId != actor.NationId)
+                return CommandResult.Reject("nation_building", "Этот уникальный район принадлежит другой культуре.");
             if (building.RequiredTechnology != null && !actor.Knows(building.RequiredTechnology)) return CommandResult.Reject("technology_locked", "Сначала изучите технологию: " + building.RequiredTechnology + ".");
             if (city.Project != null && city.Project.TargetId == targetId && city.Project.Kind == ProjectKind.Building)
                 return CommandResult.Ok("Проект уже выбран.");
@@ -211,6 +224,10 @@ namespace Nasledie.Core
             }
             if (city.BuildingLevel(targetId) > 0 && targetId != "house")
                 return CommandResult.Reject("already_built", "Это здание уже построено в городе.");
+            HexCell districtPlot = FindDistrictCell(state, city, targetId);
+            if (districtPlot == null) districtPlot = FindDistrictCell(state, city, null);
+            if (districtPlot == null)
+                return CommandResult.Reject("district_space", "В радиусе четырёх гексов нет свободного места под район. Постройте его в другом городе или освободите подходящую клетку.");
             int carryover = 0;
             if (city.Project != null && city.Project.Kind != ProjectKind.None)
             {
@@ -221,7 +238,13 @@ namespace Nasledie.Core
                 if (city.Project.ReservedTreasuryTenths > 0) actor.TreasuryTenths += city.Project.ReservedTreasuryTenths / 2;
                 if (feedback) AppendLog(state, city.Name + ": при смене проекта потеряно " + loss + " ПП (10%).");
             }
-            city.Project = new CityProject { Kind = ProjectKind.Building, TargetId = targetId, Cost = building.ProductionCost, Progress = carryover };
+            if (districtPlot.OwnerId < 0) districtPlot.OwnerId = actor.Id;
+            RevealDistrictCell(state, city, districtPlot);
+            city.Project = new CityProject
+            {
+                Kind = ProjectKind.Building, TargetId = targetId, Cost = building.ProductionCost, Progress = carryover,
+                TargetQ = districtPlot.Q, TargetR = districtPlot.R, DistrictPlotReserved = true
+            };
             if (feedback) AppendLog(state, city.Name + ": начат проект «" + building.NameRu + "».");
             return CommandResult.Ok("Проект начат.");
         }
@@ -262,6 +285,7 @@ namespace Nasledie.Core
             if (city.Project != null && city.Project.Kind != ProjectKind.None) return CommandResult.Reject("project_busy", "Сначала завершите или отмените текущий проект города.");
             HexCell cell = state.Cell(q, r);
             if (cell == null || cell.OwnerId != actor.Id) return CommandResult.Reject("cell_not_owned", "Клетка не принадлежит вашей цивилизации.");
+            if (!string.IsNullOrEmpty(cell.DistrictBuildingId)) return CommandResult.Reject("district_occupied", "На этой клетке уже расположен городской район.");
             ImprovementDefinition definition = null;
             for (int i = 0; i < RulesCatalog.Improvements.Length; i++)
                 if (RulesCatalog.Improvements[i].Kind == kind && actor.Knows(RulesCatalog.Improvements[i].RequiredTechnology)) definition = RulesCatalog.Improvements[i];
@@ -586,7 +610,17 @@ namespace Nasledie.Core
                 case EventKind.TradeShortage:
                     if (choice == "EmergencyStock" && actor.TreasuryTenths >= 60) { actor.TreasuryTenths -= 60; if (city != null) city.FoodTenths += 30; }
                     else if (choice == "NewRoute") actor.Reputation = Math.Min(100, actor.Reputation + 1);
-                    else if (choice == "DomesticSupply" && city != null) city.Project = new CityProject { Kind = ProjectKind.Building, TargetId = "granary", Cost = 10 };
+                    else if (choice == "DomesticSupply" && city != null)
+                    {
+                        HexCell districtPlot = FindDistrictCell(state, city, "granary");
+                        if (districtPlot != null)
+                        {
+                            if (districtPlot.OwnerId < 0) districtPlot.OwnerId = city.OwnerId;
+                            RevealDistrictCell(state, city, districtPlot);
+                            city.Project = new CityProject { Kind = ProjectKind.Building, TargetId = "granary", Cost = 10,
+                                TargetQ = districtPlot.Q, TargetR = districtPlot.R, DistrictPlotReserved = true };
+                        }
+                    }
                     else return CommandResult.Reject("event_choice_invalid", "Этот ответ сейчас недоступен.");
                     break;
                 case EventKind.CulturalExchange:

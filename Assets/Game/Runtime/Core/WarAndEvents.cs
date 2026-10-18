@@ -323,7 +323,7 @@ namespace Nasledie.Core
 
         private void ResolveGlobalCrisis(GameState state, List<string> lines)
         {
-            if ((state.Crisis.Kind == CrisisKind.None || state.Crisis.Resolved) && state.Turn >= 8 && state.Turn % 12 == 4)
+            if ((state.Crisis.Kind == CrisisKind.None || state.Crisis.Resolved) && GamePacing.IsGlobalCrisisTurn(state.Pace, state.Turn))
             {
                 CrisisKind kind = CrisisKind.FoodShortage;
                 int lowFood = 0;

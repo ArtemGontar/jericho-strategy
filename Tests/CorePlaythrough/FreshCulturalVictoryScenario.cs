@@ -26,6 +26,7 @@ internal static class FreshCulturalVictoryScenario
             {
                 int turnBefore = simulation.State.Turn;
                 ResolveCrisis(simulation, playerId);
+                ManageBudget(simulation, playerId);
                 ChooseResearch(simulation, playerId);
                 AssignWorkers(simulation, playerId);
                 PlanProjects(simulation, playerId);
@@ -78,7 +79,7 @@ internal static class FreshCulturalVictoryScenario
             for (int i = 0; i < simulation.State.Cities.Length; i++)
                 if (simulation.State.Cities[i].OwnerId == playerId) reserve = Math.Max(reserve, simulation.State.Cities[i].FoodTenths);
             if (reserve >= amount * 10) resource = "food";
-            else if (player.InfluenceTenths >= amount * 10) resource = "influence";
+            else if (player.InfluenceTenths >= amount * 10 + 200) resource = "influence";
         }
         if (resource == null) return;
 
@@ -109,6 +110,15 @@ internal static class FreshCulturalVictoryScenario
         }
     }
 
+    private static void ManageBudget(GameSimulation simulation, int playerId)
+    {
+        CivilizationState player = simulation.State.Civilization(playerId);
+        if (player.TreasuryTenths < 500 && player.TaxRate != TaxRate.High)
+            simulation.Issue(new GameCommand { Kind = CommandKind.SetTax, ActorId = playerId, Value = (int)TaxRate.High });
+        else if (player.TreasuryTenths >= 1200 && player.TaxRate == TaxRate.High)
+            simulation.Issue(new GameCommand { Kind = CommandKind.SetTax, ActorId = playerId, Value = (int)TaxRate.Normal });
+    }
+
     private static void AssignWorkers(GameSimulation simulation, int playerId)
     {
         CivilizationState player = simulation.State.Civilization(playerId);
@@ -123,10 +133,12 @@ internal static class FreshCulturalVictoryScenario
             if (city.OwnerId != playerId) continue;
             CityYield yield = EconomyCalculator.Calculate(simulation.State, city);
             string focus;
+            bool needsFestivalFunds = player.CulturePrestige >= 100 && player.TreasuryTenths < 1000;
             bool culturalConstruction = city.Project != null && (city.Project.TargetId == "cultural_house" || city.Project.TargetId == "archive" || city.Project.TargetId == "exchange_house");
             if (culturalConstruction) focus = "industry";
             else if (city.FoodTenths < city.PopulationTenths * 2 && yield.FoodTenths < city.PopulationTenths) focus = "food";
             else if (needsCultureTechnologies && (city.Id != capitalId || cityCount == 1)) focus = "science";
+            else if (needsFestivalFunds) focus = "trade";
             else if (needsFestivalFunding && city.Id == capitalId) focus = "trade";
             else focus = "culture";
 
@@ -327,6 +339,7 @@ internal static class FreshCulturalVictoryScenario
     private static void EstablishOpenBorders(GameSimulation simulation, int playerId, bool[] openedBorders)
     {
         CivilizationState player = simulation.State.Civilization(playerId);
+        if (VictoryEvaluator.CanStartCulturalFestival(simulation.State, playerId)) return;
         if (player.InfluenceTenths < 20 || CountBuilding(simulation.State, playerId, "cultural_house") == 0) return;
         for (int partner = 0; partner < simulation.State.Civilizations.Length; partner++)
         {

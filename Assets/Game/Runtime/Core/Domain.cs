@@ -17,6 +17,7 @@ namespace Nasledie.Core
     public enum CommandKind { SetWorkers, AutoAssignWorkers, SetProject, ChooseTechnology, BuildImprovement, FoundCity, MoveUnit, Recruit, DeclareWar, ProposeTreaty, AcceptTreaty, MakePeace, SetTax, SetSpending, EnactLaw, EventChoice, ContributeToCrisis, BeginVictoryProject, Repair }
     public enum TaxRate { Low, Normal, High }
     public enum Difficulty { Calm, Standard, Strong, Trial }
+    public enum GamePace { Relaxed, Standard, Quick }
 
     [Serializable]
     public sealed class HexCell
@@ -28,6 +29,9 @@ namespace Nasledie.Core
         public int OwnerId = -1;
         public ImprovementKind Improvement;
         public int ImprovementLevel;
+        public int DistrictCityId = -1;
+        public string DistrictBuildingId = "";
+        public int DistrictLevel;
         public bool HasRoad;
         public int Damage;
         public int VisibleToMask;
@@ -53,6 +57,7 @@ namespace Nasledie.Core
         public int ReservedPopulationTenths;
         public int TargetQ;
         public int TargetR;
+        public bool DistrictPlotReserved;
         public int TurnsActive;
 
         public CityProject Copy() { return (CityProject)MemberwiseClone(); }
@@ -167,6 +172,7 @@ namespace Nasledie.Core
     {
         public int Id;
         public string Name = "";
+        public string NationId = "";
         public string Archetype = "";
         public bool IsHuman;
         public bool IsDefeated;
@@ -329,11 +335,12 @@ namespace Nasledie.Core
     [Serializable]
     public sealed class GameState
     {
-        public int SaveVersion = 2;
+        public int SaveVersion = 4;
         public int RulesVersion = 1;
         public int Seed;
         public int Turn = 1;
         public int MaximumTurn = 80;
+        public GamePace Pace = GamePace.Standard;
         public int NextEntityId = 1;
         public int HumanCivilizationId;
         public bool IsFinished;

@@ -54,6 +54,10 @@ namespace Nasledie.Client
         private static readonly Dictionary<string, Sprite> Artwork = new Dictionary<string, Sprite>();
         private static bool artworkAtlasesLoaded;
         private Difficulty selectedDifficulty = Difficulty.Standard;
+        private GamePace selectedPace = GamePace.Standard;
+        private string selectedNationId = "jericho";
+        private string guideSearchQuery = "";
+        private int guideCategoryIndex;
         private string notice = "";
         private Rect lastSafeArea;
         private int lastScreenWidth;
@@ -78,6 +82,10 @@ namespace Nasledie.Client
             musicEnabled = PlayerPrefs.GetInt("nasledie.music.enabled", 1) != 0;
             musicVolumeStep = Mathf.Clamp(PlayerPrefs.GetInt("nasledie.music.volume", 1), 0, MusicVolumeSteps.Length - 1);
             animationMode = Mathf.Clamp(PlayerPrefs.GetInt("jericho.animation.mode", 1), 0, 2);
+            selectedPace = (GamePace)Mathf.Clamp(PlayerPrefs.GetInt("jericho.campaign.pace", (int)GamePace.Standard), 0, 2);
+            selectedNationId = PlayerPrefs.GetString("jericho.campaign.nation", "jericho");
+            NationDefinition savedNation = NationCatalog.Get(selectedNationId);
+            selectedNationId = savedNation == null ? "jericho" : savedNation.Id;
             EnsureEventSystem();
             BuildCanvas();
             InitializeSoundtrack();
@@ -161,7 +169,7 @@ namespace Nasledie.Client
             UiKit.Horizontal(actionObject, 4, 4);
             Button menuButton = UiKit.Button(actionObject.transform, "МЕНЮ", ShowMenu, GamePalette.Ink, 110, 16);
             Button saveButton = UiKit.Button(actionObject.transform, "СОХРАНИТЬ", SaveManual, GamePalette.Ink, 110, 16);
-            Button achievementsButton = UiKit.Button(actionObject.transform, "НАГРАДЫ", ShowAchievements, GamePalette.Ink, 110, 15);
+            Button achievementsButton = UiKit.Button(actionObject.transform, "СПРАВКА", ShowEncyclopedia, GamePalette.Ink, 110, 15);
             Button endButton = UiKit.Button(actionObject.transform, "ЗАВЕРШИТЬ ХОД", EndTurn, GamePalette.Teal, 110, 17);
             menuButton.GetComponent<LayoutElement>().flexibleWidth = 0.48f;
             saveButton.GetComponent<LayoutElement>().flexibleWidth = 0.72f;
@@ -210,11 +218,24 @@ namespace Nasledie.Client
             UiKit.Label(menu.transform, "Профиль · " + AchievementService.SelectedTitle + " · слава " + AchievementService.Renown + " · достижений " + AchievementService.UnlockedCount + "/" + AchievementService.Definitions.Length,
                 18, GamePalette.Gold, TextAnchor.MiddleCenter, true);
             AddArtwork(menu.transform, AchievementService.SelectedTitleArtwork, 82);
+            NationDefinition selectedNation = NationCatalog.Get(selectedNationId);
+            AddArtwork(menu.transform, selectedNation.LeaderArtKey, 154);
+            UiKit.Label(menu.transform, selectedNation.LeaderNameRu + " · " + selectedNation.LeaderTitleRu, 25, GamePalette.Gold, TextAnchor.MiddleCenter, true);
+            UiKit.Label(menu.transform, selectedNation.LeaderBiographyRu + "\n\n" + selectedNation.LeaderHistoricalNoteRu,
+                18, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            AddArtwork(menu.transform, selectedNation.ArtKey, 92);
+            UiKit.Button(menu.transform, "НАЦИЯ: " + selectedNation.NameRu + " · ВЫБРАТЬ", CycleNation, GamePalette.InkSoft, 68, 22);
+            BuildingDefinition uniqueDistrict = RulesCatalog.Building(selectedNation.UniqueDistrictBuildingId);
+            UiKit.Label(menu.transform, selectedNation.IdentityDescription + "\n\nУникальный район: " + uniqueDistrict.NameRu + " — " + BuildingEffectSummary(uniqueDistrict) +
+                ". Учебный центр: " + selectedNation.CampusNameRu + " — " + selectedNation.CampusBonusDescriptionRu + "\n" +
+                selectedNation.BonusTitle + " · " + selectedNation.BonusDescription + ".", 18,
+                GamePalette.Paper, TextAnchor.MiddleLeft, false);
             UiKit.Button(menu.transform, musicEnabled ? "МУЗЫКА: ВКЛЮЧЕНА" : "МУЗЫКА: ВЫКЛЮЧЕНА", ToggleMusic, GamePalette.InkSoft, 54, 18);
             UiKit.Button(menu.transform, "ДОСТИЖЕНИЯ И НАГРАДЫ", ShowAchievements, GamePalette.InkSoft, 66, 21);
             UiKit.Button(menu.transform, "НАСТРОЙКИ", ShowSettings, GamePalette.InkSoft, 62, 21);
             Button savesButton = UiKit.Button(menu.transform, "УПРАВЛЕНИЕ СОХРАНЕНИЯМИ", ShowSaves, GamePalette.InkSoft, 62, 19);
             savesButton.interactable = SaveService.HasSave;
+            UiKit.Button(menu.transform, "ЭНЦИКЛОПЕДИЯ И ПОДСКАЗКИ", ShowEncyclopedia, GamePalette.InkSoft, 62, 21);
 
             if (simulation != null)
             {
@@ -228,8 +249,10 @@ namespace Nasledie.Client
             Button continueButton = UiKit.Button(menu.transform, "ПРОДОЛЖИТЬ", LoadCampaign, GamePalette.InkSoft, 80, 26);
             continueButton.interactable = SaveService.HasSave;
             UiKit.Button(menu.transform, "СЛОЖНОСТЬ: " + DifficultyName(selectedDifficulty), CycleDifficulty, GamePalette.InkSoft, 70, 22);
+            UiKit.Button(menu.transform, "ТЕМП: " + PaceName(selectedPace), CyclePace, GamePalette.InkSoft, 70, 22);
+            UiKit.Label(menu.transform, PaceDescription(selectedPace), 18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             UiKit.Button(menu.transform, "КАК ИГРАТЬ", ShowTutorial, GamePalette.InkSoft, 70, 22);
-            UiKit.Label(menu.transform, "Демо-кампания · 4 цивилизации · 5 путей к победе · одиночная игра без сети", 20, GamePalette.Muted, TextAnchor.MiddleCenter, false);
+            UiKit.Label(menu.transform, "Демо · 4 древние культуры с персонажами и уникальными районами · 5 путей к победе · офлайн", 20, GamePalette.Muted, TextAnchor.MiddleCenter, false);
         }
 
         private void InitializeSoundtrack()
@@ -287,6 +310,10 @@ namespace Nasledie.Client
             UiKit.Button(content.transform, musicEnabled ? "МУЗЫКА · ВКЛЮЧЕНА" : "МУЗЫКА · ВЫКЛЮЧЕНА", ToggleMusic, GamePalette.Teal, 68, 22);
             UiKit.Button(content.transform, MusicVolumeLabel() + " · ИЗМЕНИТЬ", CycleMusicVolume, GamePalette.InkSoft, 68, 21);
             UiKit.Button(content.transform, AnimationModeLabel() + " · ИЗМЕНИТЬ", CycleAnimationMode, GamePalette.InkSoft, 68, 21);
+            UiKit.Button(content.transform, "ТЕМП НОВОЙ КАМПАНИИ: " + PaceName(selectedPace) + " · ИЗМЕНИТЬ", CyclePace, GamePalette.InkSoft, 68, 21);
+            UiKit.Label(content.transform, PaceDescription(selectedPace) +
+                (simulation == null ? "" : "\nТекущая кампания: " + PaceName(simulation.State.Pace) + " · её темп не меняется."),
+                19, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             UiKit.Label(content.transform, "Экран: альбомная ориентация · safe area для вырезов iPhone включена.\nАвтосохранение: " +
                 (SaveService.HasSave ? "кампания найдена" : "появится после первого хода"), 21, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             UiKit.Label(content.transform, "Сложность: " + DifficultyName(selectedDifficulty) + " · меняется перед новой кампанией.", 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
@@ -372,7 +399,7 @@ namespace Nasledie.Client
             }
             CivilizationState player = state.Civilization(state.HumanCivilizationId);
             UiKit.Label(card.transform, "Ход " + Math.Min(state.Turn, state.MaximumTurn) + "/" + state.MaximumTurn + " · " +
-                (player == null ? "цивилизация не найдена" : player.Name) + " · мир " + state.Seed +
+                PaceName(state.Pace) + " · " + (player == null ? "цивилизация не найдена" : player.Name) + " · мир " + state.Seed +
                 (state.IsFinished ? " · кампания завершена" : ""), 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             UiKit.Button(card.transform, "ЗАГРУЗИТЬ ЭТУ КАМПАНИЮ", load, GamePalette.Teal, 58, 19);
         }
@@ -479,23 +506,75 @@ namespace Nasledie.Client
 
         private static string BuildingArtwork(string id, Era era)
         {
+            return BuildingArtwork(id, era, null);
+        }
+
+        private static string BuildingArtwork(string id, Era era, string nationId)
+        {
+            BuildingDefinition definition = RulesCatalog.Building(id);
+            if (definition != null && !string.IsNullOrEmpty(definition.ArtKey)) return definition.ArtKey;
+            if (id == "school" || id == "university" || id == "academy")
+            {
+                NationDefinition nation = NationCatalog.Get(nationId);
+                if (nation != null) return nation.CampusArtKey;
+            }
             string artwork = BuildingArtwork(id);
             return string.IsNullOrEmpty(artwork) ? null : "Building_" + era + "_" + artwork.Substring("Building_".Length);
         }
 
-        private static string CityMapArtwork(CityState city, Era era)
+        private static string DisplayBuildingName(BuildingDefinition building, string nationId)
+        {
+            if (building == null) return "Неизвестное здание";
+            NationDefinition nation = NationCatalog.Get(nationId);
+            if (nation == null) return building.NameRu;
+            if (building.Id == "school") return building.NameRu + " · " + nation.CampusNameRu;
+            if (building.Id == "university") return building.NameRu + " · " + nation.CampusNameRu;
+            if (building.Id == "academy") return building.NameRu + " · " + nation.CampusNameRu;
+            return building.NameRu;
+        }
+
+        private static string BuildingEffectSummary(BuildingDefinition building)
+        {
+            if (building == null) return "эффект не найден";
+            var effects = new List<string>();
+            if (building.FlatFoodTenths > 0) effects.Add("+" + Format(building.FlatFoodTenths) + " еды/ход");
+            if (building.FlatKnowledgeTenths > 0) effects.Add("+" + Format(building.FlatKnowledgeTenths) + " знаний/ход");
+            if (building.FlatTreasuryTenths > 0) effects.Add("+" + Format(building.FlatTreasuryTenths) + " казны/ход");
+            if (building.FlatCulturePrestige > 0) effects.Add("+" + building.FlatCulturePrestige + " престижа/ход");
+            if (building.HealthPerTurn > 0) effects.Add("+" + building.HealthPerTurn + " здоровья/ход");
+            if (building.EducationPerTurn > 0) effects.Add("+" + building.EducationPerTurn + " образования/ход");
+            if (building.SafetyPerTurn > 0) effects.Add("+" + building.SafetyPerTurn + " безопасности/ход");
+            return effects.Count == 0 ? "особый культурный район" : string.Join(" · ", effects.ToArray());
+        }
+
+        private string CityMapArtwork(CityState city, Era era)
         {
             if (city == null) return "City";
+            CivilizationState owner = simulation == null ? null : simulation.State.Civilization(city.OwnerId);
             string[] visualPriority =
             {
-                "assembly", "academy", "university", "archive", "exchange_house", "cultural_house",
+                "assembly", "academy", "university", "sumer_ziggurat_archive", "archive", "exchange_house", "cultural_house",
+                "jericho_spring_tower", "egypt_nilometer", "indus_great_bath",
                 "hospital", "administration", "market", "workshop", "barracks", "school", "council",
                 "clinic", "granary", "residential_quarter", "house", "road_services"
             };
             for (int i = 0; i < visualPriority.Length; i++)
                 if (city.BuildingLevel(visualPriority[i]) > 0)
-                    return BuildingArtwork(visualPriority[i], era);
-            return "City";
+                    return BuildingArtwork(visualPriority[i], era, owner == null ? null : owner.NationId);
+            NationDefinition nation = owner == null ? null : NationCatalog.Get(owner.NationId);
+            return nation == null ? "City" : nation.ArtKey;
+        }
+
+        private static Color NationAccent(CivilizationState civilization)
+        {
+            string nationId = civilization == null ? "" : civilization.NationId;
+            switch (nationId)
+            {
+                case "sumer": return new Color(0.42f, 0.59f, 0.78f, 1f);
+                case "egypt": return new Color(0.24f, 0.68f, 0.67f, 1f);
+                case "indus": return new Color(0.73f, 0.43f, 0.32f, 1f);
+                default: return new Color(0.91f, 0.70f, 0.34f, 1f);
+            }
         }
 
         private static string ImprovementArtwork(ImprovementKind kind, Era era)
@@ -588,26 +667,162 @@ namespace Nasledie.Client
 
         private void ShowTutorial()
         {
+            ShowEncyclopedia("first-turn");
+        }
+
+        private void ShowEncyclopedia() { ShowEncyclopedia(null); }
+
+        private void ShowEncyclopedia(string articleId)
+        {
             PrepareUtilityOverlay();
-            activeUtilityScreen = "tutorial";
-            GameObject tutorial = UiKit.ScrollView(menuHost, "TutorialScroll");
-            UiKit.Vertical(tutorial, 24, 16);
-            UiKit.Label(tutorial.transform, "ПЕРВЫЕ ШАГИ", 46, GamePalette.Gold, TextAnchor.MiddleCenter, true);
-            UiKit.Label(tutorial.transform,
-                "1. В городе распределите работников: фермеры дают еду, ремесленники — производство, учёные — знания, торговцы — казну.\n\n" +
-                "2. Выберите исследование, затем стройте открытые здания и улучшайте клетки вокруг города.\n\n" +
-                "3. Растите без голода: запас еды кормит жителей, переполненный запас начинает рост.\n\n" +
-                "4. Законы и договоры дают преимущества. Перейдите в дипломатию, чтобы торговать и договариваться.\n\n" +
-                "5. Война проходит через кризис мобилизации. Она отнимает репутацию, доверие, торговлю и население. Захват не приносит отдельного пути к победе.\n\n" +
-                "6. Откройте вкладку «Победа»: развивайтесь через качество жизни, науку, культуру, дипломатию или итоговое наследие к 80-му ходу.",
-                25, GamePalette.Paper, TextAnchor.UpperLeft, false);
-            UiKit.Button(tutorial.transform, "НАЗАД", ShowMenu, GamePalette.Teal, 82, 25);
+            activeUtilityScreen = "encyclopedia";
+            GameObject content = UiKit.ScrollView(menuHost, "EncyclopediaScroll");
+            UiKit.Vertical(content, 22, 12);
+            GuideArticle article = GameGuide.Find(articleId);
+            if (article != null)
+            {
+                UiKit.Label(content.transform, "ЭНЦИКЛОПЕДИЯ · " + article.Category.ToUpperInvariant(), 19, GamePalette.Teal, TextAnchor.MiddleCenter, true);
+                UiKit.Label(content.transform, article.Title, 40, GamePalette.Gold, TextAnchor.MiddleCenter, true);
+                UiKit.Label(content.transform, article.Summary, 24, GamePalette.Sage, TextAnchor.MiddleLeft, true);
+                UiKit.Label(content.transform, article.Body, 22, GamePalette.Paper, TextAnchor.UpperLeft, false);
+                UiKit.Button(content.transform, "НАЗАД К СПРАВОЧНИКУ", ShowEncyclopedia, GamePalette.InkSoft, 68, 21);
+                UiKit.Button(content.transform, "ЗАКРЫТЬ СПРАВКУ", CloseEncyclopedia, GamePalette.Teal, 68, 21);
+                return;
+            }
+
+            UiKit.Label(content.transform, "ЭНЦИКЛОПЕДИЯ И ПОДСКАЗКИ", 40, GamePalette.Gold, TextAnchor.MiddleCenter, true);
+            UiKit.Label(content.transform, "Найдите правило, причину события или совет. Подсказка на каждой игровой вкладке объясняет текущую ситуацию и ведёт к подходящей статье.",
+                20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            AddGuideSearchInput(content.transform);
+            GameObject controls = UiKit.CreateObject("GuideSearchControls", content.transform);
+            UiKit.Horizontal(controls, 0, 8);
+            Button category = UiKit.Button(controls.transform, "РАЗДЕЛ · " + GameGuide.Categories[guideCategoryIndex], CycleGuideCategory, GamePalette.InkSoft, 60, 16);
+            Button search = UiKit.Button(controls.transform, "НАЙТИ", ShowEncyclopedia, GamePalette.Teal, 60, 19);
+            Button clear = UiKit.Button(controls.transform, "ОЧИСТИТЬ", ClearGuideSearch, GamePalette.Ink, 60, 16);
+            category.GetComponent<LayoutElement>().flexibleWidth = 1.35f;
+            search.GetComponent<LayoutElement>().flexibleWidth = 0.65f;
+            clear.GetComponent<LayoutElement>().flexibleWidth = 0.85f;
+            GuideArticle[] results = GameGuide.Search(guideSearchQuery, GameGuide.Categories[guideCategoryIndex]);
+            UiKit.Label(content.transform, "Найдено статей: " + results.Length, 18, GamePalette.Muted, TextAnchor.MiddleLeft, true);
+            for (int i = 0; i < results.Length; i++)
+            {
+                GuideArticle entry = results[i];
+                GameObject card = UiKit.Card(content.transform, entry.Title + " · " + entry.Category);
+                UiKit.Label(card.transform, entry.Summary, 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                UiKit.Button(card.transform, "ЧИТАТЬ", delegate { ShowEncyclopedia(entry.Id); }, GamePalette.Ink, 52, 17);
+            }
+            if (results.Length == 0)
+                UiKit.Label(content.transform, "По этому запросу ничего не найдено. Попробуйте слово из темы: «еда», «миграция», «наука», «договор» или «победа». ",
+                    20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            UiKit.Button(content.transform, "ЗАКРЫТЬ СПРАВКУ", CloseEncyclopedia, GamePalette.Teal, 68, 21);
+        }
+
+        private void AddGuideSearchInput(Transform parent)
+        {
+            GameObject field = UiKit.Panel(parent, "GuideSearchField", GamePalette.Paper, 60);
+            Image image = field.GetComponent<Image>();
+            image.color = GamePalette.Paper;
+            RectTransform rect = UiKit.Rect(field);
+            rect.anchorMin = new Vector2(0, 0.5f);
+            rect.anchorMax = new Vector2(1, 0.5f);
+            InputField input = field.AddComponent<InputField>();
+            input.targetGraphic = image;
+            input.lineType = InputField.LineType.SingleLine;
+            input.characterLimit = 64;
+
+            GameObject textObject = UiKit.CreateObject("SearchText", field.transform);
+            RectTransform textRect = UiKit.Rect(textObject);
+            UiKit.SetAnchors(textRect, Vector2.zero, Vector2.one, new Vector2(16, 6), new Vector2(-16, -6));
+            Text text = textObject.AddComponent<Text>();
+            text.font = UiKit.Font;
+            text.fontSize = 22;
+            text.color = GamePalette.Ink;
+            text.alignment = TextAnchor.MiddleLeft;
+            text.supportRichText = false;
+            input.textComponent = text;
+
+            GameObject placeholderObject = UiKit.CreateObject("SearchPlaceholder", field.transform);
+            RectTransform placeholderRect = UiKit.Rect(placeholderObject);
+            UiKit.SetAnchors(placeholderRect, Vector2.zero, Vector2.one, new Vector2(16, 6), new Vector2(-16, -6));
+            Text placeholder = placeholderObject.AddComponent<Text>();
+            placeholder.font = UiKit.Font;
+            placeholder.fontSize = 21;
+            placeholder.color = GamePalette.Muted;
+            placeholder.text = "Например: жители уезжают";
+            placeholder.alignment = TextAnchor.MiddleLeft;
+            placeholder.supportRichText = false;
+            input.placeholder = placeholder;
+            input.text = guideSearchQuery;
+            input.onValueChanged.AddListener(delegate(string value) { guideSearchQuery = value; });
+            input.onEndEdit.AddListener(delegate(string value) { guideSearchQuery = value; });
+        }
+
+        private void CycleGuideCategory()
+        {
+            guideCategoryIndex = (guideCategoryIndex + 1) % GameGuide.Categories.Length;
+            ShowEncyclopedia();
+        }
+
+        private void ClearGuideSearch()
+        {
+            guideSearchQuery = "";
+            guideCategoryIndex = 0;
+            ShowEncyclopedia();
+        }
+
+        private void CloseEncyclopedia()
+        {
+            if (simulation != null)
+            {
+                menuHost.gameObject.SetActive(false);
+                RenderGame();
+            }
+            else ShowMenu();
         }
 
         private void CycleDifficulty()
         {
             selectedDifficulty = (Difficulty)(((int)selectedDifficulty + 1) % 4);
             ShowMenu();
+        }
+
+        private void CycleNation()
+        {
+            selectedNationId = NationCatalog.GetAt(NationCatalog.IndexOf(selectedNationId) + 1).Id;
+            PlayerPrefs.SetString("jericho.campaign.nation", selectedNationId);
+            PlayerPrefs.Save();
+            if (activeUtilityScreen == "new_game") ShowNewCampaignConfirmation();
+            else ShowMenu();
+        }
+
+        private void CyclePace()
+        {
+            selectedPace = selectedPace == GamePace.Standard ? GamePace.Relaxed :
+                selectedPace == GamePace.Relaxed ? GamePace.Quick : GamePace.Standard;
+            PlayerPrefs.SetInt("jericho.campaign.pace", (int)selectedPace);
+            PlayerPrefs.Save();
+            if (activeUtilityScreen == "settings") ShowSettings();
+            else ShowMenu();
+        }
+
+        private static string PaceName(GamePace pace)
+        {
+            switch (pace)
+            {
+                case GamePace.Relaxed: return "Спокойный · 120 ходов";
+                case GamePace.Quick: return "Быстрый · 60 ходов";
+                default: return "Стандартный · 80 ходов";
+            }
+        }
+
+        private static string PaceDescription(GamePace pace)
+        {
+            switch (pace)
+            {
+                case GamePace.Relaxed: return "Длинная кампания для освоения систем и неторопливого развития. Мировые кризисы приходят реже: первый — на 24-м ходу, затем раз в 18 ходов.";
+                case GamePace.Quick: return "Короткая партия с ранними решениями. Мировые кризисы приходят чаще: первый — на 12-м ходу, затем раз в 9 ходов.";
+                default: return "Обычная длина кампании. Первый мировой кризис — на 16-м ходу, затем раз в 12 ходов.";
+            }
         }
 
         private static string DifficultyName(Difficulty difficulty)
@@ -618,6 +833,32 @@ namespace Nasledie.Client
                 case Difficulty.Strong: return "Сильная";
                 case Difficulty.Trial: return "Испытание";
                 default: return "Стандартная";
+            }
+        }
+
+        private static string DifficultyDescription(Difficulty difficulty)
+        {
+            switch (difficulty)
+            {
+                case Difficulty.Calm: return "ИИ получает 5% меньше выпуска, догоняющую науку при отставании и меняет долгосрочный курс реже — примерно раз в 7 ходов.";
+                case Difficulty.Strong: return "ИИ получает 12,5% больше выпуска, 5% быстрее исследует технологии и начинает с дополнительной административной ёмкостью. Соперники настойчивее ведут выбранный путь победы.";
+                case Difficulty.Trial: return "ИИ получает 30% больше выпуска, 10% быстрее исследует технологии и начинает с двумя дополнительными единицами административной ёмкости. Соперники ведут специализированные планы победы и могут мобилизовать до трёх отрядов в войне.";
+                default: return "Базовый выпуск. ИИ обычно держит курс около 6 ходов, но раньше реагирует на голод, войну и затяжной дефицит.";
+            }
+        }
+
+        private static string AiGoalName(string goal)
+        {
+            switch (goal)
+            {
+                case "science": return "наука";
+                case "trade": return "торговля и связи";
+                case "culture": return "культурное влияние";
+                case "defense": return "оборона";
+                case "recovery": return "восстановление";
+                case "expansion": return "новые города";
+                case "quality": return "качество жизни";
+                default: return "развитие";
             }
         }
 
@@ -637,7 +878,19 @@ namespace Nasledie.Client
             activeUtilityScreen = "new_game";
             GameObject content = UiKit.ScrollView(menuHost, "NewCampaignConfirmation");
             UiKit.Label(content.transform, "НОВАЯ КАМПАНИЯ", 44, GamePalette.Gold, TextAnchor.MiddleCenter, true);
-            UiKit.Label(content.transform, "Начать новую партию на сложности «" + DifficultyName(selectedDifficulty) + "»?\n\n" +
+            NationDefinition selectedNation = NationCatalog.Get(selectedNationId);
+            BuildingDefinition uniqueDistrict = RulesCatalog.Building(selectedNation.UniqueDistrictBuildingId);
+            AddArtwork(content.transform, selectedNation.LeaderArtKey, 160);
+            UiKit.Label(content.transform, selectedNation.LeaderNameRu + " · " + selectedNation.LeaderTitleRu, 26, GamePalette.Gold, TextAnchor.MiddleCenter, true);
+            UiKit.Label(content.transform, selectedNation.LeaderHistoricalNoteRu + "\n\nУникальный район: " +
+                uniqueDistrict.NameRu + " — " + BuildingEffectSummary(uniqueDistrict) + ". Учебный центр: " + selectedNation.CampusNameRu +
+                " — " + selectedNation.CampusBonusDescriptionRu,
+                20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            AddArtwork(content.transform, selectedNation.ArtKey, 104);
+            UiKit.Button(content.transform, "НАЦИЯ: " + selectedNation.NameRu + " · ИЗМЕНИТЬ", CycleNation, GamePalette.InkSoft, 66, 21);
+            UiKit.Label(content.transform, selectedNation.BonusTitle + " · " + selectedNation.BonusDescription + ".\n\n" +
+                "Начать новую партию на сложности «" + DifficultyName(selectedDifficulty) + "»?\n\n" +
+                DifficultyDescription(selectedDifficulty) + "\n\nТемп: «" + PaceName(selectedPace) + "». " + PaceDescription(selectedPace) + "\n\n" +
                 "Текущие автосохранения останутся доступны в управлении слотами, но последующие ходы новой партии начнут вытеснять их по очереди. Ручное сохранение хранится отдельно.",
                 23, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             UiKit.Button(content.transform, "НАЧАТЬ НОВУЮ КАМПАНИЮ", CreateNewCampaign, GamePalette.Teal, 78, 22);
@@ -648,11 +901,11 @@ namespace Nasledie.Client
         private void CreateNewCampaign()
         {
             int seed = UnityEngine.Random.Range(100000, 999999);
-            simulation = GameSimulation.NewCampaign(seed, selectedDifficulty);
+            simulation = GameSimulation.NewCampaign(seed, selectedDifficulty, selectedPace, selectedNationId);
             selectedCityId = simulation.FindCapital(simulation.State.HumanCivilizationId);
             selectedUnitId = -1;
             currentPage = ScreenPage.Overview;
-            notice = "Новая кампания создана · мир " + seed + ".";
+            notice = "Новая кампания создана · " + NationCatalog.Get(selectedNationId).NameRu + " · мир " + seed + ".";
             if (!SaveService.SaveAuto(simulation.State)) notice += " Автосохранение не удалось; проверьте свободное место и сохраните вручную.";
             menuHost.gameObject.SetActive(false);
             RenderGame();
@@ -682,6 +935,7 @@ namespace Nasledie.Client
             UpdateHeader();
             DestroyChildren(pageHost);
             GameObject content = UiKit.ScrollView(pageHost, "PageScroll");
+            RenderContextHint(content.transform);
             switch (currentPage)
             {
                 case ScreenPage.Overview: RenderOverview(content.transform); break;
@@ -709,10 +963,166 @@ namespace Nasledie.Client
                 ? GamePalette.Danger : GamePalette.Muted;
         }
 
+        private void RenderContextHint(Transform parent)
+        {
+            GameState state = simulation.State;
+            CivilizationState player = state.Civilization(state.HumanCivilizationId);
+            CityState city = SelectedCity();
+            string title = "Порядок хода";
+            string message = "Сравните прогноз с состоянием города, назначьте приоритет и завершите ход. Летопись покажет последствия решений.";
+            string articleId = "turn-cycle";
+
+            if (currentPage == ScreenPage.Overview)
+            {
+                if (state.Crisis != null && state.Crisis.Kind != CrisisKind.None && !state.Crisis.Resolved)
+                {
+                    title = "Мировой кризис";
+                    message = state.Crisis.PublicText + " Угроза сейчас: " + state.Crisis.Threat + ". Общий вклад сторон снижает её и повышает репутацию участников.";
+                    articleId = "global-crisis";
+                }
+                else if (city != null && city.FoodTenths < city.PopulationTenths)
+                {
+                    title = "Запас еды ниже потребления";
+                    message = city.Name + " расходует еду быстрее, чем пополняет запас. Если нехватка затянется, здоровье и население начнут снижаться.";
+                    articleId = "food-growth";
+                }
+                else if (city != null && city.Trust < 40)
+                {
+                    title = "Доверие жителей падает";
+                    message = "Проверьте налоги, питание и последствия войны: низкое доверие ухудшает устойчивость города и может ускорить отток населения.";
+                    articleId = "cities-services";
+                }
+            }
+            else if (currentPage == ScreenPage.City && city != null)
+            {
+                CityYield forecast = simulation.PreviewCity(city.Id);
+                if (forecast.FoodTenths < city.PopulationTenths)
+                {
+                    title = "Городу не хватает еды";
+                    message = "Прогноз еды составляет " + Format(forecast.FoodTenths) + ", а потребление — " + Format(city.PopulationTenths) + ". Переведите часть работников на земледелие или улучшите подходящую клетку.";
+                    articleId = "food-growth";
+                }
+                else if (city.Health < 50 || city.Safety < 50 || city.Trust < 40)
+                {
+                    title = "Службы требуют внимания";
+                    message = "Здоровье, безопасность и доверие поддерживают благополучие. Проверьте финансирование, здания и последние записи о событиях в летописи.";
+                    articleId = "cities-services";
+                }
+                else if (city.Project == null || city.Project.Kind == ProjectKind.None)
+                {
+                    title = "Город ждёт проект";
+                    message = "Выберите здание, улучшение или другой проект. Производство ремесленников определяет, как быстро он будет завершён.";
+                    articleId = "projects";
+                }
+                else
+                {
+                    title = "Проверьте выпуск и потребности";
+                    message = "Проект продвигается производством города. Работников можно переназначать, если еда, казна или услуги важнее скорости строительства.";
+                    articleId = "workers";
+                }
+            }
+            else if (currentPage == ScreenPage.Research)
+            {
+                TechnologyDefinition active = player.ActiveResearchIndex >= 0 && player.ActiveResearchIndex < RulesCatalog.Technologies.Length
+                    ? RulesCatalog.Technologies[player.ActiveResearchIndex] : null;
+                if (active == null)
+                {
+                    title = "Исследование ещё не выбрано";
+                    message = "Выберите доступную технологию. Её требования и открытия показаны прямо в карточке, а накопленные знания сохраняются при смене цели.";
+                    articleId = "research";
+                }
+                else if (CountTechnologiesInEra(player, player.Era) >= 3 && CountCitiesWithBuilding(player.Id, "council") == 0)
+                {
+                    title = "Можно готовить переход эпохи";
+                    message = "Три технологии текущей эпохи уже изучены. Для общественного перехода ещё нужны Совет, влияние и городской проект.";
+                    articleId = "eras";
+                }
+                else
+                {
+                    title = "Открытия зависят от выбранного курса";
+                    message = "Технология «" + active.NameRu + "» получит знания в конце хода. Выбирайте открытия, которые поддерживают ваши города и предполагаемый путь победы.";
+                    articleId = "research";
+                }
+            }
+            else if (currentPage == ScreenPage.Diplomacy)
+            {
+                if (player.WarStrain >= 35)
+                {
+                    title = "Цивилизация истощена конфликтом";
+                    message = "Военное напряжение ухудшает отношения и экономику. Мир, восстановление маршрутов и снижение военных расходов помогут восстановиться.";
+                    articleId = "war-cost";
+                }
+                else
+                {
+                    title = "Договоры создают устойчивые связи";
+                    message = "Торговые маршруты дают доход и нужны для некоторых совместных целей. Следите за доверием и сроком соглашений с соседями.";
+                    articleId = "diplomacy";
+                }
+            }
+            else if (currentPage == ScreenPage.Laws)
+            {
+                title = "У реформ есть постоянные расходы";
+                message = "Перед принятием сравните пользу закона с его содержанием на каждый город. Следующая реформа может быть недоступна до окончания периода ожидания.";
+                articleId = "laws";
+            }
+            else if (currentPage == ScreenPage.Events)
+            {
+                ActiveEventState pending = null;
+                for (int i = 0; i < state.Events.Length; i++)
+                    if (!state.Events[i].IsResolved && state.Events[i].TargetCivilizationId == player.Id) { pending = state.Events[i]; break; }
+                if (pending != null)
+                {
+                    EventDefinition definition = EventDefinitionFor(pending.Kind);
+                    title = "Причина текущего события";
+                    message = definition == null ? "Выберите ответ после проверки доступных ресурсов и описания последствий." : definition.NameRu + ": " + definition.TriggerRu + " Решение может расходовать ресурсы или менять показатели города.";
+                }
+                else if (state.Crisis != null && state.Crisis.Kind != CrisisKind.None && !state.Crisis.Resolved)
+                {
+                    title = "Мировой кризис ещё действует";
+                    message = state.Crisis.PublicText + " Помощь едой, знаниями или влиянием уменьшает общую угрозу.";
+                    articleId = "global-crisis";
+                }
+                else
+                {
+                    title = "Событий, требующих ответа, нет";
+                    message = "Следите за причинами, указанными в летописи: плохое питание, здоровье, мобилизация и торговля влияют на будущие события.";
+                }
+                if (articleId != "global-crisis") articleId = "events";
+            }
+            else if (currentPage == ScreenPage.Victory)
+            {
+                title = "Сравните несколько путей развития";
+                message = "На этой вкладке видны ваши условия и очки соперников. Если сложный активный путь пока далеко, укрепляйте наследие через города, население, науку, культуру и мирные связи.";
+                articleId = "victory-overview";
+            }
+            else if (currentPage == ScreenPage.Chronicle)
+            {
+                title = "Ищите причину рядом с изменением";
+                message = "Сопоставьте сообщения одного хода с прогнозом города и ресурсами. Например, дефицит еды ведёт к снижению здоровья, а осада — к падению выпуска.";
+                articleId = "chronicle";
+            }
+
+            GameObject card = UiKit.Card(parent, "ПОДСКАЗКА · " + title);
+            UiKit.Label(card.transform, message, 19, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            UiKit.Button(card.transform, "ПОЧЕМУ ТАК ПРОИСХОДИТ · ЧИТАТЬ", delegate { ShowEncyclopedia(articleId); }, GamePalette.Ink, 52, 17);
+        }
+
         private void RenderOverview(Transform parent)
         {
             GameState state = simulation.State;
+            CivilizationState player = state.Civilization(state.HumanCivilizationId);
+            NationDefinition nation = player == null ? null : NationCatalog.Get(player.NationId);
             UiKit.Label(parent, "Карта государства", 32, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+            if (nation != null)
+            {
+                GameObject leaderCard = UiKit.CreateObject("PlayerLeader", parent);
+                UiKit.Horizontal(leaderCard, 4, 10);
+                AddCityBuildingArtwork(leaderCard.transform, nation.LeaderArtKey, 58);
+                Text leaderLabel = UiKit.Label(leaderCard.transform,
+                    nation.LeaderNameRu + " · " + nation.LeaderTitleRu + "\n" + nation.NameRu + " · " + nation.BonusTitle + " · " + nation.BonusDescription,
+                    20, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                leaderLabel.GetComponent<LayoutElement>().flexibleWidth = 1f;
+            }
             AddMap(parent);
             CityState selected = SelectedCity();
             if (selected != null)
@@ -734,9 +1144,16 @@ namespace Nasledie.Client
             {
                 CivilizationState civ = state.Civilizations[i];
                 if (civ.Id == state.HumanCivilizationId) continue;
-                UiKit.Label(civCard.transform, civ.Name + " · " + civ.Archetype + " · репутация " + civ.Reputation +
-                    " · отношение к вам " + civ.Relations[playerId(state)] + " · городов " + CountCities(state, civ.Id),
+                NationDefinition rivalNation = NationCatalog.Get(civ.NationId);
+                GameObject rivalRow = UiKit.CreateObject("RivalLeader_" + civ.Id, civCard.transform);
+                UiKit.Horizontal(rivalRow, 4, 10);
+                if (rivalNation != null) AddCityBuildingArtwork(rivalRow.transform, rivalNation.LeaderArtKey, 58);
+                Text rivalLabel = UiKit.Label(rivalRow.transform,
+                    (rivalNation == null ? civ.Name : rivalNation.LeaderNameRu + " · " + rivalNation.LeaderTitleRu + " · " + civ.Name) +
+                    (rivalNation == null ? "" : " · " + rivalNation.BonusDescription) + " · курс: " + AiGoalName(civ.StrategicGoal) +
+                    " · отношение " + civ.Relations[playerId(state)] + " · городов " + CountCities(state, civ.Id),
                     20, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+                rivalLabel.GetComponent<LayoutElement>().flexibleWidth = 1f;
             }
             UiKit.Button(civCard.transform, "ОТКРЫТЬ ДИПЛОМАТИЮ", delegate { currentPage = ScreenPage.Diplomacy; RenderGame(); }, GamePalette.Ink, 60, 22);
         }
@@ -782,7 +1199,7 @@ namespace Nasledie.Client
                 HexCell cell = state.Cells[i];
                 CreateHex(content.transform, cell, humanMask);
             }
-            UiKit.Label(card.transform, "⌂ город · ● войско · ◇ обоз · F ферма · T лес · = дорога · буквы отмечают ресурс. Цвет границ показывает владельца, тёмные клетки скрыты туманом.",
+            UiKit.Label(card.transform, "⌂ центр города · отдельные клетки — районы · ● войско · ◇ обоз · F ферма · T лес · = дорога. Цвет границ показывает владельца, тёмные клетки скрыты туманом.",
                 18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
         }
 
@@ -804,6 +1221,8 @@ namespace Nasledie.Client
             if (cell.OwnerId >= 0 && explored) graphic.color = Color.Lerp(graphic.color, ownerColor, 0.24f);
             bool selected = (cell.Q == selectedQ && cell.R == selectedR);
             CityState city = CityAt(cell.Q, cell.R);
+            CityState districtCity = string.IsNullOrEmpty(cell.DistrictBuildingId) ? null : simulation.State.City(cell.DistrictCityId);
+            CityState districtProjectCity = DistrictProjectCityAt(cell.Q, cell.R);
             if (selected || (city != null && city.Id == selectedCityId)) graphic.EdgeColor = GamePalette.Gold;
             else if (cell.OwnerId == simulation.State.HumanCivilizationId) graphic.EdgeColor = new Color(0.69f, 0.8f, 0.57f, 1f);
             else graphic.EdgeColor = new Color(0.12f, 0.18f, 0.17f, 1f);
@@ -821,6 +1240,8 @@ namespace Nasledie.Client
                 UnitState unit = visible ? UnitAt(cell.Q, cell.R) : null;
                 if (unit != null && IsUnitMoving(unit.Id)) unit = null;
                 if (unit != null) marker = unit.Kind == UnitKind.SettlerWagon ? "◇" : "●";
+                else if (districtCity != null) marker = "▥";
+                else if (districtProjectCity != null) marker = "+";
                 else if (cell.Improvement != ImprovementKind.None && cell.Damage < 75) marker = ImprovementMark(cell.Improvement);
                 else if (cell.Resource != ResourceKind.None) marker = ResourceMark(cell.Resource);
             }
@@ -828,19 +1249,32 @@ namespace Nasledie.Client
             {
                 string artwork = null;
                 if (explored && city != null) artwork = CityMapArtwork(city, CivilizationEra(city.OwnerId));
-                else if (visible)
+                else
                 {
-                    UnitState unit = UnitAt(cell.Q, cell.R);
+                    UnitState unit = visible ? UnitAt(cell.Q, cell.R) : null;
                     if (unit != null && IsUnitMoving(unit.Id)) unit = null;
                     if (unit != null) artwork = UnitArtwork(unit.Kind, CivilizationEra(unit.OwnerId));
-                    else if (cell.Improvement != ImprovementKind.None && cell.Damage < 75) artwork = ImprovementArtwork(cell.Improvement, CivilizationEra(cell.OwnerId));
-                    else artwork = ResourceArtwork(cell.Resource);
+                    else if (districtCity != null) artwork = BuildingArtwork(cell.DistrictBuildingId, CivilizationEra(districtCity.OwnerId), CivilizationNationId(districtCity.OwnerId));
+                    else if (districtProjectCity != null) artwork = BuildingArtwork(districtProjectCity.Project.TargetId, CivilizationEra(districtProjectCity.OwnerId), CivilizationNationId(districtProjectCity.OwnerId));
+                    else if (visible && cell.Improvement != ImprovementKind.None && cell.Damage < 75) artwork = ImprovementArtwork(cell.Improvement, CivilizationEra(cell.OwnerId));
+                    else if (visible) artwork = ResourceArtwork(cell.Resource);
                 }
                 Sprite sprite = LoadArtwork(artwork);
                 if (sprite != null)
                 {
-                    AddMapArtwork(tile.transform, artwork, city != null ? new Vector2(38, 34) : new Vector2(27, 25),
-                        city != null ? new Vector2(0, 3) : new Vector2(12, 8), Color.white);
+                    CivilizationState districtOwner = districtCity != null ? simulation.State.Civilization(districtCity.OwnerId) :
+                        districtProjectCity == null ? null : simulation.State.Civilization(districtProjectCity.OwnerId);
+                    Color tint = districtOwner == null ? Color.white : Color.Lerp(Color.white, NationAccent(districtOwner), 0.16f);
+                    if (!visible && city == null) tint = Color.Lerp(tint, GamePalette.Ink, 0.38f);
+                    if (districtProjectCity != null && districtCity == null) tint.a = 0.62f;
+                    AddMapArtwork(tile.transform, artwork, city != null ? new Vector2(46, 42) : districtCity != null || districtProjectCity != null ? new Vector2(31, 28) : new Vector2(27, 25),
+                        city != null ? new Vector2(0, 4) : new Vector2(12, 8), tint);
+                    if (city != null)
+                    {
+                        CivilizationState cityOwner = simulation.State.Civilization(city.OwnerId);
+                        NationDefinition nation = cityOwner == null ? null : NationCatalog.Get(cityOwner.NationId);
+                        if (nation != null) AddMapArtwork(tile.transform, nation.LeaderArtKey, new Vector2(15, 15), new Vector2(-19, 14), Color.white);
+                    }
                 }
                 else
                 {
@@ -888,17 +1322,39 @@ namespace Nasledie.Client
             return civilization == null ? Era.Communities : civilization.Era;
         }
 
+        private string CivilizationNationId(int civilizationId)
+        {
+            CivilizationState civilization = simulation == null ? null : simulation.State.Civilization(civilizationId);
+            return civilization == null ? null : civilization.NationId;
+        }
+
         private void SelectHex(int q, int r)
         {
             if (presentationBusy) return;
             selectedQ = q;
             selectedR = r;
             CityState city = CityAt(q, r);
+            HexCell selectedCell = simulation.State.Cell(q, r);
+            bool selectedDistrict = city == null && selectedCell != null && !string.IsNullOrEmpty(selectedCell.DistrictBuildingId);
+            CityState districtProjectCity = city == null ? DistrictProjectCityAt(q, r) : null;
+            bool selectedProjectPlot = !selectedDistrict && districtProjectCity != null;
+            if (selectedDistrict) city = simulation.State.City(selectedCell.DistrictCityId);
+            else if (selectedProjectPlot) city = districtProjectCity;
             if (city != null && city.OwnerId == simulation.State.HumanCivilizationId)
             {
                 selectedCityId = city.Id;
                 selectedUnitId = -1;
-                notice = "Выбран город «" + city.Name + "».";
+                if (selectedDistrict)
+                {
+                    BuildingDefinition building = RulesCatalog.Building(selectedCell.DistrictBuildingId);
+                    notice = "Выбран район «" + DisplayBuildingName(building, CivilizationNationId(city.OwnerId)) + "» города «" + city.Name + "».";
+                }
+                else if (selectedProjectPlot)
+                {
+                    BuildingDefinition building = RulesCatalog.Building(city.Project.TargetId);
+                    notice = "Выбран участок будущего района «" + DisplayBuildingName(building, CivilizationNationId(city.OwnerId)) + "» города «" + city.Name + "».";
+                }
+                else notice = "Выбран город «" + city.Name + "».";
                 RenderGame();
                 return;
             }
@@ -956,14 +1412,7 @@ namespace Nasledie.Client
 
         private Color OwnerColor(int ownerId)
         {
-            switch (ownerId)
-            {
-                case 0: return GamePalette.Gold;
-                case 1: return GamePalette.Teal;
-                case 2: return GamePalette.Rust;
-                case 3: return GamePalette.Sage;
-                default: return Color.white;
-            }
+            return NationAccent(simulation == null ? null : simulation.State.Civilization(ownerId));
         }
 
         private static string ImprovementMark(ImprovementKind improvement)
@@ -998,6 +1447,18 @@ namespace Nasledie.Client
         {
             for (int i = 0; i < simulation.State.Cities.Length; i++)
                 if (simulation.State.Cities[i].Q == q && simulation.State.Cities[i].R == r) return simulation.State.Cities[i];
+            return null;
+        }
+
+        private CityState DistrictProjectCityAt(int q, int r)
+        {
+            for (int i = 0; i < simulation.State.Cities.Length; i++)
+            {
+                CityState city = simulation.State.Cities[i];
+                CityProject project = city.Project;
+                if (project != null && project.Kind == ProjectKind.Building && project.DistrictPlotReserved && project.TargetQ == q && project.TargetR == r)
+                    return city;
+            }
             return null;
         }
 
@@ -1120,12 +1581,20 @@ namespace Nasledie.Client
 
         private void RenderCityArchitecture(Transform parent, CityState city, CivilizationState owner)
         {
-            GameObject card = UiKit.Card(parent, "Архитектура · эпоха «" + EraName(owner.Era) + "»");
+            int districtCount = CountDistricts(city.Id);
+            NationDefinition nation = NationCatalog.Get(owner.NationId);
+            GameObject card = UiKit.Card(parent, "Городские районы · " + districtCount + " построено");
             GameObject center = UiKit.CreateObject("CityCenterArtwork", card.transform);
             UiKit.Horizontal(center, 8, 14);
-            AddCityBuildingArtwork(center.transform, CityMapArtwork(city, owner.Era), 138);
+            if (nation != null) AddCityBuildingArtwork(center.transform, nation.LeaderArtKey, 68);
+            AddCityBuildingArtwork(center.transform, nation == null ? "City" : nation.ArtKey, 92);
+            string currentArchitecture = CityMapArtwork(city, owner.Era);
+            if (nation == null || currentArchitecture != nation.ArtKey)
+                AddCityBuildingArtwork(center.transform, currentArchitecture, 138);
             Text eraDescription = UiKit.Label(center.transform,
-                "Главный видимый объект города и новые постройки используют архитектуру текущей эпохи. При переходе эпохи ансамбль обновится на карте и в городе.",
+                "Персонаж: " + (nation == null ? owner.Name : nation.LeaderNameRu) + ". Центр «" + (nation == null ? owner.Name : nation.NameRu) +
+                "» остаётся на центральном гексе. Каждый район занимает отдельную клетку; обычные здания меняют вид с эпохой. " +
+                (nation == null ? "" : "Учебный центр «" + nation.CampusNameRu + "»: " + nation.CampusBonusDescriptionRu),
                 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             eraDescription.GetComponent<LayoutElement>().flexibleWidth = 1f;
 
@@ -1136,16 +1605,37 @@ namespace Nasledie.Client
                 if (level <= 0) continue;
                 BuildingDefinition definition = RulesCatalog.Building(city.BuildingIds[i]);
                 if (definition == null) continue;
+                HexCell district = DistrictCellForCity(city.Id, definition.Id);
                 GameObject row = UiKit.CreateObject("BuiltBuilding_" + city.BuildingIds[i], card.transform);
                 UiKit.Horizontal(row, 4, 14);
-                AddCityBuildingArtwork(row.transform, BuildingArtwork(definition.Id, owner.Era), 82);
-                Text buildingLabel = UiKit.Label(row.transform, definition.NameRu + " · уровень " + level, 19,
+                AddCityBuildingArtwork(row.transform, BuildingArtwork(definition.Id, owner.Era, owner.NationId), 82);
+                string location = district == null ? "· район не найден" : "· район на карте " + district.Q + "," + district.R;
+                Text buildingLabel = UiKit.Label(row.transform, DisplayBuildingName(definition, owner.NationId) + " · уровень " + level + " " + location, 19,
                     GamePalette.PaperDim, TextAnchor.MiddleLeft, true);
                 buildingLabel.GetComponent<LayoutElement>().flexibleWidth = 1f;
                 shown++;
             }
             if (shown == 0)
-                UiKit.Label(card.transform, "Городской центр пока единственное завершённое здание.", 19, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                UiKit.Label(card.transform, "Городской центр пока единственное завершённое здание. Первый район появится на отдельном свободном гексе после стройки.",
+                    19, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+        }
+
+        private int CountDistricts(int cityId)
+        {
+            int count = 0;
+            for (int i = 0; i < simulation.State.Cells.Length; i++)
+                if (simulation.State.Cells[i].DistrictCityId == cityId && !string.IsNullOrEmpty(simulation.State.Cells[i].DistrictBuildingId)) count++;
+            return count;
+        }
+
+        private HexCell DistrictCellForCity(int cityId, string buildingId)
+        {
+            for (int i = 0; i < simulation.State.Cells.Length; i++)
+            {
+                HexCell cell = simulation.State.Cells[i];
+                if (cell.DistrictCityId == cityId && cell.DistrictBuildingId == buildingId) return cell;
+            }
+            return null;
         }
 
         private static void AddCityBuildingArtwork(Transform parent, string name, float size)
@@ -1240,6 +1730,9 @@ namespace Nasledie.Client
                 else
                     UiKit.Label(card.transform, ProjectName(project) + " · " + project.Progress + "/" + project.Cost + " ПП · " + percent + "% · примерно " + turnsLeft + " ход(а) до завершения",
                         22, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                if (project.Kind == ProjectKind.Building && project.DistrictPlotReserved)
+                    UiKit.Label(card.transform, "Место будущего района: гекс " + project.TargetQ + "," + project.TargetR + ". Земля уже включена в территорию города; район появится после завершения.",
+                        19, GamePalette.Muted, TextAnchor.MiddleLeft, false);
                 UiKit.Button(card.transform, "ОТМЕНИТЬ ПРОЕКТ · ВОЗВРАТ ПОЛОВИНЫ ВЛОЖЕННОЙ КАЗНЫ", delegate { Issue(CommandKind.SetProject, city.Id, text: "cancel"); }, GamePalette.Rust, 62, 18);
             }
         }
@@ -1261,14 +1754,16 @@ namespace Nasledie.Client
             {
                 BuildingDefinition building = RulesCatalog.Buildings[i];
                 if (building.Id == "legacy_quarter" || building.ProductionCost <= 0) continue;
+                if (!string.IsNullOrEmpty(building.RequiredNationId) && building.RequiredNationId != owner.NationId) continue;
                 bool unlocked = string.IsNullOrEmpty(building.RequiredTechnology) || owner.Knows(building.RequiredTechnology);
                 bool already = city.BuildingLevel(building.Id) > 0;
-                string label = building.NameRu + " · " + building.ProductionCost + " ПП · содержание " + Format(building.UpkeepTenths) +
+                string label = DisplayBuildingName(building, owner.NationId) + " · " + building.ProductionCost + " ПП · содержание " + Format(building.UpkeepTenths) +
+                    (string.IsNullOrEmpty(building.RequiredNationId) ? "" : " · " + BuildingEffectSummary(building)) +
                     (unlocked ? "" : " · нужна технология «" + building.RequiredTechnology + "»") +
                     (already ? " · уже построено" : "");
                 Button button = UiKit.Button(card.transform, label,
                     delegate { Issue(CommandKind.SetProject, city.Id, text: building.Id); }, already ? GamePalette.Ink : unlocked ? GamePalette.Teal : GamePalette.Ink, 60, 18);
-                AddButtonArtwork(button, BuildingArtwork(building.Id, owner.Era));
+                AddButtonArtwork(button, BuildingArtwork(building.Id, owner.Era, owner.NationId));
                 button.interactable = unlocked && (!already || building.Id == "house") &&
                     (!building.UniqueEmpireBuilding || CountEmpireBuilding(owner.Id, building.Id) == 0) &&
                     (city.Project == null || city.Project.Kind == ProjectKind.None);
@@ -1945,8 +2440,18 @@ namespace Nasledie.Client
                 ConflictState conflict = FindConflict(state, player.Id, other.Id);
                 string status = conflict == null ? "мир" : ConflictPhaseName(conflict.Phase) + " · ход войны " + conflict.WarTurn;
                 GameObject card = UiKit.Card(parent, other.Name + " · " + other.Archetype);
+                NationDefinition otherNation = NationCatalog.Get(other.NationId);
+                if (otherNation != null)
+                {
+                    GameObject leaderRow = UiKit.CreateObject("DiplomacyLeader_" + other.Id, card.transform);
+                    UiKit.Horizontal(leaderRow, 4, 10);
+                    AddCityBuildingArtwork(leaderRow.transform, otherNation.LeaderArtKey, 64);
+                    Text leader = UiKit.Label(leaderRow.transform, otherNation.LeaderNameRu + " · " + otherNation.LeaderTitleRu + "\n" + otherNation.LeaderHistoricalNoteRu,
+                        19, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                    leader.GetComponent<LayoutElement>().flexibleWidth = 1f;
+                }
                 UiKit.Label(card.transform, "Отношение " + player.Relations[other.Id] + " · доверие " + player.Trusts[other.Id] +
-                    " · угроза " + player.Threats[other.Id] + " · репутация соседа " + other.Reputation + " · статус: " + status,
+                    " · угроза " + player.Threats[other.Id] + " · репутация соседа " + other.Reputation + " · курс: " + AiGoalName(other.StrategicGoal) + " · статус: " + status,
                     21, GamePalette.Paper, TextAnchor.MiddleLeft, false);
                 UiKit.Label(card.transform, "Договоры требуют влияния. Торговля безопасна, но разрыв маршрута теряет накопленные доходы и отношения.",
                     18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
@@ -2271,7 +2776,7 @@ namespace Nasledie.Client
             diplomaticButton.interactable = diplomacyReady && player.DiplomaticCoalitionTurns == 0 && (SelectedCity().Project == null || SelectedCity().Project.Kind == ProjectKind.None);
 
             GameObject heritage = UiKit.Card(parent, "Наследие эпох · итоговый путь");
-            UiKit.Label(heritage.transform, "Если никто не завершил другой путь, на 80-м ходу побеждает цивилизация с наибольшим счётом развития. Он учитывает население, качество городов, технологии, культуру, связи, репутацию и цену войны.",
+            UiKit.Label(heritage.transform, "Если никто не завершил другой путь, на " + state.MaximumTurn + "-м ходу побеждает цивилизация с наибольшим счётом развития. Он учитывает население, качество городов, технологии, культуру, связи, репутацию и цену войны.",
                 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             UiKit.Label(heritage.transform, "Ваш счёт: " + VictoryEvaluator.HeritageScore(state, player.Id) + " · прогресс города: " + player.CompletedTechnologies + " технологий · " + CountCities(state, player.Id) + " городов · " + Format(simulation.CivilizationPopulationTenths(player.Id)) + " жителей.",
                 21, GamePalette.Gold, TextAnchor.MiddleLeft, true);

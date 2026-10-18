@@ -7,6 +7,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Nasledie.Client;
+using Nasledie.Core;
 
 namespace Nasledie.EditorTools
 {
@@ -89,6 +90,16 @@ namespace Nasledie.EditorTools
             RequireSprites("Art/UnitAtlas", 4);
             RequireSprites("Art/UnitEraAtlas", 20);
             RequireSprites("Art/AchievementAtlas", 12);
+            for (int i = 0; i < NationCatalog.All.Length; i++)
+            {
+                NationDefinition nation = NationCatalog.All[i];
+                RequireSprite("Art/" + nation.ArtKey, "архитектура нации " + nation.NameRu);
+                RequireSprite("Art/" + nation.LeaderArtKey, "портрет персонажа " + nation.LeaderNameRu);
+                RequireSprite("Art/" + nation.CampusArtKey, "культурная школа " + nation.NameRu);
+                RequireSprite("Art/" + nation.UniqueDistrictArtKey, "уникальный район " + nation.NameRu);
+                if (RulesCatalog.Building(nation.UniqueDistrictBuildingId) == null)
+                    throw new BuildFailedException("Не найдено игровое правило уникального района " + nation.UniqueDistrictBuildingId + ".");
+            }
             if (Resources.Load<Sprite>("Art/Jericho_Logo") == null) throw new BuildFailedException("Не найден логотип JERICHO.");
             if (Resources.Load<Sprite>("Art/AppIcon_iOS") == null) throw new BuildFailedException("Не найдена иконка iOS.");
             if (Resources.Load<AudioClip>("Audio/Nasledie_Theme") == null) throw new BuildFailedException("Не найдена музыкальная тема.");
@@ -99,6 +110,12 @@ namespace Nasledie.EditorTools
             Sprite[] sprites = Resources.LoadAll<Sprite>(path);
             if (sprites == null || sprites.Length != expected)
                 throw new BuildFailedException("Атлас " + path + " должен содержать " + expected + " спрайтов, сейчас: " + (sprites == null ? 0 : sprites.Length) + ". Проверьте импорт ArtAssetImporter.");
+        }
+
+        private static void RequireSprite(string path, string description)
+        {
+            if (Resources.Load<Sprite>(path) == null)
+                throw new BuildFailedException("Не найден спрайт: " + description + " (" + path + ").");
         }
     }
 

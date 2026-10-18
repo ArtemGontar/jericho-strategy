@@ -13,5 +13,6 @@
     <Compile Include="FreshScienceVictoryScenario.cs" />
     <Compile Include="FreshCulturalVictoryScenario.cs" />
     <Compile Include="FreshDiplomaticVictoryScenario.cs" />
+    <Compile Include="AiActiveVictoryBalanceScenario.cs" />
   </ItemGroup>
 </Project>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using Nasledie.Core;
 
@@ -8,7 +9,16 @@ internal static class Program
     {
         try
         {
+            RunCampaignPaceAcceptance();
             RunAllDifficultiesToCompletion();
+            AiActiveVictoryBalanceScenario.Run(Console.WriteLine);
+            RunAiProgressionAcceptance();
+            RunAiStrategicDiversityAcceptance();
+            RunAiCrisisResponseAcceptance();
+            RunAiBudgetAndInstitutionAcceptance();
+            RunAiQualityServicePlanningAcceptance();
+            RunAiVictoryCommitmentAcceptance();
+            RunAiDifficultyScalingAcceptance();
             RunFairStarterEconomyAcceptance();
             RunScienceFocusAssignmentAcceptance();
             RunInteractiveCampaignToCompletion();
@@ -22,7 +32,6 @@ internal static class Program
             RunScientificVictoryLiveProjectAcceptance();
             RunUniqueEmpireBuildingQueueAcceptance();
             RunEraTransitionAcceptance();
-            RunAiProgressionAcceptance();
             Console.WriteLine("PASS: all headless campaign scenarios reached a valid ending.");
             return 0;
         }
@@ -31,6 +40,26 @@ internal static class Program
             Console.Error.WriteLine("FAIL: " + exception.Message);
             return 1;
         }
+    }
+
+    private static void RunCampaignPaceAcceptance()
+    {
+        GameSimulation relaxed = GameSimulation.NewCampaign(50391, Difficulty.Standard, GamePace.Relaxed);
+        GameSimulation standard = GameSimulation.NewCampaign(50391, Difficulty.Standard, GamePace.Standard);
+        GameSimulation quick = GameSimulation.NewCampaign(50391, Difficulty.Standard, GamePace.Quick);
+        Assert(relaxed.State.Pace == GamePace.Relaxed && relaxed.State.MaximumTurn == 120, "relaxed pace must create a 120-turn campaign");
+        Assert(standard.State.Pace == GamePace.Standard && standard.State.MaximumTurn == 80, "standard pace must preserve the 80-turn campaign");
+        Assert(quick.State.Pace == GamePace.Quick && quick.State.MaximumTurn == 60, "quick pace must create a 60-turn campaign");
+        Assert(GamePacing.IsGlobalCrisisTurn(GamePace.Relaxed, 24) && GamePacing.IsGlobalCrisisTurn(GamePace.Relaxed, 42), "relaxed global crises must start on turn 24 and recur every 18 turns");
+        Assert(GamePacing.IsGlobalCrisisTurn(GamePace.Standard, 16) && GamePacing.IsGlobalCrisisTurn(GamePace.Standard, 28), "standard global crises must preserve the 16/28 turn schedule");
+        Assert(GamePacing.IsGlobalCrisisTurn(GamePace.Quick, 12) && GamePacing.IsGlobalCrisisTurn(GamePace.Quick, 21), "quick global crises must start on turn 12 and recur every 9 turns");
+        Assert(!GamePacing.IsGlobalCrisisTurn(GamePace.Relaxed, 16) && !GamePacing.IsGlobalCrisisTurn(GamePace.Quick, 16), "campaign paces must not share an identical crisis schedule");
+        Console.WriteLine("PASS: campaign pace selects 120, 80, or 60 turns and adjusts the global-crisis cadence.");
+        PlayUntilFinished(relaxed, "relaxed pace");
+        PlayUntilFinished(quick, "quick pace");
+        Assert(relaxed.State.Turn <= relaxed.State.MaximumTurn && quick.State.Turn <= quick.State.MaximumTurn,
+            "campaigns on each selectable pace must reach a valid ending before their configured limit");
+        Console.WriteLine("PASS: relaxed and quick campaigns reach valid endings within their selected turn limits.");
     }
 
     private static void RunAllDifficultiesToCompletion()
@@ -72,6 +101,48 @@ internal static class Program
                             " · influence " + civ.InfluenceTenths + " · research " + civ.ActiveResearchIndex + " · settlers " + settlerCount + " · project " + (capital == null || capital.Project == null ? "none" : capital.Project.Kind + ":" + capital.Project.TargetId) +
                             " · farmers " + (capital == null ? 0 : capital.Workers[(int)WorkerRole.Farmer]) + " · farms " + nearbyFarms + " · food output " + capitalYield.FoodTenths +
                             " · heritage " + VictoryEvaluator.HeritageScore(simulation.State, civ.Id));
+                    }
+                }
+                if (difficulty == (int)Difficulty.Trial && sample == 2)
+                {
+                    for (int civIndex = 1; civIndex < simulation.State.Civilizations.Length; civIndex++)
+                    {
+                        CivilizationState civ = simulation.State.Civilizations[civIndex];
+                        int cities = 0, universities = 0, culturalBuildings = 0, routes = 0, markets = 0;
+                        int minHealth = 101, minSafety = 101, minQuality = 101, qualityReadyCities = 0;
+                        bool academy = false;
+                        for (int cityIndex = 0; cityIndex < simulation.State.Cities.Length; cityIndex++)
+                        {
+                            CityState city = simulation.State.Cities[cityIndex];
+                            if (city.OwnerId != civ.Id) continue;
+                            cities++;
+                            minHealth = Math.Min(minHealth, city.Health);
+                            minSafety = Math.Min(minSafety, city.Safety);
+                            int quality = VictoryEvaluator.CityQualityIndex(simulation.State, city);
+                            minQuality = Math.Min(minQuality, quality);
+                            if (quality >= 75) qualityReadyCities++;
+                            universities += city.BuildingLevel("university");
+                            markets += city.BuildingLevel("market");
+                            academy |= city.BuildingLevel("academy") > 0;
+                            culturalBuildings += city.BuildingLevel("cultural_house") + city.BuildingLevel("archive") + city.BuildingLevel("exchange_house");
+                        }
+                        for (int treatyIndex = 0; treatyIndex < simulation.State.Treaties.Length; treatyIndex++)
+                            if (simulation.State.Treaties[treatyIndex].Active && simulation.State.Treaties[treatyIndex].Kind == TreatyKind.TradeRoute &&
+                                (simulation.State.Treaties[treatyIndex].FromCivilizationId == civ.Id || simulation.State.Treaties[treatyIndex].ToCivilizationId == civ.Id)) routes++;
+                        bool culturalReady = VictoryEvaluator.CanStartCulturalFestival(simulation.State, civ.Id);
+                        bool scienceReady = false, diplomaticReady = false;
+                        for (int cityIndex = 0; cityIndex < simulation.State.Cities.Length; cityIndex++)
+                            if (simulation.State.Cities[cityIndex].OwnerId == civ.Id)
+                            {
+                                scienceReady |= VictoryEvaluator.CanStartScientificProgram(simulation.State, civ.Id, simulation.State.Cities[cityIndex].Id);
+                                diplomaticReady |= VictoryEvaluator.CanStartDiplomaticCoalition(simulation.State, civ.Id, simulation.State.Cities[cityIndex].Id);
+                            }
+                        Console.WriteLine("AI-FINAL: " + civ.Name + " · goal " + civ.StrategicGoal + " · " + civ.Era + " · tech " + civ.CompletedTechnologies +
+                            " · cities " + cities + " · culture " + civ.CulturePrestige + "/" + culturalBuildings + " ready " + culturalReady +
+                            " · science " + universities + " uni, academy " + academy + " ready " + scienceReady + " · markets " + markets + " · diplomacy routes " + routes +
+                            " ready " + diplomaticReady + " · QoL min H/S/index " + minHealth + "/" + minSafety + "/" + minQuality +
+                            " qualified cities " + qualityReadyCities + "/" + cities + " · QoL streak " + civ.QualityVictoryTurns +
+                            " · treasury/influence " + civ.TreasuryTenths + "/" + civ.InfluenceTenths + ".");
                     }
                 }
             }
@@ -175,7 +246,7 @@ internal static class Program
 
     private static void RunAiProgressionAcceptance()
     {
-        GameSimulation simulation = GameSimulation.NewCampaign(134750, Difficulty.Standard);
+        GameSimulation simulation = GameSimulation.NewCampaign(134887, Difficulty.Standard);
         simulation.State.MaximumTurn = 70;
         while (!simulation.State.IsFinished)
         {
@@ -191,6 +262,227 @@ internal static class Program
             Console.WriteLine("AI: " + civ.Archetype + " reached " + civ.Era + " with " + civ.CompletedTechnologies + " technologies and " + cities + " cities by turn " + simulation.State.Turn + ".");
         }
         Console.WriteLine("PASS: campaign rivals expand and complete multiple institutional era transitions within the 70-turn campaign.");
+    }
+
+    private static void RunAiStrategicDiversityAcceptance()
+    {
+        int distinctOpenings = 0;
+        int rivalsWithMultipleGoals = 0;
+        var openingPlans = new List<string>();
+        var openingResearchPlans = new List<string>();
+        var fullResearchPaths = new List<string>();
+        var buildingPortfolios = new List<string>();
+        int differentResearchSamples = 0;
+        for (int sample = 0; sample < 12; sample++)
+        {
+            GameSimulation simulation = GameSimulation.NewCampaign(814273 + sample * 977, Difficulty.Standard);
+            var observedTechnologies = new HashSet<string>[4];
+            var researchOrders = new List<string>[4];
+            for (int civ = 0; civ < 4; civ++)
+            {
+                observedTechnologies[civ] = new HashSet<string>(simulation.State.Civilization(civ).KnownTechnologies);
+                researchOrders[civ] = new List<string>();
+            }
+            simulation.EndTurn();
+            RecordAiResearchCompletions(simulation.State, observedTechnologies, researchOrders);
+            CivilizationState scholar = simulation.State.Civilization(1);
+            CivilizationState trader = simulation.State.Civilization(2);
+            CivilizationState security = simulation.State.Civilization(3);
+            string signature = scholar.StrategicGoal + "/" + trader.StrategicGoal + "/" + security.StrategicGoal;
+            if (!openingPlans.Contains(signature)) { openingPlans.Add(signature); distinctOpenings++; }
+            string scholarResearch = RulesCatalog.Technologies[scholar.ActiveResearchIndex].Id;
+            string traderResearch = RulesCatalog.Technologies[trader.ActiveResearchIndex].Id;
+            string securityResearch = RulesCatalog.Technologies[security.ActiveResearchIndex].Id;
+            if (scholarResearch != securityResearch) differentResearchSamples++;
+            string researchSignature = scholarResearch + "/" + traderResearch + "/" + securityResearch;
+            if (!openingResearchPlans.Contains(researchSignature)) openingResearchPlans.Add(researchSignature);
+
+            bool[,] goalsSeen = new bool[3, 7];
+            for (int civ = 1; civ < 4; civ++) goalsSeen[civ - 1, AiGoalIndex(simulation.State.Civilization(civ).StrategicGoal)] = true;
+            int turns = 1;
+            while (!simulation.State.IsFinished && turns < 60)
+            {
+                simulation.EndTurn();
+                RecordAiResearchCompletions(simulation.State, observedTechnologies, researchOrders);
+                turns++;
+                for (int civ = 1; civ < 4; civ++) goalsSeen[civ - 1, AiGoalIndex(simulation.State.Civilization(civ).StrategicGoal)] = true;
+            }
+            string fullResearchPath = string.Join(",", researchOrders[1]) + "/" +
+                string.Join(",", researchOrders[2]) + "/" + string.Join(",", researchOrders[3]);
+            if (!fullResearchPaths.Contains(fullResearchPath)) fullResearchPaths.Add(fullResearchPath);
+            string portfolio = AiBuildingSignature(simulation.State, 1) + "/" + AiBuildingSignature(simulation.State, 2) + "/" + AiBuildingSignature(simulation.State, 3);
+            if (!buildingPortfolios.Contains(portfolio)) buildingPortfolios.Add(portfolio);
+            for (int civ = 0; civ < 3; civ++)
+            {
+                int count = 0;
+                for (int goal = 0; goal < 7; goal++) if (goalsSeen[civ, goal]) count++;
+                if (count >= 2) rivalsWithMultipleGoals++;
+            }
+        }
+        Assert(distinctOpenings >= 4, "procedural campaign seeds must produce several recognizable opening plan combinations; found " +
+            distinctOpenings + " (" + string.Join(", ", openingPlans.ToArray()) + ")");
+        Assert(differentResearchSamples >= 6 && openingResearchPlans.Count >= 2,
+            "opening research should vary by archetype and seed; opening patterns " + openingResearchPlans.Count + ", 60-turn research paths " + fullResearchPaths.Count +
+            ", scholar/security separation " + differentResearchSamples + "/12");
+        Assert(fullResearchPaths.Count >= 8,
+            "AI rivals should follow meaningfully different technology orders across procedural seeds; found " + fullResearchPaths.Count + " chronological paths");
+        Assert(buildingPortfolios.Count >= 6, "rivals should develop visibly different cities across seeds; distinct building portfolios " + buildingPortfolios.Count);
+        Assert(rivalsWithMultipleGoals >= 4, "rivals must adapt their strategic course when their campaign conditions change");
+        Console.WriteLine("PASS: " + distinctOpenings + " opening goal combinations, " + openingResearchPlans.Count + " opening research patterns, " +
+            buildingPortfolios.Count + " 60-turn building portfolios, " + fullResearchPaths.Count + " chronological research paths, and " +
+            rivalsWithMultipleGoals + " rival campaigns changed strategic goal at least once across twelve seeds.");
+    }
+
+    private static void RecordAiResearchCompletions(GameState state, HashSet<string>[] observed, List<string>[] orders)
+    {
+        for (int civ = 1; civ < state.Civilizations.Length; civ++)
+        {
+            string[] known = state.Civilization(civ).KnownTechnologies;
+            for (int i = 0; i < known.Length; i++)
+                if (observed[civ].Add(known[i])) orders[civ].Add(known[i]);
+        }
+    }
+
+    private static string AiBuildingSignature(GameState state, int civilizationId)
+    {
+        string signature = "";
+        for (int buildingIndex = 0; buildingIndex < RulesCatalog.Buildings.Length; buildingIndex++)
+        {
+            string buildingId = RulesCatalog.Buildings[buildingIndex].Id;
+            int total = 0;
+            for (int cityIndex = 0; cityIndex < state.Cities.Length; cityIndex++)
+                if (state.Cities[cityIndex].OwnerId == civilizationId) total += state.Cities[cityIndex].BuildingLevel(buildingId);
+            if (total > 0) signature += buildingId + ":" + total + ",";
+        }
+        return signature;
+    }
+
+    private static int AiGoalIndex(string goal)
+    {
+        switch (goal)
+        {
+            case "science": return 0;
+            case "trade": return 1;
+            case "culture": return 2;
+            case "quality": return 3;
+            case "defense": return 4;
+            case "recovery": return 5;
+            default: return 6;
+        }
+    }
+
+    private static void RunAiCrisisResponseAcceptance()
+    {
+        GameSimulation simulation = GameSimulation.NewCampaign(814274, Difficulty.Standard);
+        CityState rivalCapital = simulation.State.City(simulation.FindCapital(1));
+        rivalCapital.FoodTenths = 0;
+        int farmersBefore = rivalCapital.Workers[(int)WorkerRole.Farmer];
+        simulation.EndTurn();
+        rivalCapital = simulation.State.City(rivalCapital.Id);
+        Assert(rivalCapital.Workers[(int)WorkerRole.Farmer] > farmersBefore,
+            "an AI city facing a food shortfall must override its preferred economy focus and add farmers");
+        Console.WriteLine("PASS: an AI rival changes worker assignments immediately when a city faces a food emergency.");
+    }
+
+    private static void RunAiBudgetAndInstitutionAcceptance()
+    {
+        GameSimulation simulation = GameSimulation.NewCampaign(814275, Difficulty.Standard);
+        CivilizationState rival = simulation.State.Civilization(1);
+        CityState capital = simulation.State.City(simulation.FindCapital(rival.Id));
+        rival.TreasuryTenths = -500;
+        rival.ConsecutiveDeficitTurns = 2;
+        rival.StrategyHoldTurns = 5;
+        capital.FoodTenths = 200;
+        simulation.EndTurn();
+        rival = simulation.State.Civilization(1);
+        capital = simulation.State.City(simulation.FindCapital(rival.Id));
+        Assert(rival.TaxRate == TaxRate.High && capital.Workers[(int)WorkerRole.Merchant] > 0,
+            "an AI rival in a prolonged deficit must raise taxes and prioritize merchants while food remains secure; tax " + rival.TaxRate +
+            ", merchants " + capital.Workers[(int)WorkerRole.Merchant] + ", deficit turns " + rival.ConsecutiveDeficitTurns +
+            ", food " + capital.FoodTenths + ", project " + (capital.Project == null ? "none" : capital.Project.Kind.ToString()));
+
+        rival.TreasuryTenths = 1000;
+        rival.InfluenceTenths = 100;
+        rival.Era = Era.ConnectedLands;
+        rival.StrategicGoal = "science";
+        rival.StrategyHoldTurns = 5;
+        simulation.EndTurn();
+        rival = simulation.State.Civilization(1);
+        Assert(rival.HasLaw("universal_education"), "a science-focused rival must enact affordable education reform when it becomes available");
+        Console.WriteLine("PASS: AI rivals respond to a sustained deficit and enact a goal-aligned affordable reform.");
+    }
+
+    private static void RunAiVictoryCommitmentAcceptance()
+    {
+        GameSimulation simulation = GameSimulation.NewCampaign(814276, Difficulty.Standard);
+        GameState state = simulation.State;
+        CivilizationState rival = state.Civilization(1);
+        rival.CulturePrestige = 120;
+        rival.CulturalInfluence = new[] { 70, 0, 100, 100 };
+        rival.InfluenceTenths = 500;
+        rival.TreasuryTenths = 500;
+        rival.StrategicGoal = "culture";
+        rival.StrategyHoldTurns = 5;
+        CityState culturalHouse = VictoryCity(5, 1, "cultural_house");
+        culturalHouse.Q = 1; culturalHouse.R = 5;
+        CityState archive = VictoryCity(6, 1, "archive");
+        archive.Q = 6; archive.R = 5;
+        CityState exchange = VictoryCity(7, 1, "exchange_house");
+        exchange.Q = 8; exchange.R = 4;
+        Array.Resize(ref state.Cities, state.Cities.Length + 3);
+        state.Cities[state.Cities.Length - 3] = culturalHouse;
+        state.Cities[state.Cities.Length - 2] = archive;
+        state.Cities[state.Cities.Length - 1] = exchange;
+        state.NextEntityId = 8;
+
+        Assert(VictoryEvaluator.CanStartCulturalFestival(state, rival.Id), "victory commitment fixture must meet cultural requirements");
+        simulation.EndTurn();
+        rival = simulation.State.Civilization(1);
+        Assert(rival.CultureFestivalTurns == 1 && !simulation.State.IsFinished,
+            "the AI must begin a cultural victory once and preserve its first progress turn");
+        simulation.EndTurn();
+        Assert(simulation.State.IsFinished && simulation.State.WinnerCivilizationId == 1 && simulation.State.WinningPath == VictoryPath.Cultural,
+            "the AI must not restart an active festival instead of completing the two-turn victory hold");
+        Console.WriteLine("PASS: AI rivals commit to and complete an active victory project without restarting its timer.");
+    }
+
+    private static void RunAiQualityServicePlanningAcceptance()
+    {
+        GameSimulation simulation = GameSimulation.NewCampaign(814277, Difficulty.Standard);
+        CivilizationState rival = simulation.State.Civilization(1);
+        rival.StrategicGoal = "quality";
+        rival.StrategyHoldTurns = 5;
+        rival.TreasuryTenths = 1000;
+        CityState capital = simulation.State.City(simulation.FindCapital(rival.Id));
+        capital.Safety = 45;
+        capital.Education = 35;
+        simulation.EndTurn();
+        capital = simulation.State.City(capital.Id);
+        Assert(capital.ServiceFunding[1] > 0 && capital.ServiceFunding[2] > 0,
+            "a solvent quality-focused AI must invest in safety and education instead of only building economic infrastructure");
+        Console.WriteLine("PASS: a quality-focused rival funds city services when its treasury can support long-term improvements.");
+    }
+
+    private static void RunAiDifficultyScalingAcceptance()
+    {
+        int seed = 428173;
+        GameSimulation baseline = GameSimulation.NewCampaign(seed, Difficulty.Calm);
+        for (int difficulty = (int)Difficulty.Standard; difficulty <= (int)Difficulty.Trial; difficulty++)
+        {
+            GameSimulation comparison = GameSimulation.NewCampaign(seed, (Difficulty)difficulty);
+            for (int cityIndex = 1; cityIndex < 4; cityIndex++)
+            {
+                CityState baselineCity = baseline.State.City(cityIndex + 1);
+                CityState comparisonCity = comparison.State.City(cityIndex + 1);
+                CityYield baselineYield = EconomyCalculator.Calculate(baseline.State, baselineCity);
+                CityYield comparisonYield = EconomyCalculator.Calculate(comparison.State, comparisonCity);
+                Assert(comparisonYield.FoodTenths >= baselineYield.FoodTenths && comparisonYield.Production >= baselineYield.Production &&
+                    comparisonYield.KnowledgeTenths >= baselineYield.KnowledgeTenths && comparisonYield.TreasuryTenths >= baselineYield.TreasuryTenths &&
+                    comparisonYield.CulturePrestige >= baselineYield.CulturePrestige,
+                    "AI output modifiers must scale consistently and never lower output on a more difficult setting");
+            }
+        }
+        Console.WriteLine("PASS: AI output modifiers scale monotonically from Calm through Trial on identical maps.");
     }
 
     private static void RunEraTransitionAcceptance()

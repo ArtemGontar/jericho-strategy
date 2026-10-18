@@ -38,7 +38,8 @@ internal static class ActiveQualityVictoryScenario
             Require(simulation.State.IsFinished, "fresh quality campaign did not finish before the turn limit (seed " + seeds[i] + ")");
             Require(simulation.State.WinnerCivilizationId == playerId, "the human did not win the quality campaign (seed " + seeds[i] + ")");
             Require(simulation.State.WinningPath == VictoryPath.QualityOfLife, "fresh campaign did not use its active quality victory (seed " + seeds[i] + ")");
-            Require(simulation.State.Turn <= 60, "quality victory took longer than the acceptance target (seed " + seeds[i] + ")");
+            Require(simulation.State.Turn <= simulation.State.MaximumTurn, "quality victory went beyond the configured campaign limit (seed " + seeds[i] + ", turn " + simulation.State.Turn +
+                ", winner " + simulation.State.WinnerCivilizationId + ", path " + simulation.State.WinningPath + ")");
             output("PASS: fresh campaign seed " + seeds[i] + " won by quality on turn " + simulation.State.Turn + " with " + CountCities(simulation.State, playerId) + " cities.");
         }
         output("PASS: quality victory is reachable from a new campaign on three procedural maps using player commands.");

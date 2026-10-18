@@ -25,6 +25,7 @@ internal static class FreshDiplomaticVictoryScenario
             {
                 int turnBefore = simulation.State.Turn;
                 ResolveCrisis(simulation, playerId);
+                ManageBudget(simulation, playerId);
                 ChooseResearch(simulation, playerId);
                 AssignWorkers(simulation, playerId);
                 PlanProjects(simulation, playerId);
@@ -87,6 +88,8 @@ internal static class FreshDiplomaticVictoryScenario
     {
         CrisisState crisis = simulation.State.Crisis;
         CivilizationState player = simulation.State.Civilization(playerId);
+        if (simulation.State.HasResolvedGlobalCrisis &&
+            (simulation.State.ResolvedGlobalCrisisContributorMask & (1 << playerId)) != 0) return;
         if (crisis == null || crisis.Kind == CrisisKind.None || crisis.Resolved || crisis.TurnsActive < 2) return;
 
         int participants = CountBits(crisis.ContributorsMask);
@@ -330,7 +333,7 @@ internal static class FreshDiplomaticVictoryScenario
             if (HasActiveRoute(simulation.State, playerId, partner, assemblyCityId) || player.InfluenceTenths < 10) continue;
             int routeCount = CountRoutes(simulation.State, playerId);
             int routeSlots = 1 + CountBuilding(simulation.State, playerId, "market") + (player.Knows("trade_league") ? 1 : 0);
-            if (routeCount >= routeSlots) return;
+            if (routeCount >= routeSlots) break;
             CommandResult result = ProposeDiplomaticTreaty(simulation, playerId, partner, TreatyKind.TradeRoute, assemblyCityId);
             if (result.Code == "route_blocked") continue;
             if (!result.Accepted && result.Code != "route_slots")
@@ -338,26 +341,15 @@ internal static class FreshDiplomaticVictoryScenario
             return;
         }
 
-        if (CountRoutes(simulation.State, playerId) >= 2 || player.InfluenceTenths < 20) return;
-        for (int partner = 0; partner < simulation.State.Civilizations.Length; partner++)
-        {
-            if (partner == playerId || simulation.State.Civilization(partner).IsDefeated ||
-                HasOpenBorders(simulation.State, playerId, partner)) continue;
-            CommandResult result = ProposeDiplomaticTreaty(simulation, playerId, partner, TreatyKind.OpenBorders, assemblyCityId);
-            if (result.Accepted) return;
-        }
     }
 
-    private static bool HasOpenBorders(GameState state, int first, int second)
+    private static void ManageBudget(GameSimulation simulation, int playerId)
     {
-        for (int i = 0; i < state.Treaties.Length; i++)
-        {
-            TreatyState treaty = state.Treaties[i];
-            if ((treaty.Active || treaty.Pending) && treaty.Kind == TreatyKind.OpenBorders &&
-                ((treaty.FromCivilizationId == first && treaty.ToCivilizationId == second) ||
-                 (treaty.FromCivilizationId == second && treaty.ToCivilizationId == first))) return true;
-        }
-        return false;
+        CivilizationState player = simulation.State.Civilization(playerId);
+        if (player.TreasuryTenths < 0 && player.TaxRate != TaxRate.High)
+            simulation.Issue(new GameCommand { Kind = CommandKind.SetTax, ActorId = playerId, Value = (int)TaxRate.High });
+        else if (player.TreasuryTenths >= 1200 && player.TaxRate == TaxRate.High)
+            simulation.Issue(new GameCommand { Kind = CommandKind.SetTax, ActorId = playerId, Value = (int)TaxRate.Normal });
     }
 
     private static CommandResult ProposeDiplomaticTreaty(GameSimulation simulation, int playerId, int partnerId, TreatyKind kind, int sourceCityId)
