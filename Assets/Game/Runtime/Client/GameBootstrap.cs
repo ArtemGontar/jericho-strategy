@@ -2991,6 +2991,22 @@ namespace Nasledie.Client
             return button;
         }
 
+        private Button AddCompactActionButton(Transform parent, string label, Action action, Color color, float height = 44)
+        {
+            Button button = UiKit.Button(parent, label, action, color, height, 12);
+            LayoutElement layout = button.GetComponent<LayoutElement>();
+            layout.flexibleWidth = 1;
+            return button;
+        }
+
+        private GameObject CreateActionRow(Transform parent, string name, int spacing = 6)
+        {
+            GameObject row = UiKit.CreateObject(name, parent);
+            row.AddComponent<LayoutElement>().flexibleWidth = 1f;
+            UiKit.Horizontal(row, 0, spacing);
+            return row;
+        }
+
         private void RenderCity(Transform parent)
         {
             CivilizationState owner = simulation.State.Civilization(simulation.State.HumanCivilizationId);
@@ -4547,25 +4563,26 @@ namespace Nasledie.Client
         private void RenderResearch(Transform parent)
         {
             CivilizationState owner = simulation.State.Civilization(simulation.State.HumanCivilizationId);
-            GameObject summary = UiKit.Card(parent, "Наука · эпоха «" + EraName(owner.Era) + "»");
+            GameObject summary = UiKit.Section(parent, "ЭПОХА · " + EraName(owner.Era));
             TechnologyDefinition active = owner.ActiveResearchIndex >= 0 && owner.ActiveResearchIndex < RulesCatalog.Technologies.Length
                 ? RulesCatalog.Technologies[owner.ActiveResearchIndex] : null;
-            if (active == null) UiKit.Label(summary.transform, "Исследование не выбрано. Выберите доступную технологию ниже.", 21, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            if (active == null) UiKit.Label(summary.transform, "Исследование не выбрано.", 14, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             else
             {
                 int cost = active.Cost * 10 * (active.KeyTechnology ? 125 : 100) / 100;
                 int progress = owner.TechnologyProgressTenths[owner.ActiveResearchIndex];
-                UiKit.Label(summary.transform, "Сейчас: «" + active.NameRu + "» · " + Format(progress) + "/" + Format(cost) + " знаний · " +
-                    (cost <= 0 ? 0 : progress * 100 / cost) + "%", 23, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                UiKit.Label(summary.transform, "ИССЛЕДУЕТСЯ · " + active.NameRu + " · " + Format(progress) + "/" + Format(cost) + " знаний · " +
+                    (cost <= 0 ? 0 : progress * 100 / cost) + "%", 14, GamePalette.Paper, TextAnchor.MiddleLeft, true);
             }
             int eraKnowledge = CountTechnologiesInEra(owner, owner.Era);
             int councils = CountCitiesWithBuilding(owner.Id, "council");
             int transitionCost = GameSimulation.EraTransitionProductionCost(owner.Era);
             bool transitionInProgress = HasEraTransition(simulation.State, owner.Id);
-            UiKit.Label(summary.transform, "Знания поступают от учёных и школ. Для общественного перехода нужны три технологии текущей эпохи, Совет и 10 влияния; выбранный город вложит " + transitionCost + " производства.",
-                20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-            Button eraButton = UiKit.Button(summary.transform, (transitionInProgress ? "ПЕРЕХОД ЭПОХИ УЖЕ ИДЁТ" : "НАЧАТЬ ПЕРЕХОД ЭПОХИ") + " · " + eraKnowledge + "/3 · СОВЕТ " + (councils > 0 ? "ЕСТЬ" : "НЕТ") + " · 10 ВЛИЯНИЯ · " + transitionCost + " ПРОИЗВОДСТВА",
-                delegate { Issue(CommandKind.SetProject, SelectedCity().Id, text: "era_transition"); }, GamePalette.Gold, 70, 19);
+            UiKit.Label(summary.transform, "Переход требует 3 технологии эпохи, Совет и 10 влияния · цена строительства " + transitionCost + " ПП.",
+                12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            Button eraButton = UiKit.Button(summary.transform, (transitionInProgress ? "ПЕРЕХОД ЭПОХИ УЖЕ ИДЁТ" : "НАЧАТЬ ПЕРЕХОД ЭПОХИ") +
+                " · " + eraKnowledge + "/3 · СОВЕТ " + (councils > 0 ? "ЕСТЬ" : "НЕТ") + " · 10 ВЛИЯНИЯ · " + transitionCost + " ПП",
+                delegate { Issue(CommandKind.SetProject, SelectedCity().Id, text: "era_transition"); }, GamePalette.Gold, 44, 12);
             eraButton.interactable = (int)owner.Era < 4 && !transitionInProgress && eraKnowledge >= 3 && councils > 0 && owner.InfluenceTenths >= 100 &&
                 (SelectedCity().Project == null || SelectedCity().Project.Kind == ProjectKind.None);
 
@@ -4578,13 +4595,13 @@ namespace Nasledie.Client
                 string status = known ? "изучено" : available ? "доступно" : lockedReason;
                 int cost = tech.Cost * 10 * (tech.KeyTechnology ? 125 : 100) / 100;
                 int progress = owner.TechnologyProgressTenths[i];
-                GameObject card = UiKit.Card(parent, tech.NameRu + (tech.KeyTechnology ? " · ключевая" : ""));
-                UiKit.Label(card.transform, "Эпоха: " + EraName(tech.Era) + " · цена: " + Format(cost) + " знаний · " + status +
-                    (progress > 0 ? " · накоплено " + Format(progress) : ""), 20, known ? GamePalette.Sage : GamePalette.Paper, TextAnchor.MiddleLeft, false);
-                UiKit.Label(card.transform, "Открывает: " + tech.Unlock +
-                    (tech.Prerequisites.Length > 0 ? "\nНужно: " + string.Join(" · ", tech.Prerequisites) : ""), 19, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-                Button choose = UiKit.Button(card.transform, known ? "УЖЕ ИЗУЧЕНО" : available ? "ВЫБРАТЬ ИССЛЕДОВАНИЕ" : "ЗАБЛОКИРОВАНО",
-                    delegate { Issue(CommandKind.ChooseTechnology, text: tech.Id); }, available ? GamePalette.Teal : GamePalette.Ink, 56, 18);
+                GameObject section = UiKit.Section(parent, tech.NameRu + (tech.KeyTechnology ? " · КЛЮЧЕВАЯ" : ""));
+                UiKit.Label(section.transform, EraName(tech.Era) + " · " + Format(cost) + " знаний · " + status +
+                    (progress > 0 ? " · накоплено " + Format(progress) : ""), 12, known ? GamePalette.Sage : GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                UiKit.Label(section.transform, "Открывает: " + tech.Unlock +
+                    (tech.Prerequisites.Length > 0 ? " · Предпосылки: " + string.Join(" · ", tech.Prerequisites) : ""), 12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                Button choose = UiKit.Button(section.transform, known ? "ИЗУЧЕНО" : available ? "НАЗНАЧИТЬ ИССЛЕДОВАНИЕ" : "ЗАКРЫТО · " + status,
+                    delegate { Issue(CommandKind.ChooseTechnology, text: tech.Id); }, available ? GamePalette.Teal : GamePalette.Ink, 40, 12);
                 choose.interactable = available;
             }
         }
@@ -4620,25 +4637,36 @@ namespace Nasledie.Client
         {
             GameState state = simulation.State;
             CivilizationState player = state.Civilization(state.HumanCivilizationId);
-            GameObject fiscal = UiKit.Card(parent, "Доходы и налоги");
-            UiKit.Label(fiscal.transform, "Ставка сейчас: " + TaxName(player.TaxRate) + " · каждый город получает больше казны от торговцев, но высокий налог снижает доверие и привлекательность.",
-                21, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            GameObject taxRow = UiKit.CreateObject("TaxChoices", fiscal.transform);
-            UiKit.Horizontal(taxRow, 0, 8);
-            AddActionButton(taxRow.transform, "НИЗКИЙ", delegate { SetTax(TaxRate.Low); }, GamePalette.Teal, 58);
-            AddActionButton(taxRow.transform, "ОБЫЧНЫЙ", delegate { SetTax(TaxRate.Normal); }, GamePalette.Ink, 58);
-            AddActionButton(taxRow.transform, "ВЫСОКИЙ", delegate { SetTax(TaxRate.High); }, GamePalette.Rust, 58);
+            GameObject fiscal = UiKit.Section(parent, "НАЛОГИ · " + TaxName(player.TaxRate));
+            UiKit.Label(fiscal.transform, "Высокий налог даёт больше казны, но снижает доверие и привлекательность городов.",
+                12, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+            GameObject taxRow = CreateActionRow(fiscal.transform, "TaxChoices", 8);
+            AddCompactActionButton(taxRow.transform, "НИЗКИЙ", delegate { SetTax(TaxRate.Low); }, GamePalette.Teal);
+            AddCompactActionButton(taxRow.transform, "ОБЫЧНЫЙ", delegate { SetTax(TaxRate.Normal); }, GamePalette.Ink);
+            AddCompactActionButton(taxRow.transform, "ВЫСОКИЙ", delegate { SetTax(TaxRate.High); }, GamePalette.Rust);
 
-            GameObject agreements = UiKit.Card(parent, "Предложения и договоры");
+            GameObject agreements = UiKit.Section(parent, "ВХОДЯЩИЕ ПРЕДЛОЖЕНИЯ");
+            int pendingOffers = 0;
             for (int i = 0; i < state.Treaties.Length; i++)
             {
                 TreatyState treaty = state.Treaties[i];
                 if (!treaty.Pending || treaty.ToCivilizationId != player.Id) continue;
+                pendingOffers++;
                 CivilizationState from = state.Civilization(treaty.FromCivilizationId);
-                GameObject offer = UiKit.Card(agreements.transform, (from == null ? "Сосед" : from.Name) + " предлагает: " + TreatyName(treaty.Kind), 0);
-                UiKit.Button(offer.transform, "ПРИНЯТЬ", delegate { Issue(CommandKind.AcceptTreaty, treaty.Id); }, GamePalette.Teal, 54, 20);
+                GameObject offer = UiKit.CreateObject("IncomingTreaty_" + treaty.Id, agreements.transform);
+                LayoutElement offerLayout = offer.AddComponent<LayoutElement>();
+                offerLayout.minHeight = 48;
+                offerLayout.preferredHeight = 48;
+                offerLayout.flexibleWidth = 1f;
+                UiKit.Horizontal(offer, 0, 8);
+                offer.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
+                Text offerText = UiKit.Label(offer.transform, (from == null ? "Сосед" : from.Name) + " · " + TreatyName(treaty.Kind),
+                    13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                offerText.GetComponent<LayoutElement>().flexibleWidth = 1;
+                Button accept = UiKit.Button(offer.transform, "ПРИНЯТЬ", delegate { Issue(CommandKind.AcceptTreaty, treaty.Id); }, GamePalette.Teal, 40, 12);
+                SetToolbarButtonWidth(accept, 140);
             }
-            if (agreements.transform.childCount == 1) UiKit.Label(agreements.transform, "Входящих предложений нет.", 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            if (pendingOffers == 0) UiKit.Label(agreements.transform, "Новых договоров нет.", 13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
 
             for (int i = 0; i < state.Civilizations.Length; i++)
             {
@@ -4647,22 +4675,24 @@ namespace Nasledie.Client
                 CityState partnerCity = FirstCity(other.Id);
                 ConflictState conflict = FindConflict(state, player.Id, other.Id);
                 string status = conflict == null ? "мир" : ConflictPhaseName(conflict.Phase) + " · ход войны " + conflict.WarTurn;
-                GameObject card = UiKit.Card(parent, other.Name + " · " + other.Archetype);
+                GameObject card = UiKit.Section(parent, other.Name + " · " + other.Archetype);
                 NationDefinition otherNation = NationCatalog.Get(other.NationId);
                 if (otherNation != null)
                 {
                     GameObject leaderRow = UiKit.CreateObject("DiplomacyLeader_" + other.Id, card.transform);
+                    leaderRow.AddComponent<LayoutElement>().flexibleWidth = 1f;
                     UiKit.Horizontal(leaderRow, 4, 10);
+                    leaderRow.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
                     AddCityBuildingArtwork(leaderRow.transform, otherNation.LeaderArtKey, 64);
-                    Text leader = UiKit.Label(leaderRow.transform, otherNation.LeaderNameRu + " · " + otherNation.LeaderTitleRu + "\n" + otherNation.LeaderHistoricalNoteRu,
-                        19, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                    Text leader = UiKit.Label(leaderRow.transform, otherNation.LeaderNameRu + " · " + otherNation.LeaderTitleRu,
+                        13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
                     leader.GetComponent<LayoutElement>().flexibleWidth = 1f;
                 }
                 UiKit.Label(card.transform, "Отношение " + player.Relations[other.Id] + " · доверие " + player.Trusts[other.Id] +
-                    " · угроза " + player.Threats[other.Id] + " · репутация соседа " + other.Reputation + " · курс: " + AiGoalName(other.StrategicGoal) + " · статус: " + status,
-                    21, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-                UiKit.Label(card.transform, "Договоры требуют влияния. Торговля безопасна, но разрыв маршрута теряет накопленные доходы и отношения.",
-                    18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                    " · угроза " + player.Threats[other.Id] + " · репутация " + other.Reputation + " · курс " + AiGoalName(other.StrategicGoal) + " · " + status,
+                    13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                UiKit.Label(card.transform, "Цена договоров — влияние. Срок указан в ходах; постоянный маршрут срока не имеет.",
+                    12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
                 for (int treatyIndex = 0; treatyIndex < state.Treaties.Length; treatyIndex++)
                 {
                     TreatyState treaty = state.Treaties[treatyIndex];
@@ -4670,56 +4700,93 @@ namespace Nasledie.Client
                                 (treaty.FromCivilizationId == other.Id && treaty.ToCivilizationId == player.Id);
                     if (!pair || !treaty.Active) continue;
                     string remaining = treaty.TurnsRemaining <= 0 ? "бессрочно" : "ещё " + treaty.TurnsRemaining + " ход.";
-                    UiKit.Label(card.transform, "Действует: " + TreatyName(treaty.Kind) + " · " + remaining, 18, GamePalette.Teal, TextAnchor.MiddleLeft, false);
+                    UiKit.Label(card.transform, "Действует · " + TreatyName(treaty.Kind) + " · " + remaining, 12, GamePalette.Teal, TextAnchor.MiddleLeft, false);
                 }
                 if (HasPrisonersHeld(state, player.Id, other.Id))
                 {
                     int heldByPlayer = player.PrisonersHeldByCivilizationTenths[other.Id];
                     int heldByOther = other.PrisonersHeldByCivilizationTenths[player.Id];
                     UiKit.Label(card.transform, "Военнопленные: у вас " + Format(heldByPlayer) + " · у соседа " + Format(heldByOther) +
-                        " населения. Их можно обменять при переговорах о мире.", 18, GamePalette.Gold, TextAnchor.MiddleLeft, false);
+                        " жителей · обмен возможен при переговорах о мире.", 12, GamePalette.Gold, TextAnchor.MiddleLeft, false);
                 }
-                GameObject row1 = UiKit.CreateObject("TreatyRow1", card.transform);
-                UiKit.Horizontal(row1, 0, 8);
-                AddActionButton(row1.transform, "ТОРГОВЛЯ · 2 ВЛИЯНИЯ · БЕССРОЧНО", delegate { OfferTreaty(other.Id, TreatyKind.TradeRoute); }, GamePalette.Teal, 56);
-                AddActionButton(row1.transform, "ОТКРЫТЫЕ ГРАНИЦЫ · 4 · 5 ХОДОВ", delegate { OfferTreaty(other.Id, TreatyKind.OpenBorders); }, GamePalette.Ink, 56);
-                GameObject row2 = UiKit.CreateObject("TreatyRow2", card.transform);
-                UiKit.Horizontal(row2, 0, 8);
-                AddActionButton(row2.transform, "НЕНАПАДЕНИЕ · 5 ВЛИЯНИЯ · 5 ХОДОВ", delegate { OfferTreaty(other.Id, TreatyKind.NonAggression); }, GamePalette.Ink, 56);
-                AddActionButton(row2.transform, "ОБМЕН ЗНАНИЯМИ · 3 · РАЗОВО", delegate { OfferTreaty(other.Id, TreatyKind.KnowledgeExchange); }, GamePalette.Ink, 56);
-                GameObject row3 = UiKit.CreateObject("TreatyRow3", card.transform);
-                UiKit.Horizontal(row3, 0, 8);
-                AddActionButton(row3.transform, "ГАРАНТИЯ · 8 ВЛИЯНИЯ · 5 ХОДОВ", delegate { OfferTreaty(other.Id, TreatyKind.Guarantee); }, GamePalette.Teal, 56);
-                Button embargoButton = AddActionButton(row3.transform, "ЭМБАРГО · 3 ВЛИЯНИЯ · 3 ХОДА", delegate { OfferTreaty(other.Id, TreatyKind.Embargo); }, GamePalette.Rust, 56);
+                GameObject row1 = CreateActionRow(card.transform, "TreatyRow1", 8);
+                AddCompactActionButton(row1.transform, "ТОРГОВЛЯ · 2 ВЛ. · ПОСТ.", delegate { OfferTreaty(other.Id, TreatyKind.TradeRoute); }, GamePalette.Teal);
+                AddCompactActionButton(row1.transform, "ГРАНИЦЫ · 4 · 5 Х.", delegate { OfferTreaty(other.Id, TreatyKind.OpenBorders); }, GamePalette.Ink);
+                GameObject row2 = CreateActionRow(card.transform, "TreatyRow2", 8);
+                AddCompactActionButton(row2.transform, "НЕНАПАДЕНИЕ · 5 · 5 Х.", delegate { OfferTreaty(other.Id, TreatyKind.NonAggression); }, GamePalette.Ink);
+                AddCompactActionButton(row2.transform, "ЗНАНИЯ · 3 · РАЗОВО", delegate { OfferTreaty(other.Id, TreatyKind.KnowledgeExchange); }, GamePalette.Ink);
+                GameObject row3 = CreateActionRow(card.transform, "TreatyRow3", 8);
+                AddCompactActionButton(row3.transform, "ГАРАНТИЯ · 8 · 5 Х.", delegate { OfferTreaty(other.Id, TreatyKind.Guarantee); }, GamePalette.Teal);
+                Button embargoButton = AddCompactActionButton(row3.transform, "ЭМБАРГО · 3 · 3 Х.", delegate { OfferTreaty(other.Id, TreatyKind.Embargo); }, GamePalette.Rust);
                 embargoButton.interactable = CanOfferEmbargo(state, player.Id, other.Id);
-                GameObject row4 = UiKit.CreateObject("TreatyRow4", card.transform);
-                UiKit.Horizontal(row4, 0, 8);
-                AddActionButton(row4.transform, "ЭКСПОРТ СОЛИ · 2 ВЛИЯНИЯ · 5 ХОДОВ", delegate { OfferTreaty(other.Id, TreatyKind.ResourceExport); }, GamePalette.Gold, 56);
-                AddActionButton(row4.transform, "ПОМОЩЬ · 5 КАЗНЫ / 2 ВЛИЯНИЯ", delegate { OfferTreaty(other.Id, TreatyKind.HumanitarianAid); }, GamePalette.Teal, 56);
+                GameObject row4 = CreateActionRow(card.transform, "TreatyRow4", 8);
+                AddCompactActionButton(row4.transform, "СОЛЬ · 2 · 5 Х.", delegate { OfferTreaty(other.Id, TreatyKind.ResourceExport); }, GamePalette.Gold);
+                AddCompactActionButton(row4.transform, "ПОМОЩЬ · 5 КАЗНЫ + 2 ВЛ.", delegate { OfferTreaty(other.Id, TreatyKind.HumanitarianAid); }, GamePalette.Teal);
                 if (HasMediableConflict(state, player.Id, other.Id))
-                    UiKit.Button(card.transform, "ПОСРЕДНИЧЕСТВО · 5 ВЛИЯНИЯ", delegate { OfferTreaty(other.Id, TreatyKind.Mediation); }, GamePalette.Ink, 58, 18);
+                {
+                    GameObject mediationRow = CreateActionRow(card.transform, "MediationRow");
+                    mediationRow.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
+                    Button mediation = AddCompactActionButton(mediationRow.transform, "ПОСРЕДНИЧЕСТВО · 5 ВЛ.",
+                        delegate { OfferTreaty(other.Id, TreatyKind.Mediation); }, GamePalette.Ink);
+                    SetToolbarButtonWidth(mediation, 230f);
+                }
                 if (conflict != null && conflict.Phase >= 0 && conflict.Phase <= 2)
                 {
                     GameObject peaceTerms = UiKit.CreateObject("PeaceTerms_" + other.Id, card.transform);
-                    UiKit.Horizontal(peaceTerms, 0, 8);
-                    AddActionButton(peaceTerms.transform, "СТАТУС-КВО · 5 КАЗНЫ", delegate { Issue(CommandKind.MakePeace, targetId: other.Id, value: (int)PeaceTermKind.StatusQuo); }, GamePalette.Ink, 58);
-                    AddActionButton(peaceTerms.transform, "КОМПЕНСАЦИЯ ДО 10 КАЗНЫ", delegate { Issue(CommandKind.MakePeace, targetId: other.Id, value: (int)PeaceTermKind.Reparations); }, GamePalette.Gold, 58);
-                    AddActionButton(peaceTerms.transform, "ДЕМОБИЛИЗАЦИЯ", delegate { Issue(CommandKind.MakePeace, targetId: other.Id, value: (int)PeaceTermKind.Demobilization); }, GamePalette.Rust, 58);
+                    peaceTerms.AddComponent<LayoutElement>().flexibleWidth = 1f;
+                    UiKit.Vertical(peaceTerms, 0, 6);
+                    UiKit.Label(peaceTerms.transform, "УСЛОВИЯ МИРА", 12, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+                    List<Action> peaceActions = new List<Action>();
+                    List<string> peaceLabels = new List<string>();
+                    List<Color> peaceColors = new List<Color>();
+                    peaceLabels.Add("СТАТУС-КВО · 5 КАЗНЫ");
+                    peaceActions.Add(delegate { Issue(CommandKind.MakePeace, targetId: other.Id, value: (int)PeaceTermKind.StatusQuo); });
+                    peaceColors.Add(GamePalette.Ink);
+                    peaceLabels.Add("РЕПАРАЦИИ · ДО 10 КАЗНЫ");
+                    peaceActions.Add(delegate { Issue(CommandKind.MakePeace, targetId: other.Id, value: (int)PeaceTermKind.Reparations); });
+                    peaceColors.Add(GamePalette.Gold);
+                    peaceLabels.Add("ДЕМОБИЛИЗАЦИЯ");
+                    peaceActions.Add(delegate { Issue(CommandKind.MakePeace, targetId: other.Id, value: (int)PeaceTermKind.Demobilization); });
+                    peaceColors.Add(GamePalette.Rust);
                     if (CanClaimBorderCell(state, conflict, other.Id))
-                        AddActionButton(peaceTerms.transform, "ПЕРЕДАТЬ СПОРНУЮ КЛЕТКУ", delegate { Issue(CommandKind.MakePeace, targetId: other.Id, value: (int)PeaceTermKind.BorderAdjustment); }, GamePalette.Teal, 58);
+                    {
+                        peaceLabels.Add("ПЕРЕДАТЬ ГРАНИЦУ");
+                        peaceActions.Add(delegate { Issue(CommandKind.MakePeace, targetId: other.Id, value: (int)PeaceTermKind.BorderAdjustment); });
+                        peaceColors.Add(GamePalette.Teal);
+                    }
                     if (CanAnnexOccupiedCity(state, player.Id, other.Id, conflict))
-                        AddActionButton(peaceTerms.transform, "АННЕКСИЯ ГОРОДА · 15 ВЛИЯНИЯ", delegate { Issue(CommandKind.MakePeace, targetId: other.Id, value: (int)PeaceTermKind.AnnexOccupiedCity); }, GamePalette.Rust, 58);
+                    {
+                        peaceLabels.Add("АННЕКСИЯ · 15 ВЛ.");
+                        peaceActions.Add(delegate { Issue(CommandKind.MakePeace, targetId: other.Id, value: (int)PeaceTermKind.AnnexOccupiedCity); });
+                        peaceColors.Add(GamePalette.Rust);
+                    }
                     if (HasPrisonersHeld(state, player.Id, other.Id))
-                        AddActionButton(peaceTerms.transform, "ОБМЕНЯТЬ ВОЕННОПЛЕННЫХ", delegate { Issue(CommandKind.MakePeace, targetId: other.Id, value: (int)PeaceTermKind.PrisonerExchange); }, GamePalette.Teal, 58);
+                    {
+                        peaceLabels.Add("ОБМЕН ПЛЕННЫМИ");
+                        peaceActions.Add(delegate { Issue(CommandKind.MakePeace, targetId: other.Id, value: (int)PeaceTermKind.PrisonerExchange); });
+                        peaceColors.Add(GamePalette.Teal);
+                    }
+                    int peaceIndex = 0;
+                    while (peaceIndex < peaceLabels.Count)
+                    {
+                        GameObject peaceRow = CreateActionRow(peaceTerms.transform, "PeaceTermsRow", 6);
+                        int remaining = peaceLabels.Count - peaceIndex;
+                        int rowCount = remaining == 4 ? 2 : Math.Min(3, remaining);
+                        for (int slot = peaceIndex; slot < peaceIndex + rowCount; slot++)
+                        {
+                            AddCompactActionButton(peaceRow.transform, peaceLabels[slot], peaceActions[slot], peaceColors[slot]);
+                        }
+                        peaceIndex += rowCount;
+                    }
                 }
                 if (partnerCity != null && !other.IsDefeated)
                 {
-                    UiKit.Label(card.transform, "Торговый маршрут ведёт в город «" + partnerCity.Name + "».", 18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                    UiKit.Label(card.transform, "Маршрут ведёт в «" + partnerCity.Name + "». Разрыв лишает дохода и портит отношения.", 12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
                 }
             }
-            GameObject war = UiKit.Card(parent, "Кризис мобилизации и война");
-            UiKit.Label(war.transform, "Война не даёт обычного пути к победе. Она начинается через дипломатический кризис и мобилизацию, разрывает торговлю, снижает доверие, вызывает эвакуацию и портит инфраструктуру.",
-                20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            GameObject war = UiKit.Section(parent, "МОБИЛИЗАЦИЯ И ВОЙНА");
+            UiKit.Label(war.transform, "Объявление войны стоит 8 казны и начинает дипломатический кризис. Конфликт разрушает торговлю и инфраструктуру, снижает доверие и вызывает бегство жителей.",
+                12, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
             for (int i = 0; i < state.Civilizations.Length; i++)
             {
                 CivilizationState target = state.Civilizations[i];
@@ -4748,28 +4815,36 @@ namespace Nasledie.Client
                         treaty.ToCivilizationId == target.Id ? treaty.FromCivilizationId : -1;
                     if (guarantorId >= 0 && guarantorId != player.Id) { breaksGuarantee = true; break; }
                 }
+                UiKit.Label(war.transform, "ЦЕЛЬ · " + target.Name, 13, GamePalette.Gold, TextAnchor.MiddleLeft, true);
                 if (breaksPact)
-                    UiKit.Label(war.transform, "Нарушение действующего пакта дополнительно снизит вашу репутацию на 20 и ухудшит отношения с соседом.",
-                        18, GamePalette.Rust, TextAnchor.MiddleLeft, true);
+                    UiKit.Label(war.transform, "Нарушение пакта: −20 репутации и хуже отношения.",
+                        12, GamePalette.Rust, TextAnchor.MiddleLeft, false);
                 if (breaksGuarantee)
-                    UiKit.Label(war.transform, "Соседа защищает гарантия: объявление войны повысит угрозу у гаранта, снизит доверие и отнимет ещё 10 репутации.",
-                        18, GamePalette.Rust, TextAnchor.MiddleLeft, true);
-                UiKit.Label(war.transform, "Выберите цель заранее: она определит доступные условия мира. Военная победа не превращает город в бесплатную добычу.",
-                    18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                    UiKit.Label(war.transform, "Гарантия соседа: угроза гаранту, меньше доверия и −10 репутации.",
+                        12, GamePalette.Rust, TextAnchor.MiddleLeft, false);
+                UiKit.Label(war.transform, "Цель войны определяет возможные условия мира.",
+                    12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
                 string[] warGoals = { "защита спорной границы", "снятие торговой блокады", "демилитаризация границы", "защита гражданского коридора", "территориальный спор вокруг города" };
+                string[] warGoalLabels = { "ГРАНИЦА", "БЛОКАДА", "ДЕМИЛИТАРИЗАЦИЯ", "ГРАЖДАНСКИЙ КОРИДОР", "СПОР ЗА ГОРОД" };
                 Color[] goalColors = { GamePalette.Danger, GamePalette.Rust, GamePalette.Ink, GamePalette.Teal };
                 HexCell claim = FindClaimCell(state, player.Id, target.Id);
                 int claimQ = claim == null ? q : claim.Q;
                 int claimR = claim == null ? r : claim.R;
-                for (int goalIndex = 0; goalIndex < warGoals.Length; goalIndex++)
+                for (int goalIndex = 0; goalIndex < warGoals.Length; goalIndex += 2)
                 {
-                    string legalGoal = warGoals[goalIndex];
-                    int goalQ = goalIndex == 4 ? q : claimQ;
-                    int goalR = goalIndex == 4 ? r : claimR;
-                    Button declare = UiKit.Button(war.transform,
-                        legalGoal.ToUpperInvariant() + " · ПРОТИВ " + target.Name.ToUpperInvariant() + " · 8 КАЗНЫ",
-                        delegate { Issue(CommandKind.DeclareWar, targetId: id, q: goalQ, r: goalR, text: legalGoal); }, goalColors[goalIndex], 58, 16);
-                    declare.interactable = player.TreasuryTenths >= 80;
+                    GameObject goalRow = CreateActionRow(war.transform, "WarGoals_" + id + "_" + goalIndex, 6);
+                    for (int slot = goalIndex; slot < Math.Min(goalIndex + 2, warGoals.Length); slot++)
+                    {
+                        string legalGoal = warGoals[slot];
+                        int goalQ = slot == 4 ? q : claimQ;
+                        int goalR = slot == 4 ? r : claimR;
+                        Button declare = AddCompactActionButton(goalRow.transform,
+                            warGoalLabels[slot] + " · 8 КАЗНЫ",
+                            delegate { Issue(CommandKind.DeclareWar, targetId: id, q: goalQ, r: goalR, text: legalGoal); }, goalColors[slot % goalColors.Length]);
+                        declare.interactable = player.TreasuryTenths >= 80;
+                    }
+                    if (goalIndex + 1 >= warGoals.Length)
+                        UiKit.CreateObject("WarGoalSpacer", goalRow.transform).AddComponent<LayoutElement>().flexibleWidth = 1f;
                 }
             }
         }
@@ -4953,19 +5028,24 @@ namespace Nasledie.Client
         private void RenderLaws(Transform parent)
         {
             CivilizationState owner = simulation.State.Civilization(simulation.State.HumanCivilizationId);
-            GameObject summary = UiKit.Card(parent, "Институты · влияние " + Format(owner.InfluenceTenths) + " · кулдаун " + owner.LawCooldownTurns + " ходов");
-            UiKit.Label(summary.transform, "Один активный закон на категорию. Новая реформа заменяет старую и требует 5 влияния. Некоторые законы добавляют содержание городов или административную ёмкость.",
-                20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            GameObject summary = UiKit.Section(parent, "УСТРОЙСТВО ДЕРЖАВЫ");
+            UiKit.Label(summary.transform, "Влияние " + Format(owner.InfluenceTenths) + "  ·  До следующей реформы: " + owner.LawCooldownTurns + " ходов.",
+                13, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+            UiKit.Label(summary.transform, "Один закон на категорию · новая реформа заменяет действующую и стоит 5 влияния.",
+                12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             for (int i = 0; i < RulesCatalog.Laws.Length; i++)
             {
                 LawDefinition law = RulesCatalog.Laws[i];
                 bool era = (int)law.Era <= (int)owner.Era;
                 bool active = owner.HasLaw(law.Id);
-                GameObject card = UiKit.Card(parent, law.NameRu + " · " + law.Category);
-                UiKit.Label(card.transform, law.DescriptionRu + " · эпоха " + EraName(law.Era) + " · содержание " + Format(law.UpkeepPerCityTenths) + " на город за ход.",
-                    20, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
-                Button enact = UiKit.Button(card.transform, active ? "УЖЕ ДЕЙСТВУЕТ" : era ? "ПРИНЯТЬ РЕФОРМУ · 5 ВЛИЯНИЯ" : "ЗАБЛОКИРОВАНО ДО НОВОЙ ЭПОХИ",
-                    delegate { Issue(CommandKind.EnactLaw, text: law.Id); }, active ? GamePalette.Ink : GamePalette.Teal, 58, 18);
+                GameObject section = UiKit.Section(parent, law.NameRu + " · " + law.Category);
+                UiKit.Label(section.transform, law.DescriptionRu + "  ·  " + EraName(law.Era) + "  ·  содержание " + Format(law.UpkeepPerCityTenths) + " / город / ход",
+                    12, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+                string actionLabel = active ? "ДЕЙСТВУЕТ" : !era ? "ЗАКРЫТО · ТРЕБУЕТСЯ " + EraName(law.Era) :
+                    owner.LawCooldownTurns > 0 ? "ПЕРЕЗАРЯДКА · " + owner.LawCooldownTurns + " ХОДОВ" :
+                    owner.InfluenceTenths < 50 ? "НУЖНО 5 ВЛИЯНИЯ" : "ПРИНЯТЬ · 5 ВЛИЯНИЯ";
+                Button enact = UiKit.Button(section.transform, actionLabel,
+                    delegate { Issue(CommandKind.EnactLaw, text: law.Id); }, active ? GamePalette.Ink : GamePalette.Teal, 40, 12);
                 enact.interactable = era && !active && owner.InfluenceTenths >= 50 && owner.LawCooldownTurns == 0;
             }
         }
