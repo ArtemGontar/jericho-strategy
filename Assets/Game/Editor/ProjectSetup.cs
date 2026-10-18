@@ -90,6 +90,10 @@ namespace Nasledie.EditorTools
             RequireSprites("Art/UnitAtlas", 4);
             RequireSprites("Art/UnitEraAtlas", 20);
             RequireSprites("Art/AchievementAtlas", 12);
+            RequireSprites("Art/Animations/WorkerActivities_Rural", 16);
+            RequireSprites("Art/Animations/WorkerActivities_Civic", 16);
+            RequireSpriteFrames("Art/Animations/WorkerActivities_Rural", new[] { "Activity_Farmer", "Activity_Lumberjack", "Activity_Blacksmith", "Activity_Scholar" });
+            RequireSpriteFrames("Art/Animations/WorkerActivities_Civic", new[] { "Activity_Merchant", "Activity_Artist", "Activity_Steward", "Activity_Builder" });
             for (int i = 0; i < NationCatalog.All.Length; i++)
             {
                 NationDefinition nation = NationCatalog.All[i];
@@ -125,6 +129,20 @@ namespace Nasledie.EditorTools
             Sprite[] sprites = Resources.LoadAll<Sprite>(path);
             if (sprites == null || sprites.Length != expected)
                 throw new BuildFailedException("Атлас " + path + " должен содержать " + expected + " спрайтов, сейчас: " + (sprites == null ? 0 : sprites.Length) + ". Проверьте импорт ArtAssetImporter.");
+        }
+
+        private static void RequireSpriteFrames(string path, string[] activities)
+        {
+            Sprite[] sprites = Resources.LoadAll<Sprite>(path);
+            for (int activity = 0; activity < activities.Length; activity++)
+                for (int frame = 0; frame < 4; frame++)
+                {
+                    string expected = activities[activity] + "_" + frame;
+                    bool found = false;
+                    for (int i = 0; i < sprites.Length; i++)
+                        if (sprites[i] != null && sprites[i].name == expected) { found = true; break; }
+                    if (!found) throw new BuildFailedException("Не найден кадр " + expected + " в атласе " + path + ".");
+                }
         }
 
         private static void RequireSprite(string path, string description)

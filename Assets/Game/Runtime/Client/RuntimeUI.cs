@@ -168,6 +168,11 @@ namespace Nasledie.Client
                 if (ButtonClickHandler != null) ButtonClickHandler();
                 if (action != null) action();
             });
+            if (action == null)
+            {
+                button.interactable = false;
+                Debug.LogError("JERICHO: кнопка без действия была отключена: " + label);
+            }
             LayoutElement layout = go.AddComponent<LayoutElement>();
             layout.minHeight = height;
             layout.preferredHeight = height;

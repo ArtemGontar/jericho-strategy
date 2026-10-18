@@ -24,6 +24,7 @@ internal static class Program
             RunInteractiveCampaignToCompletion();
             RunSaveResumeCampaign();
             RunPunitiveWarAndRecovery();
+            RunBattleEventCaptureAcceptance();
             RunVictoryPathAcceptance();
             ActiveQualityVictoryScenario.Run(Console.WriteLine);
             FreshCulturalVictoryScenario.Run(Console.WriteLine);
@@ -606,6 +607,36 @@ internal static class Program
         Assert(!simulation.State.Conflicts[0].Active, "truce must end in a finite recovery period");
         Assert(player.WarStrain < 25, "war strain must recover after the conflict closes");
         Console.WriteLine("PASS: mobilization penalties, pre-combat peace, truce, and recovery completed.");
+    }
+
+    private static void RunBattleEventCaptureAcceptance()
+    {
+        GameState state = MinimalVictoryState();
+        state.HumanCivilizationId = 0;
+        state.Cells = new[]
+        {
+            new HexCell { Q = 0, R = 0, Terrain = TerrainKind.Plains, OwnerId = 0, VisibleToMask = 1 },
+            new HexCell { Q = 1, R = 0, Terrain = TerrainKind.Forest, OwnerId = 1, VisibleToMask = 1 }
+        };
+        state.Units = new[]
+        {
+            new UnitState { Id = 10, OwnerId = 0, Kind = UnitKind.FieldForce, Q = 0, R = 0, Strength = 100, MovementLeft = 1 },
+            new UnitState { Id = 11, OwnerId = 1, Kind = UnitKind.Militia, Q = 1, R = 0, Strength = 100, MovementLeft = 1 }
+        };
+        state.Conflicts = new[] { new ConflictState { Id = 20, AggressorId = 0, DefenderId = 1, Phase = 2, Active = true } };
+        GameSimulation simulation = new GameSimulation(state);
+        CommandResult move = simulation.Issue(new GameCommand
+        {
+            Kind = CommandKind.MoveUnit, ActorId = 0, EntityId = 10, Q = 1, R = 0
+        });
+        Assert(move.Accepted, "a valid wartime move onto an enemy unit must resolve");
+        Assert(simulation.LastResolvedBattles.Length == 1, "a real battle must publish one presentation event");
+        BattleResolutionEvent battle = simulation.LastResolvedBattles[0];
+        Assert(battle.AttackerOwnerId == 0 && battle.DefenderOwnerId == 1 && battle.CellQ == 1 && battle.CellR == 0,
+            "battle presentation must identify both sides and the contested cell");
+        Assert(battle.PlayerFacing && battle.HumanVisibilityMask == 1,
+            "human battle presentation must be marked as visible to the human player");
+        Console.WriteLine("PASS: resolved battles publish presentation data with participants, losses, and visibility.");
     }
 
     private static void RunVictoryPathAcceptance()

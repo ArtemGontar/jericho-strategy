@@ -45,6 +45,16 @@ namespace Nasledie.EditorTools
             "Badge_Crown", "Badge_OliveSun", "Badge_Lyre", "Badge_Star"
         };
 
+        private static readonly string[] RuralActivityNames =
+        {
+            "Activity_Farmer", "Activity_Lumberjack", "Activity_Blacksmith", "Activity_Scholar"
+        };
+
+        private static readonly string[] CivicActivityNames =
+        {
+            "Activity_Merchant", "Activity_Artist", "Activity_Steward", "Activity_Builder"
+        };
+
         private void OnPreprocessTexture()
         {
             if (!assetPath.StartsWith("Assets/Game/Runtime/Client/Resources/Art/")) return;
@@ -68,6 +78,10 @@ namespace Nasledie.EditorTools
                 SetAtlas(importer, EpochUnitNames(), 4, 5);
             else if (assetPath.EndsWith("AchievementAtlas.png", StringComparison.OrdinalIgnoreCase))
                 SetAtlas(importer, AchievementNames, 4, 3);
+            else if (assetPath.EndsWith("WorkerActivities_Rural.png", StringComparison.OrdinalIgnoreCase))
+                SetActivityAtlas(importer, RuralActivityNames);
+            else if (assetPath.EndsWith("WorkerActivities_Civic.png", StringComparison.OrdinalIgnoreCase))
+                SetActivityAtlas(importer, CivicActivityNames);
             else importer.spriteImportMode = SpriteImportMode.Single;
         }
 
@@ -123,15 +137,17 @@ namespace Nasledie.EditorTools
             int width = ReadPngDimension(png, 16);
             int height = ReadPngDimension(png, 20);
             if (width <= 0 || height <= 0) { importer.spriteImportMode = SpriteImportMode.Single; return; }
-            float cellWidth = width / (float)columns;
-            float cellHeight = height / (float)rows;
             var sprites = new SpriteMetaData[names.Length];
             for (int row = 0; row < rows; row++)
                 for (int col = 0; col < columns; col++)
                 {
                     int index = row * columns + col;
                     sprites[index].name = names[index];
-                    sprites[index].rect = new Rect(col * cellWidth, (rows - row - 1) * cellHeight, cellWidth, cellHeight);
+                    int left = col * width / columns;
+                    int right = (col + 1) * width / columns;
+                    int bottom = (rows - row - 1) * height / rows;
+                    int top = (rows - row) * height / rows;
+                    sprites[index].rect = new Rect(left, bottom, right - left, top - bottom);
                     sprites[index].alignment = (int)SpriteAlignment.Center;
                     sprites[index].pivot = new Vector2(0.5f, 0.5f);
                 }
@@ -139,6 +155,15 @@ namespace Nasledie.EditorTools
 #pragma warning disable 618
             importer.spritesheet = sprites;
 #pragma warning restore 618
+        }
+
+        private void SetActivityAtlas(TextureImporter importer, string[] activityNames)
+        {
+            string[] names = new string[activityNames.Length * 4];
+            for (int activity = 0; activity < activityNames.Length; activity++)
+                for (int frame = 0; frame < 4; frame++)
+                    names[activity * 4 + frame] = activityNames[activity] + "_" + frame;
+            SetAtlas(importer, names, 4, 4);
         }
 
         private static int ReadPngDimension(byte[] bytes, int offset)

@@ -9,6 +9,12 @@ namespace Nasledie.Core
         {
             if (attacker == null || defender == null) return;
             state.BattlesThisTurn++;
+            int attackerOwnerId = attacker.OwnerId;
+            int defenderOwnerId = defender.OwnerId;
+            UnitKind attackerKind = attacker.Kind;
+            UnitKind defenderKind = defender.Kind;
+            int visibilityMask = (cell.VisibleToMask & (1 << state.HumanCivilizationId)) != 0
+                ? 1 << state.HumanCivilizationId : 0;
             int attackPower = BattlePower(attacker);
             int defensePower = BattlePower(defender);
             int terrainBonus = cell.Terrain == TerrainKind.Hills || cell.Terrain == TerrainKind.Forest ? 15 : 0;
@@ -26,6 +32,23 @@ namespace Nasledie.Core
             CivilizationState attackerCiv = state.Civilization(attacker.OwnerId);
             CivilizationState defenderCiv = state.Civilization(defender.OwnerId);
             bool won = attacker.Strength > 0 && (defender.Strength == 0 || attackPower > defensePower * 12 / 10);
+            if (battleCapture != null)
+                battleCapture.Add(new BattleResolutionEvent
+                {
+                    AttackerId = attacker.Id,
+                    DefenderId = defender.Id,
+                    AttackerOwnerId = attackerOwnerId,
+                    DefenderOwnerId = defenderOwnerId,
+                    AttackerKind = attackerKind,
+                    DefenderKind = defenderKind,
+                    CellQ = cell.Q,
+                    CellR = cell.R,
+                    AttackerLoss = attackLoss,
+                    DefenderLoss = defenseLoss,
+                    HumanVisibilityMask = visibilityMask,
+                    AttackerWon = won,
+                    PlayerFacing = playerFacing
+                });
             string result;
             if (won)
             {

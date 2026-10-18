@@ -19,6 +19,13 @@ namespace Nasledie.Client
             public string CityName;
         }
 
+        private sealed class ImprovementMilestone
+        {
+            public ImprovementKind Kind;
+            public int Q;
+            public int R;
+        }
+
         private sealed class UnitMovePresentation
         {
             public int UnitId;
@@ -28,6 +35,14 @@ namespace Nasledie.Client
             public int StartR;
             public int TargetQ;
             public int TargetR;
+        }
+
+        private sealed class BattleSidePresentation
+        {
+            public UnitKind Kind;
+            public Era Era;
+            public int Loss;
+            public string Label;
         }
 
         private GameSimulation simulation;
@@ -635,7 +650,8 @@ namespace Nasledie.Client
             {
                 "Art/BuildingAtlas", "Art/BuildingAtlas_Communities", "Art/BuildingAtlas_Cities",
                 "Art/BuildingAtlas_ConnectedLands", "Art/BuildingAtlas_Industry", "Art/BuildingAtlas_Synthesis",
-                "Art/WorldAtlas", "Art/UnitAtlas", "Art/UnitEraAtlas", "Art/AchievementAtlas"
+                "Art/WorldAtlas", "Art/UnitAtlas", "Art/UnitEraAtlas", "Art/AchievementAtlas",
+                "Art/Animations/WorkerActivities_Rural", "Art/Animations/WorkerActivities_Civic"
             };
             for (int a = 0; a < atlases.Length; a++)
             {
@@ -1112,7 +1128,7 @@ namespace Nasledie.Client
             menuHost.gameObject.SetActive(false);
             header.gameObject.SetActive(true);
             pageHost.gameObject.SetActive(true);
-            navHost.gameObject.SetActive(true);
+            navHost.gameObject.SetActive(!simulation.State.IsFinished);
             actionHost.gameObject.SetActive(!simulation.State.IsFinished);
             UpdateHeader();
             DestroyChildren(pageHost);
@@ -1405,6 +1421,7 @@ namespace Nasledie.Client
             CityState city = CityAt(cell.Q, cell.R);
             CityState districtCity = string.IsNullOrEmpty(cell.DistrictBuildingId) ? null : simulation.State.City(cell.DistrictCityId);
             CityState districtProjectCity = DistrictProjectCityAt(cell.Q, cell.R);
+            CityState improvementProjectCity = ImprovementProjectCityAt(cell.Q, cell.R);
             if (selected || (city != null && city.Id == selectedCityId)) graphic.EdgeColor = GamePalette.Gold;
             else if (cell.OwnerId == simulation.State.HumanCivilizationId) graphic.EdgeColor = new Color(0.69f, 0.8f, 0.57f, 1f);
             else graphic.EdgeColor = new Color(0.12f, 0.18f, 0.17f, 1f);
@@ -1424,6 +1441,7 @@ namespace Nasledie.Client
                 if (unit != null) marker = unit.Kind == UnitKind.SettlerWagon ? "◇" : "●";
                 else if (districtCity != null) marker = "▥";
                 else if (districtProjectCity != null) marker = "+";
+                else if (improvementProjectCity != null) marker = "+";
                 else if (cell.Improvement != ImprovementKind.None && cell.Damage < 75) marker = ImprovementMark(cell.Improvement);
                 else if (cell.Resource != ResourceKind.None) marker = ResourceMark(cell.Resource);
             }
@@ -1438,6 +1456,7 @@ namespace Nasledie.Client
                     if (unit != null) artwork = UnitArtwork(unit.Kind, CivilizationEra(unit.OwnerId));
                     else if (districtCity != null) artwork = BuildingArtwork(cell.DistrictBuildingId, CivilizationEra(districtCity.OwnerId), CivilizationNationId(districtCity.OwnerId));
                     else if (districtProjectCity != null) artwork = BuildingArtwork(districtProjectCity.Project.TargetId, CivilizationEra(districtProjectCity.OwnerId), CivilizationNationId(districtProjectCity.OwnerId));
+                    else if (improvementProjectCity != null) artwork = ImprovementArtwork(ProjectImprovementKind(improvementProjectCity.Project), CivilizationEra(improvementProjectCity.OwnerId));
                     else if (visible && cell.Improvement != ImprovementKind.None && cell.Damage < 75) artwork = ImprovementArtwork(cell.Improvement, CivilizationEra(cell.OwnerId));
                     else if (visible) artwork = ResourceArtwork(cell.Resource);
                 }
@@ -1445,12 +1464,19 @@ namespace Nasledie.Client
                 if (sprite != null)
                 {
                     CivilizationState districtOwner = districtCity != null ? simulation.State.Civilization(districtCity.OwnerId) :
-                        districtProjectCity == null ? null : simulation.State.Civilization(districtProjectCity.OwnerId);
+                        districtProjectCity != null ? simulation.State.Civilization(districtProjectCity.OwnerId) :
+                        improvementProjectCity == null ? null : simulation.State.Civilization(improvementProjectCity.OwnerId);
                     Color tint = districtOwner == null ? Color.white : Color.Lerp(Color.white, NationAccent(districtOwner), 0.16f);
                     if (!visible && city == null) tint = Color.Lerp(tint, GamePalette.Ink, 0.38f);
-                    if (districtProjectCity != null && districtCity == null) tint.a = 0.62f;
-                    AddMapArtwork(tile.transform, artwork, city != null ? new Vector2(46, 42) : districtCity != null || districtProjectCity != null ? new Vector2(31, 28) : new Vector2(27, 25),
+                    if ((districtProjectCity != null || improvementProjectCity != null) && districtCity == null) tint.a = 0.62f;
+                    Image mapArt = AddMapArtwork(tile.transform, artwork, city != null ? new Vector2(46, 42) : districtCity != null || districtProjectCity != null || improvementProjectCity != null ? new Vector2(31, 28) : new Vector2(27, 25),
                         city != null ? new Vector2(0, 4) : new Vector2(12, 8), tint);
+                    UnitState displayedUnit = visible ? UnitAt(cell.Q, cell.R) : null;
+                    if (displayedUnit != null && !IsUnitMoving(displayedUnit.Id) && animationMode > 0 && mapArt != null)
+                    {
+                        UiIdleMotion idle = mapArt.gameObject.AddComponent<UiIdleMotion>();
+                        idle.Initialize(1.8f, 2.4f, ((cell.Q * 17 + cell.R * 31) & 15) / 16f);
+                    }
                     if (city != null)
                     {
                         CivilizationState cityOwner = simulation.State.Civilization(city.OwnerId);
@@ -1478,12 +1504,25 @@ namespace Nasledie.Client
                 labelRect.offsetMin = new Vector2(-5, 0);
                 labelRect.offsetMax = new Vector2(5, 0);
             }
+            if (visible && cell.OwnerId == simulation.State.HumanCivilizationId)
+            {
+                string activity = MapActivity(cell, city, districtCity, districtProjectCity, improvementProjectCity);
+                if (!string.IsNullOrEmpty(activity))
+                {
+                    Vector2 activityPosition = city == null ? new Vector2(-14, -12) : new Vector2(17, 12);
+                    Vector2 activitySize = city == null ? new Vector2(18, 21) : new Vector2(15, 18);
+                    AddActivitySprite(tile.transform, activity, activitySize, activityPosition, Color.white, animationMode > 0, 4.8f);
+                }
+                CityProject activeProject = improvementProjectCity != null ? improvementProjectCity.Project :
+                    districtProjectCity == null ? null : districtProjectCity.Project;
+                if (activeProject != null) AddConstructionProgress(tile.transform, activeProject);
+            }
         }
 
-        private static void AddMapArtwork(Transform parent, string name, Vector2 size, Vector2 position, Color tint)
+        private static Image AddMapArtwork(Transform parent, string name, Vector2 size, Vector2 position, Color tint)
         {
             Sprite sprite = LoadArtwork(name);
-            if (sprite == null) return;
+            if (sprite == null) return null;
             GameObject art = UiKit.CreateObject("MapArtwork_" + name, parent);
             Image image = art.AddComponent<Image>();
             image.sprite = sprite;
@@ -1496,6 +1535,7 @@ namespace Nasledie.Client
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.sizeDelta = size;
             rect.anchoredPosition = position;
+            return image;
         }
 
         private Era CivilizationEra(int civilizationId)
@@ -1554,8 +1594,19 @@ namespace Nasledie.Client
                 Vector2 startScreen = moving == null ? Vector2.zero : HexScreenPosition(moving.Q, moving.R);
                 CommandResult movement = simulation.Issue(new GameCommand { Kind = CommandKind.MoveUnit, ActorId = simulation.State.HumanCivilizationId, EntityId = selectedUnitId, Q = q, R = r });
                 notice = movement.Message;
+                BattleResolutionEvent[] battles = simulation.LastResolvedBattles;
+                bool resolvedBattle = movement.Accepted && battles != null && battles.Length > 0;
+                if (resolvedBattle) PlaySoundEffect("Battle_Resolve");
+                if (resolvedBattle && animationMode > 0 && currentPage == ScreenPage.Overview)
+                {
+                    selectedUnitId = -1;
+                    RenderGame();
+                    StartCoroutine(AnimateCommandBattle(battles[0]));
+                    return;
+                }
                 if (movement.Accepted && moving != null && animationMode > 0 && currentPage == ScreenPage.Overview && startScreen != Vector2.zero)
                 {
+                    PlaySoundEffect("World_Move");
                     int movedId = moving.Id;
                     UnitKind movedKind = moving.Kind;
                     Era movedEra = CivilizationEra(moving.OwnerId);
@@ -1565,6 +1616,7 @@ namespace Nasledie.Client
                     StartCoroutine(AnimateUnitMovement(movedId, movedKind, movedEra, startScreen, q, r));
                     return;
                 }
+                if (movement.Accepted && !resolvedBattle) PlaySoundEffect("World_Move");
                 if (movement.Accepted) selectedUnitId = -1;
                 RenderGame();
                 return;
@@ -1634,14 +1686,81 @@ namespace Nasledie.Client
 
         private CityState DistrictProjectCityAt(int q, int r)
         {
+            int humanId = simulation.State.HumanCivilizationId;
+            HexCell cell = simulation.State.Cell(q, r);
+            bool visible = cell != null && (cell.VisibleToMask & (1 << humanId)) != 0;
             for (int i = 0; i < simulation.State.Cities.Length; i++)
             {
                 CityState city = simulation.State.Cities[i];
                 CityProject project = city.Project;
-                if (project != null && project.Kind == ProjectKind.Building && project.DistrictPlotReserved && project.TargetQ == q && project.TargetR == r)
+                if ((city.OwnerId == humanId || visible) && project != null && project.Kind == ProjectKind.Building && project.DistrictPlotReserved && project.TargetQ == q && project.TargetR == r)
                     return city;
             }
             return null;
+        }
+
+        private CityState ImprovementProjectCityAt(int q, int r)
+        {
+            int humanId = simulation.State.HumanCivilizationId;
+            for (int i = 0; i < simulation.State.Cities.Length; i++)
+            {
+                CityState city = simulation.State.Cities[i];
+                CityProject project = city.Project;
+                if (city.OwnerId == humanId && project != null && project.Kind == ProjectKind.Improvement && project.TargetQ == q && project.TargetR == r)
+                    return city;
+            }
+            return null;
+        }
+
+        private static ImprovementKind ProjectImprovementKind(CityProject project)
+        {
+            ImprovementKind kind;
+            return project != null && Enum.TryParse(project.TargetId, out kind) ? kind : ImprovementKind.None;
+        }
+
+        private string MapActivity(HexCell cell, CityState city, CityState districtCity, CityState districtProjectCity, CityState improvementProjectCity)
+        {
+            if (districtProjectCity != null || improvementProjectCity != null) return "Activity_Builder";
+            if (districtCity != null) return BuildingActivity(cell.DistrictBuildingId);
+            if (city != null) return CityWorkerActivity(city);
+            switch (cell.Improvement)
+            {
+                case ImprovementKind.Farm: case ImprovementKind.IrrigatedFarm: return "Activity_Farmer";
+                case ImprovementKind.Forestry: return "Activity_Lumberjack";
+                case ImprovementKind.Workshop: return "Activity_Blacksmith";
+                case ImprovementKind.Market: return "Activity_Merchant";
+                default: return null;
+            }
+        }
+
+        private static string CityWorkerActivity(CityState city)
+        {
+            if (city == null || city.Workers == null || city.Workers.Length == 0) return null;
+            int greatest = 0;
+            int role = -1;
+            for (int i = 0; i < city.Workers.Length; i++)
+                if (city.Workers[i] > greatest) { greatest = city.Workers[i]; role = i; }
+            switch ((WorkerRole)role)
+            {
+                case WorkerRole.Farmer: return "Activity_Farmer";
+                case WorkerRole.Artisan: return "Activity_Blacksmith";
+                case WorkerRole.Scholar: return "Activity_Scholar";
+                case WorkerRole.Merchant: return "Activity_Merchant";
+                case WorkerRole.Artist: return "Activity_Artist";
+                case WorkerRole.CivilServant: return "Activity_Steward";
+                default: return null;
+            }
+        }
+
+        private static string BuildingActivity(string buildingId)
+        {
+            BuildingDefinition building = RulesCatalog.Building(buildingId);
+            if (building == null) return null;
+            if (building.WorkerPlaceRole == (int)WorkerRole.Artisan) return "Activity_Blacksmith";
+            if (building.WorkerPlaceRole == (int)WorkerRole.Scholar || building.KnowledgePerScholar > 0) return "Activity_Scholar";
+            if (building.WorkerPlaceRole == (int)WorkerRole.Merchant || building.TreasuryPerMerchant > 0) return "Activity_Merchant";
+            if (building.WorkerPlaceRole == (int)WorkerRole.Artist || building.CulturalObject || building.CulturePerArtist > 0) return "Activity_Artist";
+            return "Activity_Steward";
         }
 
         private UnitState UnitAt(int q, int r)
@@ -1842,11 +1961,22 @@ namespace Nasledie.Client
             GameObject card = UiKit.Card(parent, "Работники · " + city.WorkerCount + " доступно");
             WorkerRole[] roles = { WorkerRole.Farmer, WorkerRole.Artisan, WorkerRole.Scholar, WorkerRole.Merchant, WorkerRole.Artist, WorkerRole.CivilServant };
             string[] names = { "Земледельцы · еда", "Ремесленники · производство", "Учёные · знания", "Торговцы · казна", "Художники · культура", "Служащие · услуги" };
+            string[] activities = { "Activity_Farmer", "Activity_Blacksmith", "Activity_Scholar", "Activity_Merchant", "Activity_Artist", "Activity_Steward" };
             for (int i = 0; i < roles.Length; i++)
             {
                 int roleIndex = i;
                 GameObject row = UiKit.CreateObject("Worker_" + i, card.transform);
                 UiKit.Horizontal(row, 0, 8);
+                Image worker = AddActivitySprite(row.transform, activities[i], new Vector2(38, 38), Vector2.zero,
+                    city.Workers[i] > 0 ? Color.white : new Color(0.62f, 0.68f, 0.65f, 0.48f), city.Workers[i] > 0 && animationMode > 0, 5.2f);
+                if (worker != null)
+                {
+                    LayoutElement workerLayout = worker.GetComponent<LayoutElement>();
+                    if (workerLayout == null) workerLayout = worker.gameObject.AddComponent<LayoutElement>();
+                    workerLayout.minWidth = workerLayout.preferredWidth = 42;
+                    workerLayout.minHeight = workerLayout.preferredHeight = 42;
+                    workerLayout.flexibleWidth = 0;
+                }
                 Text value = UiKit.Label(row.transform, names[i] + " · " + city.Workers[i], 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
                 value.GetComponent<LayoutElement>().flexibleWidth = 1;
                 int next = Math.Max(0, city.Workers[i] - 1);
@@ -1866,6 +1996,68 @@ namespace Nasledie.Client
             AddActionButton(focusRow.transform, "ЕДА", delegate { AutoAssign(city.Id, "food"); }, GamePalette.Ink);
             AddActionButton(focusRow.transform, "НАУКА", delegate { AutoAssign(city.Id, "science"); }, GamePalette.Ink);
             AddActionButton(focusRow.transform, "ТОРГОВЛЯ", delegate { AutoAssign(city.Id, "trade"); }, GamePalette.Ink);
+        }
+
+        private static Image AddActivitySprite(Transform parent, string activity, Vector2 size, Vector2 position, Color tint, bool animated, float fps)
+        {
+            Sprite[] frames = new Sprite[4];
+            bool anyFrame = false;
+            for (int i = 0; i < frames.Length; i++)
+            {
+                frames[i] = LoadArtwork(activity + "_" + i);
+                anyFrame |= frames[i] != null;
+            }
+            if (!anyFrame) return null;
+            GameObject visual = UiKit.CreateObject(activity, parent);
+            Image image = visual.AddComponent<Image>();
+            image.sprite = frames[0];
+            image.preserveAspect = true;
+            image.color = tint;
+            image.raycastTarget = false;
+            RectTransform rect = UiKit.Rect(visual);
+            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = size;
+            rect.anchoredPosition = position;
+            if (animated)
+            {
+                UiSpriteLoop loop = visual.AddComponent<UiSpriteLoop>();
+                loop.Initialize(image, frames, fps);
+                UiIdleMotion idle = visual.AddComponent<UiIdleMotion>();
+                idle.Initialize(1.2f, 2.8f, Mathf.Abs(activity.GetHashCode() % 100) / 100f);
+            }
+            return image;
+        }
+
+        private void AddConstructionProgress(Transform parent, CityProject project)
+        {
+            GameObject track = UiKit.CreateObject("ConstructionProgress", parent);
+            Image trackImage = track.AddComponent<Image>();
+            trackImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.8f);
+            trackImage.raycastTarget = false;
+            RectTransform trackRect = UiKit.Rect(track);
+            trackRect.anchorMin = trackRect.anchorMax = new Vector2(0.5f, 0.5f);
+            trackRect.pivot = new Vector2(0.5f, 0.5f);
+            trackRect.sizeDelta = new Vector2(34, 4);
+            trackRect.anchoredPosition = new Vector2(0, -23);
+            GameObject fill = UiKit.CreateObject("ConstructionProgressFill", track.transform);
+            Image fillImage = fill.AddComponent<Image>();
+            fillImage.color = GamePalette.Gold;
+            fillImage.type = Image.Type.Filled;
+            fillImage.fillMethod = Image.FillMethod.Horizontal;
+            fillImage.fillOrigin = (int)Image.OriginHorizontal.Left;
+            fillImage.fillAmount = project == null || project.Cost <= 0 ? 0f : Mathf.Clamp01(project.Progress / (float)project.Cost);
+            fillImage.raycastTarget = false;
+            RectTransform fillRect = UiKit.Rect(fill);
+            fillRect.anchorMin = Vector2.zero;
+            fillRect.anchorMax = Vector2.one;
+            fillRect.offsetMin = Vector2.zero;
+            fillRect.offsetMax = Vector2.zero;
+            if (animationMode > 0)
+            {
+                UiConstructionPulse pulse = track.AddComponent<UiConstructionPulse>();
+                pulse.Initialize(trackImage, Mathf.Abs(project.TargetQ * 13 + project.TargetR * 7) / 20f);
+            }
         }
 
         private void AutoAssign(int cityId, string focus) { Issue(CommandKind.AutoAssignWorkers, cityId, text: focus); }
@@ -2071,7 +2263,7 @@ namespace Nasledie.Client
                 case CommandKind.ProposeTreaty:
                 case CommandKind.AcceptTreaty:
                 case CommandKind.MakePeace: PlaySoundEffect("Diplomacy_Seal"); break;
-                case CommandKind.DeclareWar: PlaySoundEffect("Battle_Resolve"); break;
+                case CommandKind.DeclareWar: PlaySoundEffect("UI_Confirm"); break;
                 case CommandKind.BeginVictoryProject:
                     PlaySoundEffect(value == (int)VictoryPath.Scientific ? "Research_Discovery" :
                         value == (int)VictoryPath.Diplomatic ? "Diplomacy_Seal" : "UI_Confirm");
@@ -2082,6 +2274,14 @@ namespace Nasledie.Client
                 case CommandKind.EnactLaw:
                 case CommandKind.EventChoice: PlaySoundEffect("UI_Confirm"); break;
             }
+        }
+
+        private static bool HasVisibleBattles(BattleResolutionEvent[] battles)
+        {
+            if (battles == null) return false;
+            for (int i = 0; i < battles.Length; i++)
+                if (battles[i] != null && battles[i].HumanVisibilityMask != 0) return true;
+            return false;
         }
 
         private void SetTax(TaxRate rate) { Issue(CommandKind.SetTax, value: (int)rate); }
@@ -2109,6 +2309,7 @@ namespace Nasledie.Client
             simulation.EndTurn();
             if (simulation.State.Turn != previousTurn)
             {
+                if (HasVisibleBattles(simulation.LastResolvedBattles)) PlaySoundEffect("Battle_Resolve");
                 PlaySoundEffect("Turn_Advance");
                 SetMusicEra(simulation.State.Civilization(simulation.State.HumanCivilizationId).Era);
                 bool saved = SaveService.SaveAuto(simulation.State);
@@ -2129,6 +2330,7 @@ namespace Nasledie.Client
             Era previousEra = simulation.State.Civilization(simulation.State.HumanCivilizationId).Era;
             int previousTurn = simulation.State.Turn;
             Dictionary<string, int> buildingLevels = CapturePlayerBuildingLevels();
+            Dictionary<string, string> improvements = CapturePlayerImprovements();
             Dictionary<int, UnitMovePresentation> unitPositions = CaptureUnitPositions();
             GameObject layer = CreatePresentationLayer();
             Text status;
@@ -2147,6 +2349,8 @@ namespace Nasledie.Client
             }
 
             simulation.EndTurn();
+            BattleResolutionEvent[] turnBattles = simulation.LastResolvedBattles == null
+                ? new BattleResolutionEvent[0] : (BattleResolutionEvent[])simulation.LastResolvedBattles.Clone();
             bool advanced = simulation.State.Turn != previousTurn;
             if (advanced)
             {
@@ -2169,6 +2373,17 @@ namespace Nasledie.Client
 
             if (turnMoves.Count > 0 && animationMode > 0)
                 yield return AnimateTurnUnitMovements(layer, turnMoves);
+            if (advanced && animationMode > 0 && turnBattles.Length > 0)
+            {
+                int shown = 0;
+                for (int i = 0; i < turnBattles.Length && shown < 3; i++)
+                {
+                    if (turnBattles[i] == null || turnBattles[i].HumanVisibilityMask == 0) continue;
+                    PlaySoundEffect("Battle_Resolve");
+                    yield return ShowBattlePresentation(layer, turnBattles[i]);
+                    shown++;
+                }
+            }
             if (currentPage != resolvedPage)
             {
                 currentPage = resolvedPage;
@@ -2180,11 +2395,12 @@ namespace Nasledie.Client
             {
                 Era nextEra = simulation.State.Civilization(simulation.State.HumanCivilizationId).Era;
                 List<BuildingMilestone> completed = FindNewlyCompletedBuildings(buildingLevels);
+                List<ImprovementMilestone> completedImprovements = FindNewlyCompletedImprovements(improvements);
                 bool hasEraTransition = nextEra != previousEra;
-                if (hasEraTransition || completed.Count > 0)
+                if (hasEraTransition || completed.Count > 0 || completedImprovements.Count > 0)
                 {
                     dismissPresentationRequested = false;
-                    ShowTurnMilestones(layer.transform, previousTurn, previousEra, nextEra, completed);
+                    ShowTurnMilestones(layer.transform, previousTurn, previousEra, nextEra, completed, completedImprovements);
                     float remaining = animationMode == 2 ? 2.4f : 1.3f;
                     while (remaining > 0f && !dismissPresentationRequested)
                     {
@@ -2254,6 +2470,19 @@ namespace Nasledie.Client
             return result;
         }
 
+        private Dictionary<string, string> CapturePlayerImprovements()
+        {
+            var result = new Dictionary<string, string>();
+            int playerId = simulation.State.HumanCivilizationId;
+            for (int i = 0; i < simulation.State.Cells.Length; i++)
+            {
+                HexCell cell = simulation.State.Cells[i];
+                if (cell.OwnerId == playerId && cell.Improvement != ImprovementKind.None)
+                    result[cell.Q + ":" + cell.R] = cell.Improvement + ":" + cell.ImprovementLevel;
+            }
+            return result;
+        }
+
         private List<BuildingMilestone> FindNewlyCompletedBuildings(Dictionary<string, int> previous)
         {
             List<BuildingMilestone> completed = new List<BuildingMilestone>();
@@ -2278,10 +2507,28 @@ namespace Nasledie.Client
             return completed;
         }
 
-        private void ShowTurnMilestones(Transform layer, int completedTurn, Era oldEra, Era newEra, List<BuildingMilestone> buildings)
+        private List<ImprovementMilestone> FindNewlyCompletedImprovements(Dictionary<string, string> previous)
+        {
+            var completed = new List<ImprovementMilestone>();
+            int playerId = simulation.State.HumanCivilizationId;
+            for (int i = 0; i < simulation.State.Cells.Length; i++)
+            {
+                HexCell cell = simulation.State.Cells[i];
+                if (cell.OwnerId != playerId || cell.Improvement == ImprovementKind.None) continue;
+                string key = cell.Q + ":" + cell.R;
+                string current = cell.Improvement + ":" + cell.ImprovementLevel;
+                string old;
+                if (!previous.TryGetValue(key, out old) || old != current)
+                    completed.Add(new ImprovementMilestone { Kind = cell.Improvement, Q = cell.Q, R = cell.R });
+            }
+            return completed;
+        }
+
+        private void ShowTurnMilestones(Transform layer, int completedTurn, Era oldEra, Era newEra,
+            List<BuildingMilestone> buildings, List<ImprovementMilestone> improvements)
         {
             if (oldEra != newEra) PlaySoundEffect("Era_Transition");
-            else if (buildings.Count > 0) PlaySoundEffect("Build_Complete");
+            else if (buildings.Count > 0 || improvements.Count > 0) PlaySoundEffect("Build_Complete");
             DestroyChildren(layer);
             Image blocker = layer.GetComponent<Image>();
             if (blocker != null) blocker.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.86f);
@@ -2289,6 +2536,7 @@ namespace Nasledie.Client
             if (backdrop == null) backdrop = layer.gameObject.AddComponent<Button>();
             backdrop.targetGraphic = blocker;
             backdrop.transition = Selectable.Transition.None;
+            backdrop.onClick.RemoveAllListeners();
             backdrop.onClick.AddListener(delegate { dismissPresentationRequested = true; });
             GameObject card = UiKit.Panel(layer, "TurnMilestones", GamePalette.InkSoft);
             RectTransform rect = UiKit.Rect(card);
@@ -2311,7 +2559,7 @@ namespace Nasledie.Client
             if (buildings.Count > 0)
             {
                 UiKit.Label(card.transform, buildings.Count == 1 ? "Завершено новое здание" : "Завершены новые здания", 25, GamePalette.Paper, TextAnchor.MiddleCenter, true);
-                int count = Math.Min(buildings.Count, 4);
+                int count = Math.Min(buildings.Count, 3);
                 for (int i = 0; i < count; i++)
                 {
                     GameObject row = UiKit.CreateObject("CompletedBuilding_" + i, card.transform);
@@ -2324,6 +2572,26 @@ namespace Nasledie.Client
                     StartCoroutine(ScaleIn(UiKit.Rect(row), reveal, (0.24f + i * 0.08f) * AnimationScale));
                 }
                 if (buildings.Count > count) UiKit.Label(card.transform, "И ещё завершено зданий: " + (buildings.Count - count), 18, GamePalette.Muted, TextAnchor.MiddleCenter, false);
+            }
+            if (improvements.Count > 0)
+            {
+                UiKit.Label(card.transform, "Завершены работы на клетках", 24, GamePalette.Paper, TextAnchor.MiddleCenter, true);
+                int count = Math.Min(improvements.Count, 3);
+                for (int i = 0; i < count; i++)
+                {
+                    ImprovementMilestone milestone = improvements[i];
+                    GameObject row = UiKit.CreateObject("CompletedImprovement_" + i, card.transform);
+                    UiKit.Horizontal(row, 8, 12);
+                    AddArtwork(row.transform, ImprovementArtwork(milestone.Kind, newEra), 66);
+                    string name = milestone.Kind.ToString();
+                    for (int d = 0; d < RulesCatalog.Improvements.Length; d++)
+                        if (RulesCatalog.Improvements[d].Kind == milestone.Kind) name = RulesCatalog.Improvements[d].NameRu;
+                    UiKit.Label(row.transform, name + " · клетка " + milestone.Q + ", " + milestone.R, 21, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                    CanvasGroup reveal = row.AddComponent<CanvasGroup>();
+                    reveal.alpha = 0f;
+                    StartCoroutine(ScaleIn(UiKit.Rect(row), reveal, (0.2f + i * 0.06f) * AnimationScale));
+                }
+                if (improvements.Count > count) UiKit.Label(card.transform, "И ещё завершено работ: " + (improvements.Count - count), 18, GamePalette.Muted, TextAnchor.MiddleCenter, false);
             }
             Text continueText = UiKit.Label(card.transform, "Коснитесь экрана, чтобы продолжить", 18, GamePalette.Muted, TextAnchor.MiddleCenter, false);
             Button dismiss = card.AddComponent<Button>();
@@ -2497,6 +2765,91 @@ namespace Nasledie.Client
             movingUnitIds.Clear();
             if (blocker != null) blocker.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.72f);
             RenderGame();
+        }
+
+        private IEnumerator AnimateCommandBattle(BattleResolutionEvent battle)
+        {
+            presentationBusy = true;
+            GameObject layer = CreatePresentationLayer();
+            yield return ShowBattlePresentation(layer, battle);
+            if (presentationLayer != null) Destroy(presentationLayer);
+            presentationLayer = null;
+            presentationBusy = false;
+            RenderGame();
+        }
+
+        private IEnumerator ShowBattlePresentation(GameObject layer, BattleResolutionEvent battle)
+        {
+            if (layer == null || battle == null) yield break;
+            DestroyChildren(layer.transform);
+            Image blocker = layer.GetComponent<Image>();
+            if (blocker != null) blocker.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.9f);
+            Button backdrop = layer.GetComponent<Button>();
+            if (backdrop == null) backdrop = layer.AddComponent<Button>();
+            backdrop.targetGraphic = blocker;
+            backdrop.transition = Selectable.Transition.None;
+            backdrop.onClick.RemoveAllListeners();
+            dismissPresentationRequested = false;
+            backdrop.onClick.AddListener(delegate { dismissPresentationRequested = true; });
+
+            GameObject card = UiKit.Panel(layer.transform, "BattleResolution", GamePalette.InkSoft);
+            RectTransform cardRect = UiKit.Rect(card);
+            cardRect.anchorMin = cardRect.anchorMax = new Vector2(0.5f, 0.5f);
+            cardRect.pivot = new Vector2(0.5f, 0.5f);
+            cardRect.sizeDelta = new Vector2(850, 480);
+            UiKit.Vertical(card, 24, 12);
+            CanvasGroup group = card.AddComponent<CanvasGroup>();
+            group.alpha = 0f;
+            UiKit.Label(card.transform, "СРАЖЕНИЕ · ХОД " + simulation.State.Turn, 31, GamePalette.Gold, TextAnchor.MiddleCenter, true);
+            UiKit.Label(card.transform, "Отряды встретились на клетке " + battle.CellQ + ", " + battle.CellR + ".", 21, GamePalette.Muted, TextAnchor.MiddleCenter, false);
+
+            GameObject sides = UiKit.CreateObject("BattleSides", card.transform);
+            UiKit.Horizontal(sides, 12, 24);
+            BuildBattleSide(sides.transform, battle.AttackerKind, battle.AttackerOwnerId, battle.AttackerLoss, true);
+            UiKit.Label(sides.transform, "×", 43, GamePalette.Rust, TextAnchor.MiddleCenter, true);
+            BuildBattleSide(sides.transform, battle.DefenderKind, battle.DefenderOwnerId, battle.DefenderLoss, false);
+            UiKit.Label(card.transform, battle.AttackerWon ? "Атака удержала поле боя" : "Защитники отбили атаку", 26,
+                battle.AttackerWon ? GamePalette.Success : GamePalette.Rust, TextAnchor.MiddleCenter, true);
+            Text continueText = UiKit.Label(card.transform, "Коснитесь экрана, чтобы продолжить", 18, GamePalette.Muted, TextAnchor.MiddleCenter, false);
+            continueText.raycastTarget = false;
+            Button cardDismiss = card.AddComponent<Button>();
+            cardDismiss.targetGraphic = card.GetComponent<Image>();
+            cardDismiss.transition = Selectable.Transition.None;
+            cardDismiss.onClick.AddListener(delegate { dismissPresentationRequested = true; });
+            StartCoroutine(ScaleIn(cardRect, group, 0.2f * AnimationScale));
+
+            float remaining = animationMode == 2 ? 1.8f : 1.0f;
+            while (remaining > 0f && !dismissPresentationRequested)
+            {
+                remaining -= Time.unscaledDeltaTime;
+                yield return null;
+            }
+        }
+
+        private void BuildBattleSide(Transform parent, UnitKind kind, int ownerId, int loss, bool attacker)
+        {
+            GameObject side = UiKit.CreateObject(attacker ? "BattleAttacker" : "BattleDefender", parent);
+            UiKit.Vertical(side, 4, 4);
+            LayoutElement sideLayout = side.AddComponent<LayoutElement>();
+            sideLayout.minWidth = 260;
+            sideLayout.preferredWidth = 300;
+            sideLayout.flexibleWidth = 1;
+            string ownerName = ownerId == simulation.State.HumanCivilizationId ? "Ваш отряд" : simulation.State.Civilization(ownerId).Name;
+            UiKit.Label(side.transform, ownerName + " · " + RulesCatalog.Unit(kind).NameRu, 21, GamePalette.Paper, TextAnchor.MiddleCenter, true);
+            GameObject figure = UiKit.CreateObject("BattleUnitArt", side.transform);
+            Image image = figure.AddComponent<Image>();
+            image.sprite = LoadArtwork(UnitArtwork(kind, CivilizationEra(ownerId)));
+            image.preserveAspect = true;
+            image.raycastTarget = false;
+            LayoutElement figureLayout = figure.AddComponent<LayoutElement>();
+            figureLayout.minHeight = 150;
+            figureLayout.preferredHeight = 150;
+            figureLayout.flexibleWidth = 1;
+            UiKit.Label(side.transform, "Потери силы: " + loss, 19, loss > 0 ? GamePalette.Rust : GamePalette.Muted, TextAnchor.MiddleCenter, false);
+            CanvasGroup reveal = side.AddComponent<CanvasGroup>();
+            reveal.alpha = 1f;
+            RectTransform sideRect = UiKit.Rect(side);
+            StartCoroutine(ScaleIn(sideRect, reveal, 0.28f * AnimationScale));
         }
 
         private bool IsUnitMoving(int unitId)

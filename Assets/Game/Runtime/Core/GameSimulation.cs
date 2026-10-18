@@ -12,7 +12,9 @@ namespace Nasledie.Core
     {
         public GameState State { get; private set; }
         public string LastMessage { get; private set; }
+        public BattleResolutionEvent[] LastResolvedBattles { get; private set; } = Array.Empty<BattleResolutionEvent>();
         public bool IsReady { get { return State != null; } }
+        private List<BattleResolutionEvent> battleCapture;
 
         public GameSimulation(GameState state)
         {
@@ -37,31 +39,43 @@ namespace Nasledie.Core
 
         public CommandResult Issue(GameCommand command)
         {
+            LastResolvedBattles = Array.Empty<BattleResolutionEvent>();
             if (State == null) return CommandResult.Reject("no_game", "Партия не загружена.");
             if (State.IsFinished) return CommandResult.Reject("game_finished", "Кампания уже завершена.");
             if (command == null || command.ActorId != State.HumanCivilizationId)
                 return CommandResult.Reject("invalid_actor", "Недопустимый игрок.");
-            CommandResult result = ApplyCommand(State, command, true);
-            LastMessage = result.Message;
-            return result;
+            battleCapture = new List<BattleResolutionEvent>();
+            try
+            {
+                CommandResult result = ApplyCommand(State, command, true);
+                LastMessage = result.Message;
+                LastResolvedBattles = battleCapture.ToArray();
+                return result;
+            }
+            finally { battleCapture = null; }
         }
 
         public void EndTurn()
         {
+            LastResolvedBattles = Array.Empty<BattleResolutionEvent>();
             if (State == null || State.IsFinished) return;
             GameState working = State.Copy();
+            battleCapture = new List<BattleResolutionEvent>();
             try
             {
                 ResolveTurn(working);
                 ValidateInvariants(working);
                 State = working;
+                LastResolvedBattles = battleCapture.ToArray();
                 LastMessage = "Ход рассчитан.";
             }
             catch (Exception exception)
             {
+                LastResolvedBattles = Array.Empty<BattleResolutionEvent>();
                 LastMessage = "Ход не сохранён: " + exception.Message;
                 AppendLog(State, "Внутренняя проверка остановила ход; последнее состояние сохранено.");
             }
+            finally { battleCapture = null; }
         }
 
         public CityYield PreviewCity(int cityId)

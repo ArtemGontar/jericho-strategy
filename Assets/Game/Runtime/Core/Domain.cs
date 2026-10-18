@@ -332,6 +332,24 @@ namespace Nasledie.Core
         public int TreatyCount;
     }
 
+    /// <summary>Transient, presentation-only detail for a battle resolved by one command or turn.</summary>
+    public sealed class BattleResolutionEvent
+    {
+        public int AttackerId;
+        public int DefenderId;
+        public int AttackerOwnerId;
+        public int DefenderOwnerId;
+        public UnitKind AttackerKind;
+        public UnitKind DefenderKind;
+        public int CellQ;
+        public int CellR;
+        public int AttackerLoss;
+        public int DefenderLoss;
+        public int HumanVisibilityMask;
+        public bool AttackerWon;
+        public bool PlayerFacing;
+    }
+
     [Serializable]
     public sealed class GameState
     {
