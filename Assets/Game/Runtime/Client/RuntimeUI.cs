@@ -13,17 +13,17 @@ namespace Nasledie.Client
 {
     public static class GamePalette
     {
-        public static readonly Color Ink = Hex("172725");
-        public static readonly Color InkSoft = Hex("263C38");
-        public static readonly Color Paper = Hex("F1E9D8");
-        public static readonly Color PaperDim = Hex("D8D0C0");
-        public static readonly Color Gold = Hex("DAB66A");
-        public static readonly Color Sage = Hex("91AA86");
-        public static readonly Color Teal = Hex("4A8D84");
-        public static readonly Color Rust = Hex("B96F57");
-        public static readonly Color Muted = Hex("A5B3A9");
-        public static readonly Color Danger = Hex("C96958");
-        public static readonly Color Success = Hex("75A77B");
+        public static readonly Color Ink = Hex("121815");
+        public static readonly Color InkSoft = Hex("222a25");
+        public static readonly Color Paper = Hex("F2EBDD");
+        public static readonly Color PaperDim = Hex("C9C6BB");
+        public static readonly Color Gold = Hex("D5AF64");
+        public static readonly Color Sage = Hex("A0AE94");
+        public static readonly Color Teal = Hex("657C6F");
+        public static readonly Color Rust = Hex("9E6853");
+        public static readonly Color Muted = Hex("A5AAA0");
+        public static readonly Color Danger = Hex("B75F52");
+        public static readonly Color Success = Hex("82A37B");
 
         public static Color Hex(string value)
         {
@@ -168,16 +168,24 @@ namespace Nasledie.Client
         {
             GameObject go = CreateObject("Button_" + label, parent);
             Image image = go.AddComponent<Image>();
-            image.color = color;
+            bool quietAction = color == GamePalette.Ink || color == GamePalette.InkSoft;
+            Color normalColor = quietAction
+                ? new Color(color.r, color.g, color.b, color == GamePalette.Ink ? 0.16f : 0.28f)
+                : color;
+            image.color = Color.white;
             Button button = go.AddComponent<Button>();
             button.targetGraphic = image;
             button.transition = Selectable.Transition.ColorTint;
             ColorBlock colors = button.colors;
-            colors.normalColor = color;
-            colors.highlightedColor = Color.Lerp(color, Color.white, 0.12f);
-            colors.pressedColor = Color.Lerp(color, Color.black, 0.12f);
+            colors.normalColor = normalColor;
+            colors.highlightedColor = quietAction
+                ? new Color(color.r, color.g, color.b, color == GamePalette.Ink ? 0.36f : 0.48f)
+                : Color.Lerp(color, Color.white, 0.12f);
+            colors.pressedColor = quietAction
+                ? new Color(GamePalette.Gold.r, GamePalette.Gold.g, GamePalette.Gold.b, 0.5f)
+                : Color.Lerp(color, Color.black, 0.12f);
             colors.selectedColor = colors.highlightedColor;
-            colors.disabledColor = new Color(color.r, color.g, color.b, 0.4f);
+            colors.disabledColor = new Color(normalColor.r, normalColor.g, normalColor.b, 0.4f);
             button.colors = colors;
             button.onClick.AddListener(delegate
             {
@@ -194,7 +202,9 @@ namespace Nasledie.Client
             layout.minHeight = accessibleHeight;
             layout.preferredHeight = accessibleHeight;
             layout.flexibleWidth = 1f;
-            Text text = Label(go.transform, label, fontSize, GamePalette.Paper, TextAnchor.MiddleCenter, true);
+            float luminance = color.r * 0.2126f + color.g * 0.7152f + color.b * 0.0722f;
+            Color labelColor = luminance > 0.52f ? GamePalette.Ink : GamePalette.Paper;
+            Text text = Label(go.transform, label, fontSize, labelColor, TextAnchor.MiddleCenter, true);
             RectTransform textRect = text.rectTransform;
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
@@ -234,14 +244,27 @@ namespace Nasledie.Client
         public static GameObject Card(Transform parent, string title, float minHeight = 0f)
         {
             GameObject card = Panel(parent, "Card_" + title, GamePalette.InkSoft);
-            Vertical(card, 16, 8);
+            Image image = card.GetComponent<Image>();
+            if (image != null)
+            {
+                image.color = new Color(GamePalette.InkSoft.r, GamePalette.InkSoft.g, GamePalette.InkSoft.b, 0.08f);
+                image.raycastTarget = false;
+            }
+            Vertical(card, 8, 6);
             if (minHeight > 0)
             {
                 LayoutElement element = card.GetComponent<LayoutElement>();
                 element.minHeight = minHeight;
                 element.preferredHeight = minHeight;
             }
-            Label(card.transform, title, 28, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+            Label(card.transform, title, 19, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+            GameObject divider = CreateObject("CardTitleDivider", card.transform);
+            Image dividerImage = divider.AddComponent<Image>();
+            dividerImage.color = new Color(GamePalette.Gold.r, GamePalette.Gold.g, GamePalette.Gold.b, 0.30f);
+            dividerImage.raycastTarget = false;
+            LayoutElement dividerLayout = divider.AddComponent<LayoutElement>();
+            dividerLayout.minHeight = 1f;
+            dividerLayout.preferredHeight = 1f;
             return card;
         }
 
