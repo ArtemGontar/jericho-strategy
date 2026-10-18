@@ -258,30 +258,39 @@ namespace Nasledie.Client
             GameObject headerObject = UiKit.Panel(safeRoot, "Header",
                 new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.68f));
             header = UiKit.Rect(headerObject);
-            UiKit.SetAnchors(header, new Vector2(0, 0.90f), Vector2.one, new Vector2(0, 0), Vector2.zero);
-            UiKit.Vertical(headerObject, 8, 0);
-            titleLabel = UiKit.Label(headerObject.transform, "JERICHO", 26, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+            UiKit.SetAnchors(header, new Vector2(0, 0.925f), Vector2.one, new Vector2(0, 0), Vector2.zero);
+            UiKit.Vertical(headerObject, 8, 1);
+            GameObject headerMainRow = UiKit.CreateObject("HeaderMainRow", headerObject.transform);
+            LayoutElement headerMainLayout = headerMainRow.AddComponent<LayoutElement>();
+            headerMainLayout.minHeight = 38;
+            headerMainLayout.preferredHeight = 38;
+            UiKit.Horizontal(headerMainRow, 0, 10);
+            headerMainRow.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
+            titleLabel = UiKit.Label(headerMainRow.transform, "JERICHO", 22, GamePalette.Gold, TextAnchor.MiddleLeft, true);
             LayoutElement titleLayout = titleLabel.GetComponent<LayoutElement>();
+            titleLayout.minWidth = 360;
+            titleLayout.preferredWidth = 360;
+            titleLayout.flexibleWidth = 0;
             titleLayout.minHeight = 30;
-            titleLayout.preferredHeight = 32;
-            resourceLabel = UiKit.Label(headerObject.transform, "", 14, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            resourceLabel = UiKit.Label(headerMainRow.transform, "", 13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             LayoutElement resourceLayout = resourceLabel.GetComponent<LayoutElement>();
-            resourceLayout.minHeight = 20;
-            resourceLayout.preferredHeight = 22;
-            noticeLabel = UiKit.Label(headerObject.transform, "", 13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            resourceLayout.minHeight = 18;
+            resourceLayout.preferredHeight = 24;
+            resourceLayout.flexibleWidth = 1;
+            noticeLabel = UiKit.Label(headerObject.transform, "", 11, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             LayoutElement noticeLayout = noticeLabel.GetComponent<LayoutElement>();
-            noticeLayout.minHeight = 18;
-            noticeLayout.preferredHeight = 18;
+            noticeLayout.minHeight = 15;
+            noticeLayout.preferredHeight = 16;
 
             GameObject pageObject = UiKit.CreateObject("PageHost", safeRoot);
             pageHost = UiKit.Rect(pageObject);
-            UiKit.SetAnchors(pageHost, new Vector2(0, 0.15f), new Vector2(1, 0.90f), Vector2.zero, Vector2.zero);
+            UiKit.SetAnchors(pageHost, new Vector2(0, 0.14f), new Vector2(1, 0.925f), Vector2.zero, Vector2.zero);
             pageObject.SetActive(false);
 
             GameObject navObject = UiKit.Panel(safeRoot, "Navigation",
                 new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.72f));
             navHost = UiKit.Rect(navObject);
-            UiKit.SetAnchors(navHost, new Vector2(0, 0.075f), new Vector2(1, 0.15f), Vector2.zero, Vector2.zero);
+            UiKit.SetAnchors(navHost, new Vector2(0, 0.075f), new Vector2(1, 0.14f), Vector2.zero, Vector2.zero);
             UiKit.Horizontal(navObject, 4, 4);
             AddNavButton(navObject.transform, "МИР", ScreenPage.Overview);
             AddNavButton(navObject.transform, "ГОРОД", ScreenPage.City);
@@ -746,6 +755,7 @@ namespace Nasledie.Client
             rowLayout.minHeight = 52f;
             rowLayout.preferredHeight = 52f;
             UiKit.Horizontal(row, 0, 12);
+            row.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
             Text titleLabel = UiKit.Label(row.transform, title, 32, GamePalette.Paper, TextAnchor.MiddleLeft, true);
             titleLabel.GetComponent<LayoutElement>().flexibleWidth = 1f;
             Button back = UiKit.Button(row.transform, exitLabel, backAction, GamePalette.Ink, 44, 14);
@@ -1861,38 +1871,39 @@ namespace Nasledie.Client
             PrepareUtilityOverlay("Backgrounds/Campaign_Background");
             activeUtilityScreen = "new_game";
             GameObject panel = UtilityPanel("NewCampaignPanel", new Vector2(0.035f, 0.035f), new Vector2(0.965f, 0.965f));
-            UiKit.Vertical(panel, 10, 8);
+            UiKit.Vertical(panel, 4, 8);
             AddUtilityHeader(panel.transform, "Новая кампания", ShowMenu, "В МЕНЮ");
-            UiKit.Label(panel.transform, "Четыре культуры · разные лидеры, районы и бонусы", 14, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
-            NationDefinition selectedNation = NationCatalog.Get(selectedNationId);
-            BuildingDefinition uniqueDistrict = RulesCatalog.Building(selectedNation.UniqueDistrictBuildingId);
-            GameObject nationRow = UiKit.CreateObject("NationChoices", panel.transform);
+            GameObject setupRow = UiKit.CreateObject("CampaignSetup", panel.transform);
+            LayoutElement setupLayout = setupRow.AddComponent<LayoutElement>();
+            setupLayout.flexibleHeight = 1f;
+            UiKit.Horizontal(setupRow, 0, 26);
+
+            GameObject cultures = UiKit.CreateObject("CultureChoices", setupRow.transform);
+            LayoutElement cultureLayout = cultures.AddComponent<LayoutElement>();
+            cultureLayout.flexibleWidth = 2f;
+            cultureLayout.flexibleHeight = 1f;
+            UiKit.Vertical(cultures, 0, 10);
+            UiKit.Label(cultures.transform, "ЦИВИЛИЗАЦИЯ", 14, GamePalette.PaperDim, TextAnchor.MiddleLeft, true);
+            GameObject nationRow = UiKit.CreateObject("NationChoices", cultures.transform);
             LayoutElement nationRowLayout = nationRow.AddComponent<LayoutElement>();
-            nationRowLayout.minHeight = 220f;
-            nationRowLayout.preferredHeight = 220f;
-            UiKit.Horizontal(nationRow, 0, 12);
+            nationRowLayout.flexibleHeight = 1f;
+            UiKit.Horizontal(nationRow, 0, 10);
             for (int i = 0; i < NationCatalog.All.Length; i++)
             {
                 NationDefinition nation = NationCatalog.All[i];
-                bool isSelected = nation.Id == selectedNation.Id;
+                bool isSelected = nation.Id == selectedNationId;
                 GameObject choice = UiKit.CreateObject("NationChoice_" + nation.Id, nationRow.transform);
                 Image choiceImage = choice.AddComponent<Image>();
-                Color choiceTint = new Color(GamePalette.InkSoft.r, GamePalette.InkSoft.g, GamePalette.InkSoft.b, isSelected ? 0.25f : 0.06f);
-                choiceImage.color = Color.white;
-                if (isSelected)
-                {
-                    Outline outline = choice.AddComponent<Outline>();
-                    outline.effectColor = new Color(GamePalette.Gold.r, GamePalette.Gold.g, GamePalette.Gold.b, 0.85f);
-                    outline.effectDistance = new Vector2(2f, -2f);
-                    outline.useGraphicAlpha = false;
-                }
+                choiceImage.color = new Color(isSelected ? GamePalette.Gold.r : GamePalette.InkSoft.r,
+                    isSelected ? GamePalette.Gold.g : GamePalette.InkSoft.g,
+                    isSelected ? GamePalette.Gold.b : GamePalette.InkSoft.b, isSelected ? 0.07f : 0.015f);
                 Button choose = choice.AddComponent<Button>();
                 choose.targetGraphic = choiceImage;
                 choose.transition = Selectable.Transition.ColorTint;
                 ColorBlock choiceColors = choose.colors;
-                choiceColors.normalColor = choiceTint;
-                choiceColors.highlightedColor = Color.Lerp(choiceTint, Color.white, 0.12f);
-                choiceColors.pressedColor = Color.Lerp(choiceTint, Color.black, 0.16f);
+                choiceColors.normalColor = Color.white;
+                choiceColors.highlightedColor = new Color(1f, 1f, 1f, 1f);
+                choiceColors.pressedColor = new Color(0.82f, 0.82f, 0.82f, 1f);
                 choose.colors = choiceColors;
                 string nationId = nation.Id;
                 choose.onClick.AddListener(delegate
@@ -1905,40 +1916,53 @@ namespace Nasledie.Client
                 LayoutElement choiceLayout = choice.AddComponent<LayoutElement>();
                 choiceLayout.flexibleWidth = 1f;
                 choiceLayout.flexibleHeight = 1f;
-                UiKit.Vertical(choice, 8, 3);
-                AddArtwork(choice.transform, nation.LeaderArtKey, 78);
-                UiKit.Label(choice.transform, (isSelected ? "✓  " : "") + nation.NameRu, 17,
+                UiKit.Vertical(choice, 5, 5);
+                AddArtwork(choice.transform, nation.LeaderArtKey, 92);
+                UiKit.Label(choice.transform, nation.NameRu, 16,
                     isSelected ? GamePalette.Gold : GamePalette.Paper, TextAnchor.MiddleCenter, true);
-                UiKit.Label(choice.transform, nation.BonusTitle + " · " + nation.BonusDescription, 13, GamePalette.PaperDim, TextAnchor.MiddleCenter, false);
+                UiKit.Label(choice.transform, nation.LeaderNameRu + " · " + nation.LeaderTitleRu, 12, GamePalette.PaperDim, TextAnchor.MiddleCenter, false);
+                UiKit.Label(choice.transform, nation.BonusTitle + " · " + nation.BonusDescription, 11, GamePalette.PaperDim, TextAnchor.MiddleCenter, false);
                 BuildingDefinition district = RulesCatalog.Building(nation.UniqueDistrictBuildingId);
-                UiKit.Label(choice.transform, district == null ? "Особый район" : "РАЙОН · " + district.NameRu, 12, GamePalette.Sage, TextAnchor.MiddleCenter, true);
+                UiKit.Label(choice.transform, district == null ? "ОСОБЫЙ РАЙОН" : "РАЙОН · " + district.NameRu, 12, GamePalette.Sage, TextAnchor.MiddleCenter, true);
+                if (district != null)
+                    UiKit.Label(choice.transform, BuildingEffectSummary(district), 11, GamePalette.PaperDim, TextAnchor.MiddleCenter, false);
+                GameObject underline = UiKit.CreateObject("SelectedUnderline", choice.transform);
+                Image underlineImage = underline.AddComponent<Image>();
+                underlineImage.color = new Color(GamePalette.Gold.r, GamePalette.Gold.g, GamePalette.Gold.b, isSelected ? 0.9f : 0.12f);
+                underlineImage.raycastTarget = false;
+                LayoutElement underlineLayout = underline.AddComponent<LayoutElement>();
+                underlineLayout.minHeight = 3f;
+                underlineLayout.preferredHeight = 3f;
             }
 
-            GameObject columns = UiKit.CreateObject("CampaignSetupColumns", panel.transform);
-            LayoutElement columnsLayout = columns.AddComponent<LayoutElement>();
-            columnsLayout.flexibleHeight = 1f;
-            UiKit.Horizontal(columns, 0, 14);
-
-            GameObject culture = UtilityCard(columns.transform, "ЛИДЕР И УНИКАЛЬНЫЕ РАЙОНЫ · " + selectedNation.NameRu.ToUpperInvariant());
-            UiKit.Label(culture.transform, selectedNation.LeaderNameRu + " · " + selectedNation.LeaderTitleRu, 19, GamePalette.Gold, TextAnchor.MiddleLeft, true);
-            UiKit.Label(culture.transform, selectedNation.LeaderHistoricalNoteRu, 14, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(culture.transform, "Уникальный район · " + uniqueDistrict.NameRu + " — " + BuildingEffectSummary(uniqueDistrict) +
-                ". Учебный район · " + selectedNation.CampusNameRu + ": " + selectedNation.CampusBonusDescriptionRu,
-                14, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
-
-            GameObject rules = UtilityCard(columns.transform, "УСЛОВИЯ ПАРТИИ");
-            GameObject choices = UiKit.CreateObject("DifficultyAndPace", rules.transform);
-            UiKit.Horizontal(choices, 0, 10);
-            UiKit.Button(choices.transform, "СЛОЖНОСТЬ · " + DifficultyName(selectedDifficulty), CycleDifficulty, GamePalette.Ink, 50, 15);
-            UiKit.Button(choices.transform, "ТЕМП · " + PaceName(selectedPace), CyclePace, GamePalette.Ink, 50, 15);
-            UiKit.Label(rules.transform, CompactHint(DifficultyDescription(selectedDifficulty), 105), 13, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
-            UiKit.Label(rules.transform, CompactHint(PaceDescription(selectedPace), 105), 13, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+            GameObject rules = UiKit.CreateObject("CampaignRules", setupRow.transform);
+            LayoutElement rulesLayout = rules.AddComponent<LayoutElement>();
+            rulesLayout.flexibleWidth = 1f;
+            rulesLayout.flexibleHeight = 1f;
+            UiKit.Vertical(rules, 0, 8);
+            UiKit.Label(rules.transform, "УСЛОВИЯ", 14, GamePalette.PaperDim, TextAnchor.MiddleLeft, true);
+            AddUtilityDivider(rules.transform);
+            UiKit.Button(rules.transform, "СЛОЖНОСТЬ  ·  " + DifficultyName(selectedDifficulty), CycleDifficulty, GamePalette.InkSoft, 44, 13);
+            UiKit.Label(rules.transform, CompactHint(DifficultyDescription(selectedDifficulty), 135), 12, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+            UiKit.Button(rules.transform, "ТЕМП  ·  " + PaceName(selectedPace), CyclePace, GamePalette.InkSoft, 44, 13);
+            UiKit.Label(rules.transform, CompactHint(PaceDescription(selectedPace), 135), 12, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
+            AddUtilityDivider(rules.transform);
+            UiKit.Label(rules.transform, "Побеждайте развитием: благополучием, наукой, культурой, дипломатией или наследием эпох. Война рискованна и разрушительна.",
+                12, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             GameObject footer = UiKit.CreateObject("CampaignSetupFooter", panel.transform);
             UiKit.Horizontal(footer, 0, 12);
-            UiKit.Button(footer.transform, "УСЛОВИЯ ПОБЕДЫ", delegate { ShowEncyclopedia("victory-overview"); }, GamePalette.InkSoft, 48, 14);
-            if (SaveService.HasSave) UiKit.Button(footer.transform, "СОХРАНЕНИЯ", ShowSaves, GamePalette.InkSoft, 48, 14);
-            Button begin = UiKit.Button(footer.transform, "НАЧАТЬ ПАРТИЮ", CreateNewCampaign, GamePalette.Gold, 50, 17);
-            begin.GetComponent<LayoutElement>().flexibleWidth = 1.25f;
+            footer.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
+            Button victory = UiKit.Button(footer.transform, "УСЛОВИЯ ПОБЕДЫ", delegate { ShowEncyclopedia("victory-overview"); }, GamePalette.Ink, 44, 12);
+            SetToolbarButtonWidth(victory, 190f);
+            if (SaveService.HasSave)
+            {
+                Button saves = UiKit.Button(footer.transform, "СОХРАНЕНИЯ", ShowSaves, GamePalette.Ink, 44, 12);
+                SetToolbarButtonWidth(saves, 150f);
+            }
+            GameObject spacer = UiKit.CreateObject("CampaignFooterSpacer", footer.transform);
+            spacer.AddComponent<LayoutElement>().flexibleWidth = 1;
+            Button begin = UiKit.Button(footer.transform, "НАЧАТЬ ПАРТИЮ", CreateNewCampaign, GamePalette.Gold, 48, 15);
+            SetToolbarButtonWidth(begin, 250f);
         }
 
         private void CreateNewCampaign()
@@ -2002,7 +2026,7 @@ namespace Nasledie.Client
             detailPaneLayout.minWidth = 300f;
             GameObject detailShade = UiKit.CreateObject("StrategyPanelShade", detailPane.transform);
             Image detailShadeImage = detailShade.AddComponent<Image>();
-            detailShadeImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.46f);
+            detailShadeImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.52f);
             detailShadeImage.raycastTarget = false;
             UiKit.SetAnchors(UiKit.Rect(detailShade), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             GameObject detailContent = UiKit.ScrollView(detailPane.transform, "StrategyPanelScroll");
@@ -2092,49 +2116,43 @@ namespace Nasledie.Client
         {
             GameState state = simulation.State;
             CivilizationState player = state.Civilization(state.HumanCivilizationId);
-            NationDefinition nation = player == null ? null : NationCatalog.Get(player.NationId);
             RenderSelectedCellContext(parent, player);
-            if (nation != null)
-            {
-                GameObject leaderCard = UiKit.Card(parent, "ВАШ НАРОД · " + nation.NameRu);
-                GameObject leaderRow = UiKit.CreateObject("PlayerLeader", leaderCard.transform);
-                UiKit.Horizontal(leaderRow, 0, 8);
-                AddCityBuildingArtwork(leaderRow.transform, nation.LeaderArtKey, 72);
-                GameObject leaderText = UiKit.CreateObject("LeaderDescription", leaderRow.transform);
-                UiKit.Vertical(leaderText, 0, 3);
-                LayoutElement leaderTextLayout = leaderText.AddComponent<LayoutElement>();
-                leaderTextLayout.flexibleWidth = 1f;
-                UiKit.Label(leaderText.transform, nation.LeaderNameRu + " · " + nation.LeaderTitleRu, 17, GamePalette.Paper, TextAnchor.MiddleLeft, true);
-                UiKit.Label(leaderText.transform, nation.BonusTitle + " · " + nation.BonusDescription, 13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-            }
+            RenderPendingAlerts(parent);
+            RenderGlobalCrisis(parent);
 
             CityState selected = SelectedCity();
             if (selected != null)
             {
-                GameObject card = UiKit.Card(parent, "СТОЛИЦА · " + selected.Name);
-                UiKit.Label(card.transform, "Население " + Format(selected.PopulationTenths) + " / " + Format(selected.HousingTenths) +
-                    "\nЕда " + Format(selected.FoodTenths) + " · здоровье " + selected.Health + " · доверие " + selected.Trust,
-                    15, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                GameObject citySection = UiKit.Section(parent, "ГОРОД · " + selected.Name);
+                UiKit.Label(citySection.transform, "Жители " + Format(selected.PopulationTenths) + "/" + Format(selected.HousingTenths) +
+                    "  ·  Еда " + Format(selected.FoodTenths) + "  ·  Здоровье " + selected.Health + "  ·  Доверие " + selected.Trust,
+                    13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
                 CityYield yield = simulation.PreviewCity(selected.Id);
-                UiKit.Label(card.transform, "Прогноз за ход\nЕда " + Format(yield.FoodTenths) + " · производство " + yield.Production +
-                    " · знания " + Format(yield.KnowledgeTenths) + " · казна " + Format(yield.TreasuryTenths), 13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-                UiKit.Button(card.transform, "ОТКРЫТЬ ГОРОД", delegate { currentPage = ScreenPage.City; RenderGame(); }, GamePalette.Ink, 48, 13);
+                int foodBalance = yield.FoodTenths - selected.PopulationTenths;
+                UiKit.Label(citySection.transform, "За ход  ·  Еда " + Signed(foodBalance) + "  ·  Производство " + yield.Production +
+                    "  ·  Наука " + Format(yield.KnowledgeTenths) + "  ·  Казна " + Format(yield.TreasuryTenths),
+                    12, foodBalance < 0 || yield.TreasuryTenths < 0 ? GamePalette.Danger : GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                Button openCity = UiKit.Button(citySection.transform, "ОТКРЫТЬ ГОРОД", delegate { currentPage = ScreenPage.City; RenderGame(); }, GamePalette.Ink, 42, 12);
+                SetToolbarButtonWidth(openCity, 176f);
             }
 
             if (tutorialStepIndex < TutorialSteps.Length)
             {
                 TutorialStep step = TutorialSteps[tutorialStepIndex];
-                GameObject tutorial = UiKit.Card(parent, "ПУТЕВОДИТЕЛЬ · " + (tutorialStepIndex + 1) + "/" + TutorialSteps.Length);
-                UiKit.Label(tutorial.transform, step.Title + "\n" + TutorialObjectiveLabel(step.Objective), 14, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-                UiKit.Button(tutorial.transform, "ПРОДОЛЖИТЬ ОБУЧЕНИЕ", ShowTutorial, GamePalette.Gold, 48, 13);
+                GameObject tutorial = UiKit.Section(parent, "ПОРЯДОК ХОДА · ШАГ " + (tutorialStepIndex + 1) + "/" + TutorialSteps.Length);
+                UiKit.Label(tutorial.transform, step.Title + "  ·  " + TutorialObjectiveLabel(step.Objective), 13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                Button continueTutorial = UiKit.Button(tutorial.transform, "ПУТЕВОДИТЕЛЬ", ShowTutorial, GamePalette.Gold, 40, 12);
+                SetToolbarButtonWidth(continueTutorial, 176f);
             }
 
-            GameObject worldCard = UiKit.Card(parent, "МИР И ЦЕЛИ");
-            UiKit.Label(worldCard.transform, CountCities(state, player.Id) + " городов · " + (state.Civilizations.Length - 1) + " соседних держав\n" +
-                "Текущий курс: " + AiGoalName(player.StrategicGoal) + " · эпоха " + EraName(player.Era),
-                14, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Button(worldCard.transform, "ДИПЛОМАТИЯ", delegate { currentPage = ScreenPage.Diplomacy; RenderGame(); }, GamePalette.Ink, 46, 12);
-            UiKit.Button(worldCard.transform, "НАУКА И ПОБЕДА", delegate { currentPage = ScreenPage.Research; RenderGame(); }, GamePalette.Ink, 46, 12);
+            GameObject world = UiKit.Section(parent, "СТРАТЕГИЧЕСКАЯ КАРТА");
+            UiKit.Label(world.transform, CountCities(state, player.Id) + " городов  ·  " + Math.Max(0, state.Civilizations.Length - 1) + " держав  ·  " +
+                "Курс: " + AiGoalName(player.StrategicGoal) + "  ·  Эпоха: " + EraName(player.Era),
+                13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            GameObject links = UiKit.CreateObject("WorldOverviewLinks", world.transform);
+            UiKit.Horizontal(links, 0, 8);
+            UiKit.Button(links.transform, "ДИПЛОМАТИЯ", delegate { currentPage = ScreenPage.Diplomacy; RenderGame(); }, GamePalette.Ink, 40, 12);
+            UiKit.Button(links.transform, "НАУКА И ПОБЕДА", delegate { currentPage = ScreenPage.Research; RenderGame(); }, GamePalette.Ink, 40, 12);
         }
 
         private void RenderSelectedCellContext(Transform parent, CivilizationState player)
@@ -2143,11 +2161,22 @@ namespace Nasledie.Client
             HexCell cell = simulation.State.Cell(selectedQ, selectedR);
             if (cell == null || (cell.ExploredByMask & (1 << player.Id)) == 0 || CityAt(cell.Q, cell.R) != null) return;
 
-            GameObject card = UiKit.Card(parent, "ВЫБРАННАЯ КЛЕТКА · " + TerrainName(cell.Terrain));
-            GameObject row = UiKit.CreateObject("SelectedCellDetails", card.transform);
+            GameObject section = UiKit.Section(parent, "КЛЕТКА · " + TerrainName(cell.Terrain));
+            GameObject row = UiKit.CreateObject("SelectedCellDetails", section.transform);
             UiKit.Horizontal(row, 0, 8);
+            row.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
             string terrainArtwork = TerrainArtwork(cell.Terrain);
-            if (!string.IsNullOrEmpty(terrainArtwork)) AddMapArtwork(row.transform, terrainArtwork, new Vector2(78, 68), Vector2.zero, Color.white);
+            if (!string.IsNullOrEmpty(terrainArtwork))
+            {
+                Image artwork = AddMapArtwork(row.transform, terrainArtwork, new Vector2(78, 68), Vector2.zero, Color.white);
+                if (artwork != null)
+                {
+                    LayoutElement artworkLayout = artwork.gameObject.AddComponent<LayoutElement>();
+                    artworkLayout.minWidth = artworkLayout.preferredWidth = 78;
+                    artworkLayout.minHeight = artworkLayout.preferredHeight = 68;
+                    artworkLayout.flexibleWidth = 0;
+                }
+            }
             GameObject detail = UiKit.CreateObject("SelectedCellText", row.transform);
             UiKit.Vertical(detail, 0, 2);
             LayoutElement detailLayout = detail.AddComponent<LayoutElement>();
@@ -2163,7 +2192,7 @@ namespace Nasledie.Client
             {
                 CityState city = SelectedCity();
                 if (city != null && HexGrid.Distance(cell.Q, cell.R, city.Q, city.R) <= 2)
-                    UiKit.Button(card.transform, "РАБОТЫ НА КЛЕТКЕ", delegate { currentPage = ScreenPage.City; RenderGame(); }, GamePalette.Ink, 44, 12);
+                    UiKit.Button(section.transform, "РАБОТЫ НА КЛЕТКЕ", delegate { currentPage = ScreenPage.City; RenderGame(); }, GamePalette.Ink, 40, 12);
             }
         }
 
@@ -2875,9 +2904,10 @@ namespace Nasledie.Client
             for (int i = 0; i < simulation.State.Events.Length; i++)
                 if (!simulation.State.Events[i].IsResolved && simulation.State.Events[i].TargetCivilizationId == simulation.State.HumanCivilizationId) pending++;
             if (pending == 0) return;
-            GameObject card = UiKit.Card(parent, "Нужно решение");
-            UiKit.Label(card.transform, "Есть событие, которое требует вашего ответа. Некоторые последствия усиливаются, пока вы откладываете решение.", 22, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Button(card.transform, "ОТКРЫТЬ СОБЫТИЯ", delegate { currentPage = ScreenPage.Events; RenderGame(); }, GamePalette.Rust, 62, 22);
+            GameObject section = UiKit.Section(parent, "ТРЕБУЕТСЯ РЕШЕНИЕ · " + pending);
+            UiKit.Label(section.transform, "Событие ждёт ответа; промедление может усилить последствия.", 13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            Button openEvents = UiKit.Button(section.transform, "ОТКРЫТЬ СОБЫТИЯ", delegate { currentPage = ScreenPage.Events; RenderGame(); }, GamePalette.Rust, 40, 12);
+            SetToolbarButtonWidth(openEvents, 190f);
         }
 
         private void RenderGlobalCrisis(Transform parent)
@@ -2885,13 +2915,14 @@ namespace Nasledie.Client
             CrisisState crisis = simulation.State.Crisis;
             if (crisis == null || crisis.Kind == CrisisKind.None || crisis.Resolved) return;
             int usefulContribution = Math.Min(5, Math.Max(1, (crisis.Threat + 3) / 4));
-            GameObject card = UiKit.Card(parent, "Мировой кризис · угроза " + crisis.Threat);
-            UiKit.Label(card.transform, crisis.PublicText + " Ход кризиса: " + crisis.TurnsActive + ". Любой вклад улучшает репутацию и снижает угрозу; игра спишет только необходимое количество ресурса.", 22, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            GameObject row = UiKit.CreateObject("CrisisContributions", card.transform);
+            GameObject section = UiKit.Section(parent, "МИРОВОЙ КРИЗИС · УГРОЗА " + crisis.Threat);
+            UiKit.Label(section.transform, crisis.PublicText + "  ·  Продолжается " + crisis.TurnsActive + " хода. Вклад снижает угрозу.",
+                13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            GameObject row = UiKit.CreateObject("CrisisContributions", section.transform);
             UiKit.Horizontal(row, 0, 8);
-            AddActionButton(row.transform, "ЕДА · до " + usefulContribution, delegate { Issue(CommandKind.ContributeToCrisis, text: "food", value: 5); }, GamePalette.Teal, 62);
-            AddActionButton(row.transform, "ЗНАНИЯ · до " + usefulContribution, delegate { Issue(CommandKind.ContributeToCrisis, text: "knowledge", value: 5); }, GamePalette.Ink, 62);
-            AddActionButton(row.transform, "ВЛИЯНИЕ · до " + usefulContribution, delegate { Issue(CommandKind.ContributeToCrisis, text: "influence", value: 5); }, GamePalette.Rust, 62);
+            UiKit.Button(row.transform, "ЕДА · до " + usefulContribution, delegate { Issue(CommandKind.ContributeToCrisis, text: "food", value: 5); }, GamePalette.Teal, 38, 11);
+            UiKit.Button(row.transform, "ЗНАНИЯ · до " + usefulContribution, delegate { Issue(CommandKind.ContributeToCrisis, text: "knowledge", value: 5); }, GamePalette.Ink, 38, 11);
+            UiKit.Button(row.transform, "ВЛИЯНИЕ · до " + usefulContribution, delegate { Issue(CommandKind.ContributeToCrisis, text: "influence", value: 5); }, GamePalette.Rust, 38, 11);
         }
 
         private void RenderUnits(Transform parent)
@@ -2965,31 +2996,83 @@ namespace Nasledie.Client
             CivilizationState owner = simulation.State.Civilization(simulation.State.HumanCivilizationId);
             CityState city = SelectedCity();
             if (city == null) return;
-            GameObject selector = UiKit.Card(parent, "Ваши города");
+            int ownedCityCount = 0;
+            int selectedCityIndex = 0;
+            for (int i = 0; i < simulation.State.Cities.Length; i++)
+            {
+                CityState owned = simulation.State.Cities[i];
+                if (owned.OwnerId != owner.Id) continue;
+                if (owned.Id == city.Id) selectedCityIndex = ownedCityCount;
+                ownedCityCount++;
+            }
+            GameObject selector = UiKit.CreateObject("OwnedCitySelector", parent);
+            LayoutElement selectorLayout = selector.AddComponent<LayoutElement>();
+            selectorLayout.minHeight = 82;
+            selectorLayout.preferredHeight = 82;
+            UiKit.Vertical(selector, 0, 4);
+            UiKit.Label(selector.transform, "ГОРОДА · " + ownedCityCount, 12, GamePalette.PaperDim, TextAnchor.MiddleLeft, true);
+            GameObject scrollObject = UiKit.CreateObject("OwnedCityScroll", selector.transform);
+            LayoutElement scrollLayout = scrollObject.AddComponent<LayoutElement>();
+            scrollLayout.minHeight = 48;
+            scrollLayout.preferredHeight = 48;
+            ScrollRect cityScroll = scrollObject.AddComponent<ScrollRect>();
+            cityScroll.horizontal = true;
+            cityScroll.vertical = false;
+            cityScroll.movementType = ScrollRect.MovementType.Clamped;
+            cityScroll.scrollSensitivity = 48;
+            GameObject viewport = UiKit.CreateObject("CitySelectorViewport", scrollObject.transform);
+            RectTransform viewportRect = UiKit.Rect(viewport);
+            UiKit.SetAnchors(viewportRect, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            Image viewportImage = viewport.AddComponent<Image>();
+            viewportImage.color = new Color(0, 0, 0, 0.01f);
+            viewport.AddComponent<RectMask2D>();
+            GameObject cityContent = UiKit.CreateObject("CitySelectorContent", viewport.transform);
+            RectTransform cityContentRect = UiKit.Rect(cityContent);
+            cityContentRect.anchorMin = new Vector2(0, 0);
+            cityContentRect.anchorMax = new Vector2(0, 1);
+            cityContentRect.pivot = new Vector2(0, 0.5f);
+            cityContentRect.sizeDelta = new Vector2(ownedCityCount * 134f, 0);
+            HorizontalLayoutGroup cityRow = cityContent.AddComponent<HorizontalLayoutGroup>();
+            cityRow.padding = new RectOffset(0, 0, 0, 0);
+            cityRow.spacing = 6;
+            cityRow.childControlWidth = true;
+            cityRow.childControlHeight = true;
+            cityRow.childForceExpandWidth = false;
+            cityRow.childForceExpandHeight = true;
+            cityRow.childAlignment = TextAnchor.MiddleLeft;
+            cityScroll.viewport = viewportRect;
+            cityScroll.content = cityContentRect;
             for (int i = 0; i < simulation.State.Cities.Length; i++)
             {
                 CityState owned = simulation.State.Cities[i];
                 if (owned.OwnerId != owner.Id) continue;
                 int id = owned.Id;
-                string label = owned.Name + " · население " + Format(owned.PopulationTenths) + (id == city.Id ? " · выбран" : "");
-                UiKit.Button(selector.transform, label, delegate { selectedCityId = id; selectedQ = owned.Q; selectedR = owned.R; RenderGame(); }, id == city.Id ? GamePalette.Teal : GamePalette.Ink, 58, 20);
+                int q = owned.Q;
+                int r = owned.R;
+                string label = owned.Name + " · " + Format(owned.PopulationTenths);
+                Button cityButton = UiKit.Button(cityContent.transform, label,
+                    delegate { selectedCityId = id; selectedQ = q; selectedR = r; RenderGame(); },
+                    id == city.Id ? GamePalette.Gold : GamePalette.Ink, 38, 12);
+                LayoutElement cityButtonLayout = cityButton.GetComponent<LayoutElement>();
+                cityButtonLayout.minWidth = 128;
+                cityButtonLayout.preferredWidth = 128;
+                cityButtonLayout.flexibleWidth = 0;
             }
-            GameObject overview = UiKit.Card(parent, city.Name + " · управление");
-            UiKit.Label(overview.transform, "Население " + Format(city.PopulationTenths) + "/" + Format(city.HousingTenths) +
-                " · резерв работников " + Format(city.ReservedPopulationTenths) + " · еда " + Format(city.FoodTenths) +
-                " · рост " + Format(city.GrowthTenths) + " · эффективность " + (city.EfficiencyBasisPoints / 100) + "%",
-                22, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(overview.transform, "Здоровье " + city.Health + " · безопасность " + city.Safety + " · образование " + city.Education +
-                " · доверие " + city.Trust + " · среда " + city.Environment + " · привлекательность " + city.Attraction,
-                22, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-            UiKit.Label(overview.transform, "Город развивается, когда запас еды покрывает текущее потребление. Дефицит снижает здоровье и доверие, затем вызывает отток и смерти.",
-                20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            cityScroll.horizontalNormalizedPosition = ownedCityCount <= 4 ? 0 :
+                Mathf.Clamp01((selectedCityIndex - 3f) / (ownedCityCount - 4f));
+
+            GameObject overview = UiKit.Section(parent, city.Name);
+            UiKit.Label(overview.transform, "Жители " + Format(city.PopulationTenths) + "/" + Format(city.HousingTenths) +
+                "  ·  Рабочие " + city.WorkerCount + "  ·  Еда " + Format(city.FoodTenths) + "  ·  Рост " + Format(city.GrowthTenths),
+                13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            UiKit.Label(overview.transform, "Здоровье " + city.Health + "  ·  Безопасность " + city.Safety + "  ·  Образование " + city.Education +
+                "  ·  Доверие " + city.Trust + "  ·  Среда " + city.Environment,
+                12, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
             CityYield forecast = simulation.PreviewCity(city.Id);
             int foodBalance = forecast.FoodTenths - city.PopulationTenths;
-            UiKit.Label(overview.transform, "Прогноз хода: еда " + Signed(foodBalance) + " (выпуск " + Format(forecast.FoodTenths) + " − потребление " + Format(city.PopulationTenths) +
-                ") · казна города " + Signed(forecast.TreasuryTenths) + " после содержания " + Format(EconomyCalculator.CityUpkeep(simulation.State, city)) +
-                " · производство " + forecast.Production + " · знания " + Format(forecast.KnowledgeTenths) + " · культура " + forecast.CulturePrestige,
-                20, foodBalance < 0 || forecast.TreasuryTenths < 0 ? GamePalette.Danger : GamePalette.Sage, TextAnchor.MiddleLeft, true);
+            UiKit.Label(overview.transform, "Прогноз  ·  Еда " + Signed(foodBalance) + "  ·  Казна " + Signed(forecast.TreasuryTenths) +
+                "  ·  Производство " + forecast.Production + "  ·  Наука " + Format(forecast.KnowledgeTenths) + "  ·  Культура " + forecast.CulturePrestige,
+                12, foodBalance < 0 || forecast.TreasuryTenths < 0 ? GamePalette.Danger : GamePalette.Sage, TextAnchor.MiddleLeft, true);
             RenderCityArchitecture(parent, city, owner);
             RenderWorkers(parent, city);
             RenderServiceControls(parent, city);
@@ -3003,19 +3086,18 @@ namespace Nasledie.Client
         {
             int districtCount = CountDistricts(city.Id);
             NationDefinition nation = NationCatalog.Get(owner.NationId);
-            GameObject card = UiKit.Card(parent, "Городские районы · " + districtCount + " построено");
-            GameObject center = UiKit.CreateObject("CityCenterArtwork", card.transform);
-            UiKit.Horizontal(center, 8, 14);
-            if (nation != null) AddCityBuildingArtwork(center.transform, nation.LeaderArtKey, 68);
-            AddCityBuildingArtwork(center.transform, nation == null ? "City" : nation.ArtKey, 92);
+            GameObject section = UiKit.Section(parent, "РАЙОНЫ · " + districtCount);
+            GameObject center = UiKit.CreateObject("CityCenterArtwork", section.transform);
+            LayoutElement centerLayout = center.AddComponent<LayoutElement>();
+            centerLayout.minHeight = 76;
+            centerLayout.preferredHeight = 76;
+            UiKit.Horizontal(center, 0, 8);
+            center.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
             string currentArchitecture = CityMapArtwork(city, owner.Era);
-            if (nation == null || currentArchitecture != nation.ArtKey)
-                AddCityBuildingArtwork(center.transform, currentArchitecture, 138);
-            Text eraDescription = UiKit.Label(center.transform,
-                "Персонаж: " + (nation == null ? owner.Name : nation.LeaderNameRu) + ". Центр «" + (nation == null ? owner.Name : nation.NameRu) +
-                "» остаётся на центральном гексе. Каждый район занимает отдельную клетку; обычные здания меняют вид с эпохой. " +
-                (nation == null ? "" : "Учебный центр «" + nation.CampusNameRu + "»: " + nation.CampusBonusDescriptionRu),
-                20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            AddCityBuildingArtwork(center.transform, currentArchitecture, 72);
+            string architectureInfo = "Эпоха · " + EraName(owner.Era) + "  ·  Районы размещаются на отдельных гексах карты.";
+            if (nation != null) architectureInfo += " Учебный район «" + nation.CampusNameRu + "» · " + nation.CampusBonusDescriptionRu;
+            Text eraDescription = UiKit.Label(center.transform, architectureInfo, 12, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
             eraDescription.GetComponent<LayoutElement>().flexibleWidth = 1f;
 
             int shown = 0;
@@ -3026,18 +3108,21 @@ namespace Nasledie.Client
                 BuildingDefinition definition = RulesCatalog.Building(city.BuildingIds[i]);
                 if (definition == null) continue;
                 HexCell district = DistrictCellForCity(city.Id, definition.Id);
-                GameObject row = UiKit.CreateObject("BuiltBuilding_" + city.BuildingIds[i], card.transform);
-                UiKit.Horizontal(row, 4, 14);
-                AddCityBuildingArtwork(row.transform, BuildingArtwork(definition.Id, owner.Era, owner.NationId), 82);
-                string location = district == null ? "· район не найден" : "· район на карте " + district.Q + "," + district.R;
-                Text buildingLabel = UiKit.Label(row.transform, DisplayBuildingName(definition, owner.NationId) + " · уровень " + level + " " + location, 19,
+                GameObject row = UiKit.CreateObject("BuiltBuilding_" + city.BuildingIds[i], section.transform);
+                LayoutElement rowLayout = row.AddComponent<LayoutElement>();
+                rowLayout.minHeight = 44;
+                rowLayout.preferredHeight = 44;
+                UiKit.Horizontal(row, 0, 8);
+                AddCityBuildingArtwork(row.transform, BuildingArtwork(definition.Id, owner.Era, owner.NationId), 40);
+                string location = district == null ? "" : "  ·  " + district.Q + "," + district.R;
+                Text buildingLabel = UiKit.Label(row.transform, DisplayBuildingName(definition, owner.NationId) + " · ур. " + level + location, 13,
                     GamePalette.PaperDim, TextAnchor.MiddleLeft, true);
                 buildingLabel.GetComponent<LayoutElement>().flexibleWidth = 1f;
                 shown++;
             }
             if (shown == 0)
-                UiKit.Label(card.transform, "Городской центр пока единственное завершённое здание. Первый район появится на отдельном свободном гексе после стройки.",
-                    19, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                UiKit.Label(section.transform, "Городской центр · первый район появится на свободном гексе после строительства.",
+                    12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
         }
 
         private int CountDistricts(int cityId)
@@ -3079,49 +3164,49 @@ namespace Nasledie.Client
         {
             int assignmentCapacity = Math.Min(city.WorkerCount, EconomyCalculator.WorkerCapacity(simulation.State, city));
             int assignedWorkers = EconomyCalculator.AssignedWorkers(city);
-            GameObject card = UiKit.Card(parent, "Работники · " + assignedWorkers + "/" + assignmentCapacity + " рабочих мест");
-            UiKit.Label(card.transform, "Жителей для работы: " + city.WorkerCount + " · рабочих мест в городе: " + EconomyCalculator.WorkerCapacity(simulation.State, city) +
-                ". Общие места дают освоенные клетки; поля открывают места земледельцам, а профильные районы — специалистам.",
-                18, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            GameObject section = UiKit.Section(parent, "РАБОТНИКИ · " + assignedWorkers + "/" + assignmentCapacity);
+            UiKit.Label(section.transform, "Доступно жителей: " + city.WorkerCount + "  ·  Рабочих мест: " + EconomyCalculator.WorkerCapacity(simulation.State, city),
+                12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             WorkerRole[] roles = { WorkerRole.Farmer, WorkerRole.Artisan, WorkerRole.Scholar, WorkerRole.Merchant, WorkerRole.Artist, WorkerRole.CivilServant };
             string[] names = { "Земледельцы · еда", "Ремесленники · производство", "Учёные · знания", "Торговцы · казна", "Художники · культура", "Служащие · услуги" };
             string[] activities = { "Activity_Farmer", "Activity_Blacksmith", "Activity_Scholar", "Activity_Merchant", "Activity_Artist", "Activity_Steward" };
             for (int i = 0; i < roles.Length; i++)
             {
                 int roleIndex = i;
-                GameObject row = UiKit.CreateObject("Worker_" + i, card.transform);
+                GameObject row = UiKit.CreateObject("Worker_" + i, section.transform);
+                LayoutElement rowLayout = row.AddComponent<LayoutElement>();
+                rowLayout.minHeight = 50;
+                rowLayout.preferredHeight = 50;
                 UiKit.Horizontal(row, 0, 8);
-                Image worker = AddActivitySprite(row.transform, activities[i], new Vector2(38, 38), Vector2.zero,
+                row.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
+                Image worker = AddActivitySprite(row.transform, activities[i], new Vector2(32, 32), Vector2.zero,
                     city.Workers[i] > 0 ? Color.white : new Color(0.62f, 0.68f, 0.65f, 0.48f), city.Workers[i] > 0 && animationMode > 0, 5.2f);
                 if (worker != null)
                 {
                     LayoutElement workerLayout = worker.GetComponent<LayoutElement>();
                     if (workerLayout == null) workerLayout = worker.gameObject.AddComponent<LayoutElement>();
-                    workerLayout.minWidth = workerLayout.preferredWidth = 42;
-                    workerLayout.minHeight = workerLayout.preferredHeight = 42;
+                    workerLayout.minWidth = workerLayout.preferredWidth = 34;
+                    workerLayout.minHeight = workerLayout.preferredHeight = 34;
                     workerLayout.flexibleWidth = 0;
                 }
                 int roleCapacity = EconomyCalculator.WorkerRoleCapacity(simulation.State, city, roles[i]);
-                Text value = UiKit.Label(row.transform, names[i] + " · " + city.Workers[i] + "/" + roleCapacity, 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                Text value = UiKit.Label(row.transform, names[i] + " · " + city.Workers[i] + "/" + roleCapacity, 13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
                 value.GetComponent<LayoutElement>().flexibleWidth = 1;
                 int next = Math.Max(0, city.Workers[i] - 1);
-                Button minus = UiKit.Button(row.transform, "−", delegate { Issue(CommandKind.SetWorkers, city.Id, value: roleIndex, targetId: next); }, GamePalette.Ink, 52, 22);
-                minus.GetComponent<LayoutElement>().flexibleWidth = 0;
-                minus.GetComponent<LayoutElement>().preferredWidth = 60;
+                Button minus = UiKit.Button(row.transform, "−", delegate { Issue(CommandKind.SetWorkers, city.Id, value: roleIndex, targetId: next); }, GamePalette.Ink, 36, 16);
+                SetToolbarButtonWidth(minus, 38);
                 minus.interactable = city.Workers[i] > 0;
                 int increase = assignedWorkers < assignmentCapacity && city.Workers[i] < roleCapacity ? city.Workers[i] + 1 : city.Workers[i];
-                Button plus = UiKit.Button(row.transform, "+", delegate { Issue(CommandKind.SetWorkers, city.Id, value: roleIndex, targetId: increase); }, GamePalette.Ink, 52, 22);
-                plus.GetComponent<LayoutElement>().flexibleWidth = 0;
-                plus.GetComponent<LayoutElement>().preferredWidth = 60;
+                Button plus = UiKit.Button(row.transform, "+", delegate { Issue(CommandKind.SetWorkers, city.Id, value: roleIndex, targetId: increase); }, GamePalette.Ink, 36, 16);
+                SetToolbarButtonWidth(plus, 38);
                 plus.interactable = assignedWorkers < assignmentCapacity && city.Workers[i] < roleCapacity;
             }
-            UiKit.Label(card.transform, "Перераспределение вручную сохраняет число работников в остальных ролях и не превышает число жителей, мест города или мест выбранной роли.", 19, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-            GameObject focusRow = UiKit.CreateObject("WorkerFocus", card.transform);
+            GameObject focusRow = UiKit.CreateObject("WorkerFocus", section.transform);
             UiKit.Horizontal(focusRow, 0, 8);
-            AddActionButton(focusRow.transform, "БАЛАНС", delegate { AutoAssign(city.Id, "balanced"); }, GamePalette.Teal);
-            AddActionButton(focusRow.transform, "ЕДА", delegate { AutoAssign(city.Id, "food"); }, GamePalette.Ink);
-            AddActionButton(focusRow.transform, "НАУКА", delegate { AutoAssign(city.Id, "science"); }, GamePalette.Ink);
-            AddActionButton(focusRow.transform, "ТОРГОВЛЯ", delegate { AutoAssign(city.Id, "trade"); }, GamePalette.Ink);
+            UiKit.Button(focusRow.transform, "БАЛАНС", delegate { AutoAssign(city.Id, "balanced"); }, GamePalette.Teal, 38, 11);
+            UiKit.Button(focusRow.transform, "ЕДА", delegate { AutoAssign(city.Id, "food"); }, GamePalette.Ink, 38, 11);
+            UiKit.Button(focusRow.transform, "НАУКА", delegate { AutoAssign(city.Id, "science"); }, GamePalette.Ink, 38, 11);
+            UiKit.Button(focusRow.transform, "ТОРГОВЛЯ", delegate { AutoAssign(city.Id, "trade"); }, GamePalette.Ink, 38, 11);
         }
 
         private static Image AddActivitySprite(Transform parent, string activity, Vector2 size, Vector2 position, Color tint, bool animated, float fps)
@@ -3190,19 +3275,24 @@ namespace Nasledie.Client
 
         private void RenderServiceControls(Transform parent, CityState city)
         {
-            GameObject card = UiKit.Card(parent, "Городские службы · текущее содержание " + Format(EconomyCalculator.CityUpkeep(simulation.State, city)) + " казны за ход");
+            GameObject section = UiKit.Section(parent, "ГОРОДСКИЕ СЛУЖБЫ · " + Format(EconomyCalculator.CityUpkeep(simulation.State, city)) + " казны / ход");
             string[] names = { "Здоровье", "Безопасность", "Образование" };
             for (int i = 0; i < 3; i++)
             {
                 int service = i;
-                GameObject row = UiKit.CreateObject("Service_" + i, card.transform);
+                GameObject row = UiKit.CreateObject("Service_" + i, section.transform);
+                LayoutElement rowLayout = row.AddComponent<LayoutElement>();
+                rowLayout.minHeight = 50;
+                rowLayout.preferredHeight = 50;
                 UiKit.Horizontal(row, 0, 8);
-                Text name = UiKit.Label(row.transform, names[i] + " · " + SpendingName(city.ServiceFunding[i]), 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+                row.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
+                Text name = UiKit.Label(row.transform, names[i] + " · " + SpendingName(city.ServiceFunding[i]), 13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
                 name.GetComponent<LayoutElement>().flexibleWidth = 1;
-                AddActionButton(row.transform, "МЕНЬШЕ", delegate { SetSpending(city.Id, service, Math.Max(0, city.ServiceFunding[service] - 1)); }, GamePalette.Ink, 50);
-                AddActionButton(row.transform, "БОЛЬШЕ", delegate { SetSpending(city.Id, service, Math.Min(2, city.ServiceFunding[service] + 1)); }, GamePalette.Teal, 50);
+                Button less = UiKit.Button(row.transform, "−", delegate { SetSpending(city.Id, service, Math.Max(0, city.ServiceFunding[service] - 1)); }, GamePalette.Ink, 36, 16);
+                SetToolbarButtonWidth(less, 38);
+                Button more = UiKit.Button(row.transform, "+", delegate { SetSpending(city.Id, service, Math.Min(2, city.ServiceFunding[service] + 1)); }, GamePalette.Teal, 36, 16);
+                SetToolbarButtonWidth(more, 38);
             }
-            UiKit.Label(card.transform, "Низкий уровень бесплатен; стандартный и высокий стоят больше. Финансирование постепенно меняет городские показатели.", 19, GamePalette.Muted, TextAnchor.MiddleLeft, false);
         }
 
         private static string SpendingName(int funding)
@@ -3215,8 +3305,8 @@ namespace Nasledie.Client
         private void RenderCityProject(Transform parent, CityState city)
         {
             CityProject project = city.Project ?? new CityProject();
-            GameObject card = UiKit.Card(parent, "Строительство и активный проект");
-            if (project.Kind == ProjectKind.None) UiKit.Label(card.transform, "Очередь пуста. Проект получает производство города в конце каждого хода.", 21, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            GameObject section = UiKit.Section(parent, "ТЕКУЩИЙ ПРОЕКТ");
+            if (project.Kind == ProjectKind.None) UiKit.Label(section.transform, "Очередь пуста · выпуск города начисляется в конце хода.", 13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             else
             {
                 CivilizationState owner = simulation.State.Civilization(city.OwnerId);
@@ -3225,15 +3315,16 @@ namespace Nasledie.Client
                 int production = Math.Max(1, simulation.PreviewCity(city.Id).Production);
                 int turnsLeft = Math.Max(0, project.Cost - project.Progress + production - 1) / production;
                 if (scienceReadyToValidate)
-                    UiKit.Label(card.transform, "Научная программа завершена. Поддерживайте выпуск не ниже 5 знаний за ход два хода подряд · сейчас " +
-                        Format(owner.PreviousTurnKnowledgeOutputTenths) + " / " + Format(owner.LastTurnKnowledgeOutputTenths) + ".", 22, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                    UiKit.Label(section.transform, "Научная программа готова · знания за два последних хода: " +
+                        Format(owner.PreviousTurnKnowledgeOutputTenths) + " / " + Format(owner.LastTurnKnowledgeOutputTenths) + ".", 13, GamePalette.Paper, TextAnchor.MiddleLeft, true);
                 else
-                    UiKit.Label(card.transform, ProjectName(project) + " · " + project.Progress + "/" + project.Cost + " ПП · " + percent + "% · примерно " + turnsLeft + " ход(а) до завершения",
-                        22, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                    UiKit.Label(section.transform, ProjectName(project) + " · " + project.Progress + "/" + project.Cost + " ПП · " + percent + "% · ещё " + turnsLeft + " хода",
+                        14, GamePalette.Paper, TextAnchor.MiddleLeft, true);
                 if (project.Kind == ProjectKind.Building && project.DistrictPlotReserved)
-                    UiKit.Label(card.transform, "Место будущего района: гекс " + project.TargetQ + "," + project.TargetR + ". Земля уже включена в территорию города; район появится после завершения.",
-                        19, GamePalette.Muted, TextAnchor.MiddleLeft, false);
-                UiKit.Button(card.transform, "ОТМЕНИТЬ ПРОЕКТ · ВОЗВРАТ ПОЛОВИНЫ ВЛОЖЕННОЙ КАЗНЫ", delegate { Issue(CommandKind.SetProject, city.Id, text: "cancel"); }, GamePalette.Rust, 62, 18);
+                    UiKit.Label(section.transform, "Район появится на гексе " + project.TargetQ + "," + project.TargetR + " после завершения.",
+                        12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                Button cancel = UiKit.Button(section.transform, "ОТМЕНИТЬ · ВОЗВРАТ ПОЛОВИНЫ КАЗНЫ", delegate { Issue(CommandKind.SetProject, city.Id, text: "cancel"); }, GamePalette.Rust, 42, 12);
+                SetToolbarButtonWidth(cancel, 260f);
             }
         }
 
@@ -3249,7 +3340,7 @@ namespace Nasledie.Client
 
         private void RenderBuildingChoices(Transform parent, CityState city, CivilizationState owner)
         {
-            GameObject card = UiKit.Card(parent, "Здания · производство " + simulation.PreviewCity(city.Id).Production + " ПП за ход");
+            GameObject section = UiKit.Section(parent, "ЗДАНИЯ · " + simulation.PreviewCity(city.Id).Production + " ПП / ХОД");
             for (int i = 0; i < RulesCatalog.Buildings.Length; i++)
             {
                 BuildingDefinition building = RulesCatalog.Buildings[i];
@@ -3258,11 +3349,11 @@ namespace Nasledie.Client
                 bool unlocked = string.IsNullOrEmpty(building.RequiredTechnology) || owner.Knows(building.RequiredTechnology);
                 bool already = city.BuildingLevel(building.Id) > 0;
                 string label = DisplayBuildingName(building, owner.NationId) + " · " + building.ProductionCost + " ПП · содержание " + Format(building.UpkeepTenths) +
-                    (string.IsNullOrEmpty(building.RequiredNationId) && building.Id != "factory" ? "" : " · " + BuildingEffectSummary(building)) +
+                    (building.Id == "factory" ? " · фабрика эпохи индустрии" : "") +
                     (unlocked ? "" : " · нужна технология «" + building.RequiredTechnology + "»") +
                     (already ? " · уже построено" : "");
-                Button button = UiKit.Button(card.transform, label,
-                    delegate { Issue(CommandKind.SetProject, city.Id, text: building.Id); }, already ? GamePalette.Ink : unlocked ? GamePalette.Teal : GamePalette.Ink, 60, 18);
+                Button button = UiKit.Button(section.transform, label,
+                    delegate { Issue(CommandKind.SetProject, city.Id, text: building.Id); }, already ? GamePalette.Ink : unlocked ? GamePalette.Teal : GamePalette.Ink, 42, 12);
                 AddButtonArtwork(button, BuildingArtwork(building.Id, owner.Era, owner.NationId));
                 button.interactable = unlocked && (!already || building.Id == "house") &&
                     (!building.UniqueEmpireBuilding || CountEmpireBuilding(owner.Id, building.Id) == 0) &&
@@ -3272,15 +3363,15 @@ namespace Nasledie.Client
 
         private void RenderRecruitChoices(Transform parent, CityState city, CivilizationState owner)
         {
-            GameObject card = UiKit.Card(parent, "Войска эпохи «" + EraName(owner.Era) + "» · выберите роль отряда");
+            GameObject section = UiKit.Section(parent, "ВОЙСКА · " + EraName(owner.Era));
             for (int i = 0; i < RulesCatalog.Units.Length; i++)
             {
                 UnitDefinition unit = RulesCatalog.Units[i];
                 if (unit.LegacyOnly || (unit.Class != UnitClass.Civilian && unit.Era != owner.Era)) continue;
                 bool tech = string.IsNullOrEmpty(unit.RequiredTechnology) || owner.Knows(unit.RequiredTechnology);
                 bool building = string.IsNullOrEmpty(unit.RequiredBuilding) || city.BuildingLevel(unit.RequiredBuilding) > 0;
-                string label = UnitClassName(unit.Class) + "  ·  " + unit.NameRu + "  ·  " + unit.Strength + " силы  ·  движение " + unit.Movement +
-                    "  ·  " + unit.ProductionCost + " ПП  ·  " + Format(unit.TreasuryCostTenths) + " казны  ·  " + Format(unit.PopulationTenths) + " населения";
+                string label = UnitClassName(unit.Class) + " · " + unit.NameRu + " · сила " + unit.Strength + " · ход " + unit.Movement +
+                    " · " + unit.ProductionCost + " ПП · " + Format(unit.TreasuryCostTenths) + " казны · " + Format(unit.PopulationTenths) + " жителей";
                 TechnologyDefinition requiredTech = string.IsNullOrEmpty(unit.RequiredTechnology) ? null : RulesCatalog.Technology(unit.RequiredTechnology);
                 if (!tech) label += "  ·  изучите «" + (requiredTech == null ? unit.RequiredTechnology : requiredTech.NameRu) + "»";
                 if (!building)
@@ -3289,14 +3380,14 @@ namespace Nasledie.Client
                     label += "  ·  нужно здание «" + (requiredBuilding == null ? unit.RequiredBuilding : requiredBuilding.NameRu) + "»";
                 }
                 UnitKind kind = unit.Kind;
-                Button button = UiKit.Button(card.transform, label, delegate { Issue(CommandKind.Recruit, city.Id, value: (int)kind); }, unit.Kind == UnitKind.SettlerWagon ? GamePalette.Teal : GamePalette.Ink, 60, 18);
+                Button button = UiKit.Button(section.transform, label, delegate { Issue(CommandKind.Recruit, city.Id, value: (int)kind); }, unit.Kind == UnitKind.SettlerWagon ? GamePalette.Teal : GamePalette.Ink, 44, 12);
                 AddButtonArtwork(button, UnitArtwork(unit.Kind, owner.Era));
                 button.interactable = tech && building && (city.Project == null || city.Project.Kind == ProjectKind.None) &&
                     (unit.Kind != UnitKind.SettlerWagon || (city.PopulationTenths >= 80 && city.FoodTenths >= 60)) &&
                     (unit.Kind == UnitKind.SettlerWagon || (city.PopulationTenths >= unit.PopulationTenths + 40 && owner.TreasuryTenths >= unit.TreasuryCostTenths));
             }
-            UiKit.Label(card.transform, "В эпохе открываются пять боевых ролей: пехота, стрелки, конница, осадные части и разведка. Исследования и казармы открывают отдельные варианты. Набор резервирует жителей, занимает производство и добавляет содержание. Обоз стоит 6 еды и 2 населения.",
-                16, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            UiKit.Label(section.transform, "Роли, эпоха, технологии и казармы определяют доступный набор.",
+                12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
         }
 
         private static string UnitClassName(UnitClass unitClass)
@@ -3314,18 +3405,18 @@ namespace Nasledie.Client
 
         private void RenderImprovementChoices(Transform parent, CityState city, CivilizationState owner)
         {
-            GameObject card = UiKit.Card(parent, "Улучшение клеток");
+            GameObject section = UiKit.Section(parent, "КЛЕТКА И УЛУЧШЕНИЯ");
             HexCell selected = simulation.State.Cell(selectedQ, selectedR);
             if (selected == null || selected.OwnerId != owner.Id || HexGrid.Distance(selected.Q, selected.R, city.Q, city.R) > 2)
             {
-                UiKit.Label(card.transform, "Выберите на карте принадлежащую городу клетку в пределах двух гексов.", 20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                UiKit.Label(section.transform, "Выберите принадлежащую городу клетку в пределах двух гексов.", 12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
                 return;
             }
-            UiKit.Label(card.transform, "Клетка " + selected.Q + "," + selected.R + " · " + TerrainName(selected.Terrain) + " · ресурс " + selected.Resource +
-                " · улучшение " + selected.Improvement + " · повреждение " + selected.Damage + "%", 21, GamePalette.Paper, TextAnchor.MiddleLeft, false);
+            UiKit.Label(section.transform, "" + selected.Q + "," + selected.R + " · " + TerrainName(selected.Terrain) + " · " + selected.Resource +
+                " · улучшение " + selected.Improvement + " · повреждение " + selected.Damage + "%", 13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
             if (selected.Damage > 0)
             {
-                UiKit.Button(card.transform, "ВОССТАНОВИТЬ ИНФРАСТРУКТУРУ · 4 ПП", delegate { Issue(CommandKind.Repair, city.Id, q: selected.Q, r: selected.R); }, GamePalette.Rust, 58, 20);
+                UiKit.Button(section.transform, "ВОССТАНОВИТЬ · 4 ПП", delegate { Issue(CommandKind.Repair, city.Id, q: selected.Q, r: selected.R); }, GamePalette.Rust, 42, 12);
             }
             bool hasChoice = false;
             for (int i = 0; i < RulesCatalog.Improvements.Length; i++)
@@ -3336,12 +3427,12 @@ namespace Nasledie.Client
                 if (!tech || !terrain || selected.Improvement == improvement.Kind) continue;
                 hasChoice = true;
                 ImprovementKind kind = improvement.Kind;
-                Button button = UiKit.Button(card.transform, improvement.NameRu + " · " + improvement.ProductionCost + " ПП · технология " + improvement.RequiredTechnology,
-                    delegate { Issue(CommandKind.BuildImprovement, city.Id, value: (int)kind, q: selected.Q, r: selected.R); }, GamePalette.Ink, 56, 18);
+                Button button = UiKit.Button(section.transform, improvement.NameRu + " · " + improvement.ProductionCost + " ПП · " + improvement.RequiredTechnology,
+                    delegate { Issue(CommandKind.BuildImprovement, city.Id, value: (int)kind, q: selected.Q, r: selected.R); }, GamePalette.Ink, 42, 12);
                 AddButtonArtwork(button, ImprovementArtwork(kind, owner.Era));
                 button.interactable = city.Project == null || city.Project.Kind == ProjectKind.None;
             }
-            if (!hasChoice) UiKit.Label(card.transform, "Нет доступных улучшений для этой клетки. Развивайте земледелие, дороги, инженерное дело или торговлю.", 19, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+            if (!hasChoice) UiKit.Label(section.transform, "Нет доступных улучшений для этой клетки.", 12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
         }
 
         private static string TerrainName(TerrainKind terrain)

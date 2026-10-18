@@ -307,6 +307,23 @@ namespace Nasledie.Client
             return card;
         }
 
+        public static GameObject Section(Transform parent, string title)
+        {
+            GameObject section = CreateObject("Section_" + title, parent);
+            Vertical(section, 0, 5);
+            section.GetComponent<VerticalLayoutGroup>().childForceExpandWidth = false;
+            Label(section.transform, title, 16, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+            GameObject divider = CreateObject("SectionDivider", section.transform);
+            Image dividerImage = divider.AddComponent<Image>();
+            dividerImage.color = new Color(GamePalette.Gold.r, GamePalette.Gold.g, GamePalette.Gold.b, 0.28f);
+            dividerImage.raycastTarget = false;
+            LayoutElement dividerLayout = divider.AddComponent<LayoutElement>();
+            dividerLayout.minHeight = 1f;
+            dividerLayout.preferredHeight = 1f;
+            dividerLayout.flexibleWidth = 1f;
+            return section;
+        }
+
         public static GameObject ScrollView(Transform parent, string name)
         {
             GameObject scrollObject = CreateObject(name, parent);
