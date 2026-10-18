@@ -490,7 +490,7 @@ namespace Nasledie.Client
         {
             GameObject audioRoot = new GameObject("NasledieAudio");
             audioRoot.transform.SetParent(transform, false);
-            if (FindFirstObjectByType<AudioListener>() == null) audioRoot.AddComponent<AudioListener>();
+            if (FindAnyObjectByType<AudioListener>() == null) audioRoot.AddComponent<AudioListener>();
             soundtracks[0] = CreateAudioSource(audioRoot.transform, "MusicA", true);
             soundtracks[1] = CreateAudioSource(audioRoot.transform, "MusicB", true);
             soundEffects = CreateAudioSource(audioRoot.transform, "SoundEffects", false);
@@ -937,7 +937,7 @@ namespace Nasledie.Client
             hapticsEnabled = !hapticsEnabled;
             PlayerPrefs.SetInt("jericho.accessibility.haptics", hapticsEnabled ? 1 : 0);
             PlayerPrefs.Save();
-            if (hapticsEnabled && SystemInfo.supportsVibration) Handheld.Vibrate();
+            if (hapticsEnabled && SystemInfo.supportsVibration) TriggerHapticFeedback();
             ShowSettings();
         }
 
@@ -955,6 +955,13 @@ namespace Nasledie.Client
             PlayerPrefs.SetInt("jericho.animation.mode", animationMode);
             PlayerPrefs.Save();
             ShowSettings();
+        }
+
+        private static void TriggerHapticFeedback()
+        {
+#if UNITY_IOS || UNITY_ANDROID
+            Handheld.Vibrate();
+#endif
         }
 
         private string AnimationModeLabel()
@@ -3822,7 +3829,7 @@ namespace Nasledie.Client
                 PlayCommandSound(kind, value);
                 MarkTutorialCommand(kind, value, text);
                 if (hapticsEnabled && SystemInfo.supportsVibration && kind != CommandKind.SetWorkers && kind != CommandKind.AutoAssignWorkers)
-                    Handheld.Vibrate();
+                    TriggerHapticFeedback();
             }
             RenderGame();
         }

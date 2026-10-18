@@ -101,8 +101,8 @@ namespace Nasledie.EditorTools
             settings.loadType = effect ? AudioClipLoadType.DecompressOnLoad : AudioClipLoadType.CompressedInMemory;
             settings.compressionFormat = effect ? AudioCompressionFormat.PCM : AudioCompressionFormat.Vorbis;
             settings.quality = effect ? 1f : 0.72f;
+            settings.preloadAudioData = true;
             importer.defaultSampleSettings = settings;
-            importer.preloadAudioData = true;
             importer.loadInBackground = false;
         }
 

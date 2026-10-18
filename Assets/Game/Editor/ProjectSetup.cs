@@ -46,13 +46,18 @@ namespace Nasledie.EditorTools
             PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
             PlayerSettings.allowedAutorotateToLandscapeRight = false;
             PlayerSettings.allowedAutorotateToLandscapeLeft = false;
-            PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.jericho.strategy");
-            PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.iOS, "com.jericho.strategy");
-            PlayerSettings.SetScriptingBackend(BuildTargetGroup.iOS, ScriptingImplementation.IL2CPP);
-            PlayerSettings.SetApiCompatibilityLevel(BuildTargetGroup.iOS, ApiCompatibilityLevel.NET_Standard_2_1);
+            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "com.jericho.strategy");
+            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.iOS, "com.jericho.strategy");
+            PlayerSettings.SetScriptingBackend(NamedBuildTarget.iOS, ScriptingImplementation.IL2CPP);
+            PlayerSettings.SetApiCompatibilityLevel(NamedBuildTarget.iOS, ApiCompatibilityLevel.NET_Standard);
             PlayerSettings.iOS.targetOSVersionString = "13.0";
             Texture2D iosIcon = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Game/Runtime/Client/Resources/Art/AppIcon_iOS.png");
-            if (iosIcon != null) PlayerSettings.SetIcons(NamedBuildTarget.iOS, new[] { iosIcon }, IconKind.Application);
+            if (iosIcon != null)
+            {
+                var iosIcons = new Texture2D[9];
+                for (int i = 0; i < iosIcons.Length; i++) iosIcons[i] = iosIcon;
+                PlayerSettings.SetIcons(NamedBuildTarget.iOS, iosIcons, IconKind.Application);
+            }
             AssetDatabase.SaveAssets();
         }
     }
