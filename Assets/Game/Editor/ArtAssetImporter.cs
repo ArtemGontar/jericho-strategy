@@ -71,6 +71,20 @@ namespace Nasledie.EditorTools
             else importer.spriteImportMode = SpriteImportMode.Single;
         }
 
+        private void OnPreprocessAudio()
+        {
+            if (!assetPath.StartsWith("Assets/Game/Runtime/Client/Resources/Audio/")) return;
+            AudioImporter importer = (AudioImporter)assetImporter;
+            bool effect = assetPath.Contains("/Audio/Sfx/");
+            AudioImporterSampleSettings settings = importer.defaultSampleSettings;
+            settings.loadType = effect ? AudioClipLoadType.DecompressOnLoad : AudioClipLoadType.CompressedInMemory;
+            settings.compressionFormat = effect ? AudioCompressionFormat.PCM : AudioCompressionFormat.Vorbis;
+            settings.quality = effect ? 1f : 0.72f;
+            importer.defaultSampleSettings = settings;
+            importer.preloadAudioData = true;
+            importer.loadInBackground = false;
+        }
+
         private static bool TryGetBuildingEra(string path, out string era)
         {
             for (int i = 0; i < Eras.Length; i++)

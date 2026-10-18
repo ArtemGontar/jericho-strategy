@@ -86,6 +86,7 @@ namespace Nasledie.Client
     public static class UiKit
     {
         private static Font runtimeFont;
+        public static Action ButtonClickHandler;
         public static Font Font
         {
             get
@@ -162,7 +163,11 @@ namespace Nasledie.Client
             colors.selectedColor = colors.highlightedColor;
             colors.disabledColor = new Color(color.r, color.g, color.b, 0.4f);
             button.colors = colors;
-            button.onClick.AddListener(delegate { if (action != null) action(); });
+            button.onClick.AddListener(delegate
+            {
+                if (ButtonClickHandler != null) ButtonClickHandler();
+                if (action != null) action();
+            });
             LayoutElement layout = go.AddComponent<LayoutElement>();
             layout.minHeight = height;
             layout.preferredHeight = height;

@@ -136,6 +136,8 @@ namespace Nasledie.Core
                         continue;
                     }
 
+                    if (TryAiImproveFood(state, civ, city)) continue;
+
                     string preferredBuilding = AiBuildingChoice(state, civ, city);
                     if (!string.IsNullOrEmpty(preferredBuilding)) SetProject(state, civ, city, preferredBuilding, false);
                 }
@@ -145,6 +147,43 @@ namespace Nasledie.Core
 
                 ResolveAiSettlers(state, civ);
             }
+        }
+
+        private bool TryAiImproveFood(GameState state, CivilizationState civ, CityState city)
+        {
+            if (AiVictoryDoctrine(state, civ) != "quality") return false;
+            if (city.Project != null && city.Project.Kind != ProjectKind.None) return false;
+            CityYield yield = EconomyCalculator.Calculate(state, city);
+            if (city.FoodShortageTurns <= 0 && city.FoodTenths + yield.FoodTenths >= city.PopulationTenths * 2) return false;
+
+            HexCell bestCell = null;
+            ImprovementKind bestImprovement = ImprovementKind.None;
+            int bestScore = int.MinValue;
+            for (int i = 0; i < state.Cells.Length; i++)
+            {
+                HexCell cell = state.Cells[i];
+                if (cell.OwnerId != civ.Id || cell.Improvement != ImprovementKind.None ||
+                    !string.IsNullOrEmpty(cell.DistrictBuildingId) || HexGrid.Distance(cell.Q, cell.R, city.Q, city.R) == 0 ||
+                    HexGrid.Distance(cell.Q, cell.R, city.Q, city.R) > 2) continue;
+
+                ImprovementKind improvement;
+                if (cell.Terrain == TerrainKind.Arid && civ.Knows("irrigation")) improvement = ImprovementKind.IrrigatedFarm;
+                else if (cell.Terrain == TerrainKind.Meadow || cell.Terrain == TerrainKind.Plains || cell.Terrain == TerrainKind.Arid)
+                    improvement = ImprovementKind.Farm;
+                else continue;
+
+                bool unlocked = false;
+                for (int ruleIndex = 0; ruleIndex < RulesCatalog.Improvements.Length; ruleIndex++)
+                    if (RulesCatalog.Improvements[ruleIndex].Kind == improvement && civ.Knows(RulesCatalog.Improvements[ruleIndex].RequiredTechnology))
+                    { unlocked = true; break; }
+                if (!unlocked) continue;
+
+                int score = cell.Resource == ResourceKind.FertileSoil ? 20 : 0;
+                score += improvement == ImprovementKind.IrrigatedFarm ? 15 : 10;
+                score -= cell.Damage;
+                if (score > bestScore) { bestScore = score; bestCell = cell; bestImprovement = improvement; }
+            }
+            return bestCell != null && BeginImprovement(state, civ, city, bestCell.Q, bestCell.R, bestImprovement, false).Accepted;
         }
 
         private void RefreshAiStrategy(GameState state, CivilizationState civ)
@@ -205,10 +244,9 @@ namespace Nasledie.Core
                     city.ServiceFunding[2] = 0;
                     continue;
                 }
-                if (city.Health < 75) city.ServiceFunding[0] = Math.Max(city.ServiceFunding[0], 1);
-                else if (city.ServiceFunding[0] > 1) city.ServiceFunding[0] = 1;
-                city.ServiceFunding[1] = city.Safety < 70 ? 1 : 0;
-                city.ServiceFunding[2] = city.Education < 60 ? 1 : 0;
+                city.ServiceFunding[0] = city.Health < 62 ? 2 : city.Health < 82 ? 1 : 0;
+                city.ServiceFunding[1] = city.Safety < 62 ? 2 : city.Safety < 80 ? 1 : 0;
+                city.ServiceFunding[2] = city.Education < 54 ? 2 : city.Education < 72 ? 1 : 0;
             }
         }
 
@@ -294,6 +332,13 @@ namespace Nasledie.Core
             string plannedGoal = AiVictoryStrategicGoal(state, civ);
             if (civ.ConsecutiveDeficitTurns >= 4 || civ.TreasuryTenths < -300) return "trade";
             if (city.Project != null && city.Project.Kind != ProjectKind.None) return "industry";
+            if (plannedGoal == "quality" && VictoryEvaluator.CityQualityIndex(state, city) < 82)
+            {
+                if (city.Health < 82 || city.Safety < 82) return "balanced";
+                if (city.Education < 78) return "science";
+                if (yield.TreasuryTenths < 0 || civ.TreasuryTenths < 0) return "trade";
+                return "quality";
+            }
             if (plannedGoal == "science" && HasAiScientificProject(state, civ.Id)) return "science";
 
             if (plannedGoal == "science") return "science";
@@ -382,6 +427,11 @@ namespace Nasledie.Core
 
         private void ChooseAiResearch(GameState state, CivilizationState civ)
         {
+            if (ShouldBankKnowledgeForScienceVictory(state, civ))
+            {
+                civ.ActiveResearchIndex = -1;
+                return;
+            }
             if (civ.ActiveResearchIndex >= 0 && civ.ActiveResearchIndex < RulesCatalog.Technologies.Length)
             {
                 TechnologyDefinition active = RulesCatalog.Technologies[civ.ActiveResearchIndex];
@@ -420,6 +470,22 @@ namespace Nasledie.Core
             civ.ActiveResearchIndex = selected;
         }
 
+        private bool ShouldBankKnowledgeForScienceVictory(GameState state, CivilizationState civ)
+        {
+            if (civ.Difficulty != Difficulty.Trial || AiVictoryDoctrine(state, civ) != "science" ||
+                !civ.Knows("computing_networks") || !civ.Knows("open_science")) return false;
+            int universityCities = 0;
+            bool hasAcademy = false;
+            for (int i = 0; i < state.Cities.Length; i++)
+            {
+                CityState city = state.Cities[i];
+                if (city.OwnerId != civ.Id) continue;
+                if (city.BuildingLevel("university") > 0) universityCities++;
+                if (city.BuildingLevel("academy") > 0) hasAcademy = true;
+            }
+            return universityCities >= 2 && hasAcademy && civ.KnowledgeTenths < 300;
+        }
+
         private int AiTechnologyPreference(string goal, string technologyId)
         {
             switch (goal)
@@ -428,6 +494,12 @@ namespace Nasledie.Core
                     if (technologyId == "writing" || technologyId == "civic_schools" || technologyId == "university" || technologyId == "computing_networks" ||
                         technologyId == "open_science" || technologyId == "mass_education" || technologyId == "electricity" || technologyId == "mechanization") return 48;
                     if (technologyId == "medicine" || technologyId == "public_health") return 18;
+                    break;
+                case "quality":
+                    if (technologyId == "agriculture" || technologyId == "irrigation" || technologyId == "medicine" ||
+                        technologyId == "public_health" || technologyId == "global_health" || technologyId == "civic_schools" ||
+                        technologyId == "roads" || technologyId == "engineering" || technologyId == "clean_energy") return 44;
+                    if (technologyId == "coin_markets" || technologyId == "university") return 30;
                     break;
                 case "trade":
                     if (technologyId == "writing" || technologyId == "stone" || technologyId == "roads" || technologyId == "coin_markets" || technologyId == "trade_league" || technologyId == "international_assembly" || technologyId == "printing" || technologyId == "free_press") return 44;
@@ -460,6 +532,7 @@ namespace Nasledie.Core
         private string AiVictoryDoctrine(GameState state, CivilizationState civ)
         {
             int variant = AiPersonalityVariant(state, civ);
+            if (civ.Difficulty == Difficulty.Trial && civ.Archetype == "Строитель наследия") return "quality";
             if ((int)civ.Difficulty >= (int)Difficulty.Strong)
             {
                 // Higher settings commit to recognizable plans instead of rolling
@@ -490,7 +563,13 @@ namespace Nasledie.Core
 
         private string AiVictoryStrategicGoal(GameState state, CivilizationState civ)
         {
-            if (HasCriticalFoodProblem(state, civ.Id) || AtWarWithAny(state, civ.Id)) return civ.StrategicGoal;
+            string doctrine = AiVictoryDoctrine(state, civ);
+            if (civ.Difficulty == Difficulty.Trial && doctrine == "science" && !AtWarWithAny(state, civ.Id)) return "science";
+            if (civ.Difficulty == Difficulty.Trial && doctrine == "quality" && CountOwnedCities(state, civ.Id) >= 4 &&
+                !AtWarWithAny(state, civ.Id) && !HasCriticalFoodProblem(state, civ.Id)) return "quality";
+            bool committedTrialPlan = civ.Difficulty == Difficulty.Trial &&
+                (doctrine == "science" || doctrine == "quality") && civ.ConsecutiveDeficitTurns < 3;
+            if ((HasCriticalFoodProblem(state, civ.Id) && !committedTrialPlan) || AtWarWithAny(state, civ.Id)) return civ.StrategicGoal;
             if ((int)civ.Difficulty < (int)Difficulty.Strong &&
                 (civ.ConsecutiveDeficitTurns >= 4 || civ.TreasuryTenths < -300)) return civ.StrategicGoal;
             switch (AiVictoryDoctrine(state, civ))
@@ -547,7 +626,9 @@ namespace Nasledie.Core
             }
             else if (pursuit == "quality" &&
                 (technologyId == "agriculture" || technologyId == "irrigation" || technologyId == "medicine" ||
-                    technologyId == "public_health" || technologyId == "global_health" || technologyId == "clean_energy")) return 18;
+                    technologyId == "public_health" || technologyId == "global_health" || technologyId == "clean_energy" ||
+                    technologyId == "civic_schools" || technologyId == "roads" || technologyId == "engineering" ||
+                    technologyId == "coin_markets" || technologyId == "university")) return 26;
             return 0;
         }
 
@@ -641,13 +722,32 @@ namespace Nasledie.Core
             else if (id == "indus_great_bath") score = city.Health < 70 ? 82 : 44;
 
             string pursuit = AiVictoryDoctrine(state, civ);
+            if (pursuit == "quality")
+            {
+                CityYield cityYield = EconomyCalculator.Calculate(state, city);
+                if (id == "house" && city.HousingTenths - city.PopulationTenths < 30) score = Math.Max(score, 112);
+                if (id == "granary" && (city.FoodShortageTurns > 0 || city.FoodTenths < city.PopulationTenths * 3)) score = Math.Max(score, 104);
+                if (id == "clinic" && city.Health < 82) score = Math.Max(score, 104);
+                if (id == "hospital" && city.Health < 88) score = Math.Max(score, 108);
+                if (id == "road_services" && city.Safety < 82) score = Math.Max(score, 104);
+                if (id == "school" && city.Education < 78) score = Math.Max(score, 102);
+                if (id == "university" && city.Education < 68) score = Math.Max(score, 84);
+                if (id == "market" && (cityYield.TreasuryTenths < 0 || civ.TreasuryTenths < 0 || civ.ConsecutiveDeficitTurns > 0))
+                    score = Math.Max(score, 96);
+            }
             if (id == "administration" && (int)civ.Difficulty >= (int)Difficulty.Strong &&
                 cities >= civ.AdministrativeCapacity && civ.AdministrativeCapacity < 4 && civ.Knows("engineering"))
                 score = Math.Max(score, 118);
             if (pursuit == "science")
             {
-                if (id == "university" && CountCitiesWithBuilding(state, civ.Id, "university") < 2) score = Math.Max(score, 104);
-                if (id == "academy" && civ.Knows("computing_networks")) score = Math.Max(score, 112);
+                int universityCities = CountCitiesWithBuilding(state, civ.Id, "university");
+                int academyCount = CountOwnedBuilding(state, civ.Id, "academy");
+                if (id == "university" && universityCities < 2)
+                    score = Math.Max(score, civ.Difficulty == Difficulty.Trial ? 150 : 104);
+                if (id == "university" && universityCities >= 2) score = 0;
+                if (id == "academy" && civ.Knows("computing_networks") && academyCount == 0)
+                    score = Math.Max(score, civ.Difficulty == Difficulty.Trial ? 136 : 112);
+                if (id == "academy" && academyCount > 0) score = 0;
             }
             else if (pursuit == "culture" && (id == "cultural_house" || id == "archive" || id == "exchange_house")) score = Math.Max(score, 104);
             else if (pursuit == "diplomatic" && id == "assembly" && civ.Knows("international_assembly")) score = Math.Max(score, 112);
@@ -666,6 +766,9 @@ namespace Nasledie.Core
             if (!string.IsNullOrEmpty(building.RequiredNationId) && building.RequiredNationId != civ.NationId) return false;
             if (building.RequiredTechnology != null && !civ.Knows(building.RequiredTechnology)) return false;
             if (building.UniqueEmpireBuilding && CountOwnedBuilding(state, civ.Id, id) > 0) return false;
+            if (AiVictoryDoctrine(state, civ) == "science" &&
+                ((id == "academy" && CountOwnedBuilding(state, civ.Id, "academy") > 0) ||
+                 (id == "university" && CountCitiesWithBuilding(state, civ.Id, "university") >= 2))) return false;
             for (int i = 0; i < state.Cities.Length; i++)
             {
                 CityProject project = state.Cities[i].Project;
@@ -688,7 +791,10 @@ namespace Nasledie.Core
             int populationReserve = civ.Difficulty == Difficulty.Calm ? 100 : civ.Difficulty == Difficulty.Trial ? 70 : 80;
             int foodReserve = civ.Difficulty == Difficulty.Calm ? 100 : civ.Difficulty == Difficulty.Trial ? 50 : 60;
             int cityCount = CountOwnedCities(state, civ.Id);
-            if (cityCount >= Math.Min(4, civ.AdministrativeCapacity) || capital.PopulationTenths < populationReserve || capital.FoodTenths < foodReserve) return false;
+            // The Trial researcher needs two university cities, not a fourth tax base;
+            // reserve its later production and income for the science victory project.
+            int targetCities = civ.Difficulty == Difficulty.Trial && AiVictoryDoctrine(state, civ) == "science" ? 3 : 4;
+            if (cityCount >= Math.Min(targetCities, civ.AdministrativeCapacity) || capital.PopulationTenths < populationReserve || capital.FoodTenths < foodReserve) return false;
             if (cityCount >= 3 && (civ.ConsecutiveDeficitTurns > 1 || civ.TreasuryTenths < 0)) return false;
             for (int i = 0; i < state.Units.Length; i++)
                 if (state.Units[i].OwnerId == civ.Id && state.Units[i].Kind == UnitKind.SettlerWagon) return false;
@@ -711,11 +817,12 @@ namespace Nasledie.Core
 
         private void ResolveAiSettlers(GameState state, CivilizationState civ)
         {
+            int targetCities = civ.Difficulty == Difficulty.Trial && AiVictoryDoctrine(state, civ) == "science" ? 3 : 4;
             for (int i = 0; i < state.Units.Length; i++)
             {
                 UnitState wagon = state.Units[i];
                 if (wagon.OwnerId != civ.Id || wagon.Kind != UnitKind.SettlerWagon) continue;
-                if (CountOwnedCities(state, civ.Id) >= Math.Min(4, civ.AdministrativeCapacity)) continue;
+                if (CountOwnedCities(state, civ.Id) >= Math.Min(targetCities, civ.AdministrativeCapacity)) continue;
                 CityState source = state.City(wagon.CitySourceId);
                 if (source == null) continue;
                 HexCell target = FindSettlerCell(state, source);

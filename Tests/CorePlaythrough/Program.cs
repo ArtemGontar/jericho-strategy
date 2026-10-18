@@ -161,8 +161,8 @@ internal static class Program
             Kind = CommandKind.AutoAssignWorkers,
             ActorId = actor,
             EntityId = capital,
-            Text = "food"
-        }), "assign workers to food");
+            Text = "balanced"
+        }), "assign balanced workers");
 
         Accept(simulation.Issue(new GameCommand
         {
@@ -187,7 +187,10 @@ internal static class Program
         }), "start house project");
 
         PlayUntilFinished(simulation, "interactive campaign");
-        Assert(simulation.State.Civilization(actor).Knows("pottery"), "selected research must finish during the campaign");
+        CivilizationState finalPlayer = simulation.State.Civilization(actor);
+        Assert(finalPlayer.Knows("pottery"), "selected research must finish during the campaign (turn " +
+            simulation.State.Turn + "/" + simulation.State.MaximumTurn + ", winner " + simulation.State.WinnerCivilizationId +
+            ", path " + VictoryEvaluator.PathName(simulation.State.WinningPath) + ", research " + finalPlayer.ActiveResearchIndex + ").");
         Assert(simulation.State.City(capital).BuildingLevel("house") > 0, "selected building project must complete during the campaign");
         Assert(simulation.State.Turn >= 1 && simulation.State.Turn <= simulation.State.MaximumTurn,
             "final turn must remain within campaign length");
@@ -528,6 +531,7 @@ internal static class Program
         GameState state = MinimalVictoryState();
         state.Civilization(0).KnownTechnologies = new[] { "writing" };
         state.Cities = new[] { VictoryCity(1, 0), VictoryCity(2, 0) };
+        state.Cells = new[] { new HexCell { Q = 1, R = 0, Terrain = TerrainKind.Plains, OwnerId = -1 } };
         GameSimulation simulation = new GameSimulation(state);
         Accept(simulation.Issue(new GameCommand { Kind = CommandKind.SetProject, ActorId = 0, EntityId = 1, Text = "council" }),
             "queue the unique council in the first city");

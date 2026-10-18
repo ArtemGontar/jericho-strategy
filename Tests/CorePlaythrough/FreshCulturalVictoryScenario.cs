@@ -126,7 +126,7 @@ internal static class FreshCulturalVictoryScenario
         int cityCount = CountCities(simulation.State, playerId);
         bool needsCultureTechnologies = !player.Knows("trade_league") || !player.Knows("printing");
             bool protectReadyFestival = player.CulturePrestige >= 90 && player.TreasuryTenths >= 100;
-            bool needsFestivalFunding = player.CulturePrestige >= 50 && player.TreasuryTenths < 800 && !protectReadyFestival;
+            bool needsFestivalFunding = player.TreasuryTenths < 800 && !protectReadyFestival;
         for (int i = 0; i < simulation.State.Cities.Length; i++)
         {
             CityState city = simulation.State.Cities[i];

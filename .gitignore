@@ -35,3 +35,4 @@ Thumbs.db
 # Local test build output
 Tests/**/bin/
 Tests/**/obj/
+Tools/__pycache__/

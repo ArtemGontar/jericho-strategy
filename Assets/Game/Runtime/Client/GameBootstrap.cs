@@ -47,10 +47,22 @@ namespace Nasledie.Client
         private int selectedUnitId = -1;
         private int selectedQ = -1;
         private int selectedR = -1;
-        private AudioSource soundtrack;
+        private AudioSource[] soundtracks = new AudioSource[2];
+        private AudioSource soundEffects;
+        private readonly Dictionary<string, AudioClip> soundEffectCache = new Dictionary<string, AudioClip>();
         private bool musicEnabled = true;
         private int musicVolumeStep = 1;
+        private bool soundEffectsEnabled = true;
+        private int soundEffectsVolumeStep = 1;
+        private int activeSoundtrackIndex;
+        private int currentMusicEra = -1;
+        private Coroutine soundtrackTransition;
         private static readonly float[] MusicVolumeSteps = { 0.12f, 0.24f, 0.38f, 0.55f };
+        private static readonly float[] SoundEffectsVolumeSteps = { 0.18f, 0.28f, 0.40f, 0.54f };
+        private static readonly string[] MusicTrackNames =
+        {
+            "Nasledie_Theme", "Theme_Cities", "Theme_ConnectedLands", "Theme_Industry", "Theme_Synthesis"
+        };
         private static readonly Dictionary<string, Sprite> Artwork = new Dictionary<string, Sprite>();
         private static bool artworkAtlasesLoaded;
         private Difficulty selectedDifficulty = Difficulty.Standard;
@@ -81,6 +93,8 @@ namespace Nasledie.Client
             Screen.autorotateToLandscapeRight = false;
             musicEnabled = PlayerPrefs.GetInt("nasledie.music.enabled", 1) != 0;
             musicVolumeStep = Mathf.Clamp(PlayerPrefs.GetInt("nasledie.music.volume", 1), 0, MusicVolumeSteps.Length - 1);
+            soundEffectsEnabled = PlayerPrefs.GetInt("nasledie.sfx.enabled", 1) != 0;
+            soundEffectsVolumeStep = Mathf.Clamp(PlayerPrefs.GetInt("nasledie.sfx.volume", 1), 0, SoundEffectsVolumeSteps.Length - 1);
             animationMode = Mathf.Clamp(PlayerPrefs.GetInt("jericho.animation.mode", 1), 0, 2);
             selectedPace = (GamePace)Mathf.Clamp(PlayerPrefs.GetInt("jericho.campaign.pace", (int)GamePace.Standard), 0, 2);
             selectedNationId = PlayerPrefs.GetString("jericho.campaign.nation", "jericho");
@@ -89,7 +103,13 @@ namespace Nasledie.Client
             EnsureEventSystem();
             BuildCanvas();
             InitializeSoundtrack();
+            UiKit.ButtonClickHandler = PlayButtonClick;
             ShowMenu();
+        }
+
+        private void OnDestroy()
+        {
+            if (UiKit.ButtonClickHandler == PlayButtonClick) UiKit.ButtonClickHandler = null;
         }
 
         private void Update()
@@ -204,12 +224,23 @@ namespace Nasledie.Client
             activeUtilityScreen = "menu";
             DestroyChildren(menuHost);
             menuHost.gameObject.SetActive(true);
+            SetUtilityBackground("Backgrounds/Menu_Background");
+            CivilizationState menuPlayer = simulation == null ? null : simulation.State.Civilization(simulation.State.HumanCivilizationId);
+            SetMusicEra(menuPlayer == null ? Era.Communities : menuPlayer.Era);
             if (pageHost != null) pageHost.gameObject.SetActive(false);
             if (navHost != null) navHost.gameObject.SetActive(false);
             if (actionHost != null) actionHost.gameObject.SetActive(false);
             if (header != null) header.gameObject.SetActive(false);
 
+            GameObject shade = UiKit.CreateObject("MenuTextShade", menuHost);
+            Image shadeImage = shade.AddComponent<Image>();
+            shadeImage.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.38f);
+            shadeImage.raycastTarget = false;
+            UiKit.SetAnchors(UiKit.Rect(shade), Vector2.zero, new Vector2(0.56f, 1f), Vector2.zero, Vector2.zero);
+
             GameObject menu = UiKit.ScrollView(menuHost, "MenuScroll");
+            RectTransform menuScroll = menu.transform.parent.parent as RectTransform;
+            if (menuScroll != null) UiKit.SetAnchors(menuScroll, Vector2.zero, new Vector2(0.56f, 1f), Vector2.zero, Vector2.zero);
             UiKit.Vertical(menu, 24, 18);
             AddArtwork(menu.transform, "Jericho_Logo", 178);
             UiKit.Label(menu.transform, "JERICHO", 64, GamePalette.Gold, TextAnchor.MiddleCenter, true);
@@ -257,16 +288,109 @@ namespace Nasledie.Client
 
         private void InitializeSoundtrack()
         {
-            GameObject sourceObject = new GameObject("NasledieSoundtrack");
-            sourceObject.transform.SetParent(transform, false);
-            if (FindObjectOfType<AudioListener>() == null) sourceObject.AddComponent<AudioListener>();
-            soundtrack = sourceObject.AddComponent<AudioSource>();
-            soundtrack.clip = Resources.Load<AudioClip>("Audio/Nasledie_Theme");
-            soundtrack.loop = true;
-            soundtrack.playOnAwake = false;
-            soundtrack.spatialBlend = 0f;
-            soundtrack.volume = MusicVolumeSteps[musicVolumeStep];
-            if (soundtrack.clip != null && musicEnabled) soundtrack.Play();
+            GameObject audioRoot = new GameObject("NasledieAudio");
+            audioRoot.transform.SetParent(transform, false);
+            if (FindObjectOfType<AudioListener>() == null) audioRoot.AddComponent<AudioListener>();
+            soundtracks[0] = CreateAudioSource(audioRoot.transform, "MusicA", true);
+            soundtracks[1] = CreateAudioSource(audioRoot.transform, "MusicB", true);
+            soundEffects = CreateAudioSource(audioRoot.transform, "SoundEffects", false);
+            soundEffects.volume = SoundEffectsVolumeSteps[soundEffectsVolumeStep];
+            SetMusicEra(Era.Communities, false);
+        }
+
+        private static AudioSource CreateAudioSource(Transform parent, string name, bool loop)
+        {
+            GameObject sourceObject = new GameObject(name);
+            sourceObject.transform.SetParent(parent, false);
+            AudioSource source = sourceObject.AddComponent<AudioSource>();
+            source.loop = loop;
+            source.playOnAwake = false;
+            source.spatialBlend = 0f;
+            return source;
+        }
+
+        private void SetMusicEra(Era era, bool allowCrossfade = true)
+        {
+            int trackIndex = Mathf.Clamp((int)era, 0, MusicTrackNames.Length - 1);
+            if (trackIndex == currentMusicEra && soundtracks[activeSoundtrackIndex].clip != null) return;
+
+            string resourceName = "Audio/" + MusicTrackNames[trackIndex];
+            AudioClip clip = Resources.Load<AudioClip>(resourceName);
+            if (clip == null && trackIndex != 0) clip = Resources.Load<AudioClip>("Audio/Nasledie_Theme");
+            if (clip == null) return;
+
+            AudioSource outgoing = soundtracks[activeSoundtrackIndex];
+            bool hasOutgoing = outgoing.clip != null && outgoing.isPlaying && musicEnabled;
+            int incomingIndex = hasOutgoing ? 1 - activeSoundtrackIndex : activeSoundtrackIndex;
+            AudioSource incoming = soundtracks[incomingIndex];
+            if (soundtrackTransition != null)
+            {
+                StopCoroutine(soundtrackTransition);
+                soundtrackTransition = null;
+            }
+            incoming.Stop();
+            incoming.clip = clip;
+            incoming.volume = 0f;
+            currentMusicEra = trackIndex;
+            activeSoundtrackIndex = incomingIndex;
+            if (!musicEnabled) return;
+            incoming.Play();
+
+            if (!allowCrossfade || !hasOutgoing)
+            {
+                outgoing.Stop();
+                outgoing.volume = 0f;
+                incoming.volume = MusicVolumeSteps[musicVolumeStep];
+                return;
+            }
+            soundtrackTransition = StartCoroutine(CrossfadeMusic(outgoing, incoming, 1.25f));
+        }
+
+        private IEnumerator CrossfadeMusic(AudioSource outgoing, AudioSource incoming, float duration)
+        {
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float blend = Mathf.Clamp01(elapsed / duration);
+                float volume = musicEnabled ? MusicVolumeSteps[musicVolumeStep] : 0f;
+                outgoing.volume = volume * (1f - blend);
+                incoming.volume = volume * blend;
+                yield return null;
+            }
+            outgoing.Stop();
+            outgoing.clip = null;
+            outgoing.volume = 0f;
+            incoming.volume = musicEnabled ? MusicVolumeSteps[musicVolumeStep] : 0f;
+            soundtrackTransition = null;
+        }
+
+        private void PlayButtonClick()
+        {
+            PlaySoundEffect("UI_Click");
+        }
+
+        private void PlaySoundEffect(string cue)
+        {
+            if (!soundEffectsEnabled || soundEffects == null || string.IsNullOrEmpty(cue)) return;
+            AudioClip clip;
+            if (!soundEffectCache.TryGetValue(cue, out clip))
+            {
+                clip = Resources.Load<AudioClip>("Audio/Sfx/" + cue);
+                soundEffectCache[cue] = clip;
+            }
+            if (clip != null) soundEffects.PlayOneShot(clip);
+        }
+
+        private void PlayFinalSound()
+        {
+            int humanId = simulation.State.HumanCivilizationId;
+            int[] winners = simulation.State.WinningCivilizationIds ?? Array.Empty<int>();
+            if (winners.Length == 0 && simulation.State.WinnerCivilizationId >= 0)
+                winners = new[] { simulation.State.WinnerCivilizationId };
+            for (int i = 0; i < winners.Length; i++)
+                if (winners[i] == humanId) { PlaySoundEffect("Victory"); return; }
+            PlaySoundEffect("Defeat");
         }
 
         private void ToggleMusic()
@@ -274,10 +398,28 @@ namespace Nasledie.Client
             musicEnabled = !musicEnabled;
             PlayerPrefs.SetInt("nasledie.music.enabled", musicEnabled ? 1 : 0);
             PlayerPrefs.Save();
-            if (soundtrack != null)
+            if (soundtrackTransition != null)
             {
-                if (musicEnabled && soundtrack.clip != null) soundtrack.Play();
-                else soundtrack.Pause();
+                StopCoroutine(soundtrackTransition);
+                soundtrackTransition = null;
+            }
+            for (int i = 0; i < soundtracks.Length; i++)
+            {
+                if (i == activeSoundtrackIndex)
+                {
+                    soundtracks[i].volume = musicEnabled ? MusicVolumeSteps[musicVolumeStep] : 0f;
+                    if (soundtracks[i].clip != null)
+                    {
+                        if (musicEnabled) soundtracks[i].Play();
+                        else soundtracks[i].Pause();
+                    }
+                }
+                else
+                {
+                    soundtracks[i].Stop();
+                    soundtracks[i].clip = null;
+                    soundtracks[i].volume = 0f;
+                }
             }
             if (simulation != null && !menuHost.gameObject.activeSelf) RenderGame();
             else if (activeUtilityScreen == "settings") ShowSettings();
@@ -294,8 +436,31 @@ namespace Nasledie.Client
         private void CycleMusicVolume()
         {
             musicVolumeStep = (musicVolumeStep + 1) % MusicVolumeSteps.Length;
-            if (soundtrack != null) soundtrack.volume = MusicVolumeSteps[musicVolumeStep];
+            for (int i = 0; i < soundtracks.Length; i++)
+                soundtracks[i].volume = i == activeSoundtrackIndex && musicEnabled ? MusicVolumeSteps[musicVolumeStep] : 0f;
             PlayerPrefs.SetInt("nasledie.music.volume", musicVolumeStep);
+            PlayerPrefs.Save();
+            ShowSettings();
+        }
+
+        private void ToggleSoundEffects()
+        {
+            soundEffectsEnabled = !soundEffectsEnabled;
+            PlayerPrefs.SetInt("nasledie.sfx.enabled", soundEffectsEnabled ? 1 : 0);
+            PlayerPrefs.Save();
+            ShowSettings();
+        }
+
+        private string SoundEffectsVolumeLabel()
+        {
+            return "ГРОМКОСТЬ ЭФФЕКТОВ · " + Mathf.RoundToInt(SoundEffectsVolumeSteps[soundEffectsVolumeStep] * 100f) + "%";
+        }
+
+        private void CycleSoundEffectsVolume()
+        {
+            soundEffectsVolumeStep = (soundEffectsVolumeStep + 1) % SoundEffectsVolumeSteps.Length;
+            if (soundEffects != null) soundEffects.volume = SoundEffectsVolumeSteps[soundEffectsVolumeStep];
+            PlayerPrefs.SetInt("nasledie.sfx.volume", soundEffectsVolumeStep);
             PlayerPrefs.Save();
             ShowSettings();
         }
@@ -309,6 +474,8 @@ namespace Nasledie.Client
             UiKit.Label(content.transform, "Выбор сохраняется на этом устройстве.", 20, GamePalette.Muted, TextAnchor.MiddleCenter, false);
             UiKit.Button(content.transform, musicEnabled ? "МУЗЫКА · ВКЛЮЧЕНА" : "МУЗЫКА · ВЫКЛЮЧЕНА", ToggleMusic, GamePalette.Teal, 68, 22);
             UiKit.Button(content.transform, MusicVolumeLabel() + " · ИЗМЕНИТЬ", CycleMusicVolume, GamePalette.InkSoft, 68, 21);
+            UiKit.Button(content.transform, soundEffectsEnabled ? "ЗВУКОВЫЕ ЭФФЕКТЫ · ВКЛЮЧЕНЫ" : "ЗВУКОВЫЕ ЭФФЕКТЫ · ВЫКЛЮЧЕНЫ", ToggleSoundEffects, GamePalette.Teal, 68, 22);
+            UiKit.Button(content.transform, SoundEffectsVolumeLabel() + " · ИЗМЕНИТЬ", CycleSoundEffectsVolume, GamePalette.InkSoft, 68, 21);
             UiKit.Button(content.transform, AnimationModeLabel() + " · ИЗМЕНИТЬ", CycleAnimationMode, GamePalette.InkSoft, 68, 21);
             UiKit.Button(content.transform, "ТЕМП НОВОЙ КАМПАНИИ: " + PaceName(selectedPace) + " · ИЗМЕНИТЬ", CyclePace, GamePalette.InkSoft, 68, 21);
             UiKit.Label(content.transform, PaceDescription(selectedPace) +
@@ -413,6 +580,8 @@ namespace Nasledie.Client
                 return;
             }
             simulation = new GameSimulation(saved);
+            CivilizationState savedPlayer = saved.Civilization(saved.HumanCivilizationId);
+            if (savedPlayer != null) SetMusicEra(savedPlayer.Era);
             selectedCityId = simulation.FindCapital(saved.HumanCivilizationId);
             selectedUnitId = -1;
             currentPage = saved.IsFinished ? ScreenPage.Victory : ScreenPage.Overview;
@@ -425,10 +594,22 @@ namespace Nasledie.Client
         {
             DestroyChildren(menuHost);
             menuHost.gameObject.SetActive(true);
+            SetUtilityBackground(null);
             if (pageHost != null) pageHost.gameObject.SetActive(false);
             if (navHost != null) navHost.gameObject.SetActive(false);
             if (actionHost != null) actionHost.gameObject.SetActive(false);
             if (header != null) header.gameObject.SetActive(false);
+        }
+
+        private void SetUtilityBackground(string artworkKey)
+        {
+            if (menuHost == null) return;
+            Image image = menuHost.GetComponent<Image>();
+            if (image == null) return;
+            image.sprite = string.IsNullOrEmpty(artworkKey) ? null : LoadArtwork(artworkKey);
+            image.preserveAspect = false;
+            image.color = image.sprite == null ? GamePalette.Ink : Color.white;
+            image.raycastTarget = false;
         }
 
         private static Sprite LoadArtwork(string name)
@@ -902,6 +1083,7 @@ namespace Nasledie.Client
         {
             int seed = UnityEngine.Random.Range(100000, 999999);
             simulation = GameSimulation.NewCampaign(seed, selectedDifficulty, selectedPace, selectedNationId);
+            SetMusicEra(simulation.State.Civilization(simulation.State.HumanCivilizationId).Era);
             selectedCityId = simulation.FindCapital(simulation.State.HumanCivilizationId);
             selectedUnitId = -1;
             currentPage = ScreenPage.Overview;
@@ -1876,7 +2058,30 @@ namespace Nasledie.Client
                 TargetId = targetId, Value = value, Text = text, Q = q, R = r, Sequence = sequence
             });
             notice = result.Message;
+            if (result.Success) PlayCommandSound(kind, value);
             RenderGame();
+        }
+
+        private void PlayCommandSound(CommandKind kind, int value)
+        {
+            switch (kind)
+            {
+                case CommandKind.MoveUnit: PlaySoundEffect("World_Move"); break;
+                case CommandKind.ChooseTechnology: PlaySoundEffect("Research_Discovery"); break;
+                case CommandKind.ProposeTreaty:
+                case CommandKind.AcceptTreaty:
+                case CommandKind.MakePeace: PlaySoundEffect("Diplomacy_Seal"); break;
+                case CommandKind.DeclareWar: PlaySoundEffect("Battle_Resolve"); break;
+                case CommandKind.BeginVictoryProject:
+                    PlaySoundEffect(value == (int)VictoryPath.Scientific ? "Research_Discovery" :
+                        value == (int)VictoryPath.Diplomatic ? "Diplomacy_Seal" : "UI_Confirm");
+                    break;
+                case CommandKind.SetProject:
+                case CommandKind.BuildImprovement:
+                case CommandKind.Recruit:
+                case CommandKind.EnactLaw:
+                case CommandKind.EventChoice: PlaySoundEffect("UI_Confirm"); break;
+            }
         }
 
         private void SetTax(TaxRate rate) { Issue(CommandKind.SetTax, value: (int)rate); }
@@ -1900,14 +2105,18 @@ namespace Nasledie.Client
         private void ResolveTurnNow()
         {
             int previousTurn = simulation.State.Turn;
+            bool wasFinished = simulation.State.IsFinished;
             simulation.EndTurn();
             if (simulation.State.Turn != previousTurn)
             {
+                PlaySoundEffect("Turn_Advance");
+                SetMusicEra(simulation.State.Civilization(simulation.State.HumanCivilizationId).Era);
                 bool saved = SaveService.SaveAuto(simulation.State);
                 notice = "Ход " + previousTurn + " завершён. " + simulation.LastMessage +
                     (saved ? "" : " Автосохранение не удалось; сохраните кампанию вручную.");
             }
             else notice = simulation.LastMessage;
+            if (!wasFinished && simulation.State.IsFinished) PlayFinalSound();
             if (simulation.State.IsFinished) currentPage = ScreenPage.Victory;
             else if (HasPendingEvent()) currentPage = ScreenPage.Events;
             else currentPage = ScreenPage.Overview;
@@ -1939,6 +2148,12 @@ namespace Nasledie.Client
 
             simulation.EndTurn();
             bool advanced = simulation.State.Turn != previousTurn;
+            if (advanced)
+            {
+                PlaySoundEffect("Turn_Advance");
+                SetMusicEra(simulation.State.Civilization(simulation.State.HumanCivilizationId).Era);
+                if (simulation.State.IsFinished) PlayFinalSound();
+            }
             bool saved = !advanced || SaveService.SaveAuto(simulation.State);
             ScreenPage resolvedPage = simulation.State.IsFinished ? ScreenPage.Victory : HasPendingEvent() ? ScreenPage.Events : ScreenPage.Overview;
             List<UnitMovePresentation> turnMoves = advanced && resolvedPage == ScreenPage.Overview && animationMode > 0
@@ -2065,6 +2280,8 @@ namespace Nasledie.Client
 
         private void ShowTurnMilestones(Transform layer, int completedTurn, Era oldEra, Era newEra, List<BuildingMilestone> buildings)
         {
+            if (oldEra != newEra) PlaySoundEffect("Era_Transition");
+            else if (buildings.Count > 0) PlaySoundEffect("Build_Complete");
             DestroyChildren(layer);
             Image blocker = layer.GetComponent<Image>();
             if (blocker != null) blocker.color = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.86f);
@@ -2702,6 +2919,7 @@ namespace Nasledie.Client
                 }
                 string resultTitle = winnerNames.Count == 0 ? "Кампания завершена" : winnerNames.Count == 1 ? winnerNames[0] + " победила" : "Совместная победа · " + string.Join(", ", winnerNames.ToArray());
                 GameObject final = UiKit.Card(parent, resultTitle);
+                AddArtwork(final.transform, playerWon ? "Backgrounds/Victory_Background" : "Backgrounds/Defeat_Background", 230);
                 UiKit.Label(final.transform, "Путь: " + VictoryEvaluator.PathName(state.WinningPath) + "\n" +
                     (playerWon ? "Вы завершили кампанию победой." : "Победила другая цивилизация. Вы можете изучить итоги в летописи."),
                     28, GamePalette.Gold, TextAnchor.MiddleLeft, true);

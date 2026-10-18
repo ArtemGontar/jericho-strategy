@@ -78,7 +78,7 @@ namespace Nasledie.EditorTools
         public static void RunFromMenu()
         {
             Run();
-            Debug.Log("JERICHO: атласы пяти эпох, местность, отряды, логотип и музыка доступны через Resources.");
+            Debug.Log("JERICHO: эпохальные атласы, культуры, фоновые иллюстрации и звуковые материалы доступны через Resources.");
         }
 
         public static void Run()
@@ -102,7 +102,22 @@ namespace Nasledie.EditorTools
             }
             if (Resources.Load<Sprite>("Art/Jericho_Logo") == null) throw new BuildFailedException("Не найден логотип JERICHO.");
             if (Resources.Load<Sprite>("Art/AppIcon_iOS") == null) throw new BuildFailedException("Не найдена иконка iOS.");
-            if (Resources.Load<AudioClip>("Audio/Nasledie_Theme") == null) throw new BuildFailedException("Не найдена музыкальная тема.");
+            RequireSprite("Art/Backgrounds/Menu_Background", "панорама главного меню");
+            RequireSprite("Art/Backgrounds/Victory_Background", "иллюстрация победы");
+            RequireSprite("Art/Backgrounds/Defeat_Background", "иллюстрация итогов поражения");
+            string[] musicTracks = { "Nasledie_Theme", "Theme_Cities", "Theme_ConnectedLands", "Theme_Industry", "Theme_Synthesis" };
+            for (int i = 0; i < musicTracks.Length; i++)
+                RequireAudioClip("Audio/" + musicTracks[i], "музыкальная тема эпохи " + eras[i]);
+            string[] soundEffects = { "UI_Click", "UI_Confirm", "UI_Cancel", "World_Move", "Turn_Advance", "Build_Complete",
+                "Research_Discovery", "Era_Transition", "Diplomacy_Seal", "Battle_Resolve", "Victory", "Defeat" };
+            for (int i = 0; i < soundEffects.Length; i++)
+                RequireAudioClip("Audio/Sfx/" + soundEffects[i], "звуковой эффект " + soundEffects[i]);
+        }
+
+        private static void RequireAudioClip(string path, string description)
+        {
+            if (Resources.Load<AudioClip>(path) == null)
+                throw new BuildFailedException("Не найден " + description + " (" + path + ").");
         }
 
         private static void RequireSprites(string path, int expected)
