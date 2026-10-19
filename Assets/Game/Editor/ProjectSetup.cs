@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Collections.Generic;
 using UnityEditor;
@@ -59,6 +60,36 @@ namespace Nasledie.EditorTools
                 PlayerSettings.SetIcons(NamedBuildTarget.iOS, iosIcons, IconKind.Application);
             }
             AssetDatabase.SaveAssets();
+        }
+
+        [MenuItem("JERICHO/Собрать macOS player")]
+        public static void BuildMacOSPlayer()
+        {
+            var scenes = new List<string>();
+            foreach (EditorBuildSettingsScene scene in EditorBuildSettings.scenes)
+                if (scene.enabled) scenes.Add(scene.path);
+
+            if (scenes.Count == 0) throw new BuildFailedException("Нет включённых сцен для сборки.");
+
+            string outputPath = Environment.GetEnvironmentVariable("JERICHO_MAC_BUILD_PATH");
+            if (string.IsNullOrWhiteSpace(outputPath)) outputPath = "Builds/Jericho-Mac.app";
+            outputPath = Path.GetFullPath(outputPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
+
+            PlayerSettings.SetArchitecture(NamedBuildTarget.Standalone, 0);
+            var options = new BuildPlayerOptions
+            {
+                scenes = scenes.ToArray(),
+                locationPathName = outputPath,
+                target = BuildTarget.StandaloneOSX,
+                targetGroup = BuildTargetGroup.Standalone,
+                options = BuildOptions.None
+            };
+            BuildReport report = BuildPipeline.BuildPlayer(options);
+            if (report.summary.result != BuildResult.Succeeded)
+                throw new BuildFailedException("macOS player build failed: " + report.summary.result + ".");
+
+            Debug.Log("JERICHO macOS player built at " + outputPath + ".");
         }
     }
 
