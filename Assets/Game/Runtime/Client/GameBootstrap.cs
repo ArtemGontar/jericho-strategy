@@ -1127,7 +1127,7 @@ namespace Nasledie.Client
                 UiKit.Label(card.transform, "ХОД " + Math.Min(state.Turn, state.MaximumTurn) + "/" + state.MaximumTurn + " · " +
                     (player == null ? "цивилизация не найдена" : player.Name) + (state.IsFinished ? " · ФИНАЛ" : ""),
                     14, GamePalette.Paper, TextAnchor.MiddleLeft, true);
-                UiKit.Label(card.transform, EraName(player == null ? Era.Communities : player.Era) + " · " + DifficultyName(state.Difficulty) +
+                UiKit.Label(card.transform, EraName(player == null ? Era.Communities : player.Era) + " · " + DifficultyName(player == null ? Difficulty.Standard : player.Difficulty) +
                     " · " + PaceName(state.Pace) + " · МИР " + state.Seed, 12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             }
             GameObject actions = UiKit.CreateObject("SaveSlotActions", card.transform);
