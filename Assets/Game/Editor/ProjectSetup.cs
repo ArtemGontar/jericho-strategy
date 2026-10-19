@@ -3,6 +3,7 @@ using System.IO;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.Build;
+using UnityEditor.Build.Profile;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -76,12 +77,14 @@ namespace Nasledie.EditorTools
             outputPath = Path.GetFullPath(outputPath);
             Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
 
-            var options = new BuildPlayerOptions
+            BuildProfile buildProfile = AssetDatabase.LoadAssetAtPath<BuildProfile>("Assets/BuildProfiles/macOS-Universal.asset");
+            if (buildProfile == null)
+                throw new BuildFailedException("macOS universal build profile is missing: Assets/BuildProfiles/macOS-Universal.asset.");
+
+            var options = new BuildPlayerWithProfileOptions
             {
-                scenes = scenes.ToArray(),
+                buildProfile = buildProfile,
                 locationPathName = outputPath,
-                target = BuildTarget.StandaloneOSX,
-                targetGroup = BuildTargetGroup.Standalone,
                 options = BuildOptions.None
             };
             BuildReport report = BuildPipeline.BuildPlayer(options);
