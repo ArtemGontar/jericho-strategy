@@ -76,7 +76,6 @@ namespace Nasledie.EditorTools
             outputPath = Path.GetFullPath(outputPath);
             Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
 
-            PlayerSettings.SetArchitecture(NamedBuildTarget.Standalone, 0);
             var options = new BuildPlayerOptions
             {
                 scenes = scenes.ToArray(),
