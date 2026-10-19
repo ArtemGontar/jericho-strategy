@@ -440,6 +440,52 @@ def modal(name, title, kicker, sections, background=None, map_background=False, 
     save(name, s)
 
 
+def campaign_result_screen(name, victory=True):
+    background = "Victory_Background.png" if victory else "Defeat_Background.png"
+    s = finish(base(background, left_shade=False))
+    # Let the generated cinematic illustration carry the scene. Use a single soft
+    # left-to-right veil and a low action strip instead of a centered dialog box.
+    s += '<rect width="1920" height="1080" fill="#101512" opacity=".16"/>'
+    s += '<rect width="1280" height="1080" fill="url(#leftShade)"/>'
+    s += '<rect x="0" y="790" width="1920" height="290" fill="#101512" opacity=".52"/>'
+    s += line(0, 790, 1920, 790, GOLD if victory else RUST, .42, 2)
+    s += button(1638, 42, 218, "В МЕНЮ", False, 48, 14)
+
+    if victory:
+        s += text(90, 112, "ЭПОХА БУДЕТ ПОМНИТЬ ВАС", 13, GOLD, 750, letter_spacing=1.7)
+        s += text(82, 263, "ПОБЕДА", 82, PAPER, 800, letter_spacing=1.4)
+        s += text(92, 326, "Культурный путь завершён", 25, PAPER, 600)
+        s += text(94, 371, "НАСЛЕДИЕ СОЗДАНО  ·  ШУМЕР  ·  ХОД 74", 13, SAGE, 700, letter_spacing=1)
+        labels = [("ХОД", "74 / 120"), ("НАСЕЛЕНИЕ", "86"), ("ЗНАНИЯ", "91"), ("НАСЛЕДИЕ", "840")]
+        s += text(92, 470, "ВАША ЦИВИЛИЗАЦИЯ", 11, SAGE, 750, letter_spacing=1.4)
+    else:
+        s += text(90, 112, "КАМПАНИЯ ЗАВЕРШЕНА", 13, RUST, 750, letter_spacing=1.7)
+        s += text(82, 263, "ПУТЬ ЗАВЕРШЁН", 64, PAPER, 800, letter_spacing=.5)
+        s += text(92, 326, "Летопись продолжается", 25, PAPER, 600)
+        s += text(94, 371, "СОПЕРНИК ДОСТИГ ПОБЕДЫ ПО ПУТИ НАУКИ  ·  ХОД 68", 13, SAGE, 700, letter_spacing=.9)
+        labels = [("ХОД", "68 / 80"), ("ВАШИ ЖИТЕЛИ", "61"), ("СОПЕРНИК", "88"), ("ПУТЬ", "НАУКА")]
+        s += text(92, 470, "ПРИЧИНА И ИТОГ", 11, SAGE, 750, letter_spacing=1.4)
+
+    for i, (label, value) in enumerate(labels):
+        x = 92 + i * 270
+        s += text(x, 520, label, 11, MUTED, 700, letter_spacing=.9)
+        s += text(x, 568, value, 26, PAPER, 700)
+        if i < 3:
+            s += line(x + 236, 494, x + 236, 586, PAPER, .18)
+
+    if victory:
+        s += text(94, 708, "ОТКРЫТО ЗВАНИЕ «МЕЦЕНАТ»  ·  +60 СЛАВЫ", 12, GOLD, 700, letter_spacing=.65)
+        s += button(850, 850, 300, "ЛЕТОПИСЬ", True, 52, 16)
+        s += button(1182, 850, 220, "НАГРАДЫ", False, 52, 15)
+        s += button(1434, 850, 390, "НОВАЯ ПАРТИЯ", False, 52, 15)
+    else:
+        s += text(94, 708, "ЗА КАМПАНИЮ · 2 НОВЫХ ДОСТИЖЕНИЯ  ·  +30 СЛАВЫ", 12, PAPER, 650, letter_spacing=.45)
+        s += button(850, 850, 340, "РАЗОБРАТЬ ХОДЫ", True, 52, 15)
+        s += button(1210, 850, 220, "НАГРАДЫ", False, 52, 15)
+        s += button(1460, 850, 364, "НОВАЯ ПАРТИЯ", False, 52, 15)
+    save(name, s)
+
+
 def strategy_topbar(turn=24):
     out = [rect(0, 0, 1920, 94, INK, 0, .86)]
     out.append(text(46, 42, "JERICHO", 21, GOLD, 800, letter_spacing=1.1))
@@ -494,14 +540,14 @@ def turn_resolution_screen():
     s += line(0, 668, 1920, 668, GOLD, .38, 2)
     s += text(66, 725, "ХОД 24 ЗАВЕРШЁН", 26, GOLD, 760, letter_spacing=.3)
     s += text(66, 758, "ГОРОД РАСТЁТ  ·  ПОРЯДОК СОХРАНЁН", 11, SAGE, 700, letter_spacing=1.1)
-    labels = [("ЕДА", "+3,1", "запас на 4 хода"), ("КАЗНА", "+8,2", "после содержания"), ("ЗНАНИЯ", "+6,0", "ирригация изучена"), ("ЖИТЕЛИ", "+0,4", "отток остановлен")]
-    for i, (label, value, hint) in enumerate(labels):
-        x = 72 + i * 226
-        s += text(x, 819, label, 11, MUTED, 700, letter_spacing=1)
-        s += text(x, 860, value, 29, PAPER, 700)
-        s += text(x, 893, hint, 13, DIM, 450)
+    labels = [("ЕДА", "+3,1"), ("КАЗНА", "+8,2"), ("ЗНАНИЯ", "+6,0"), ("ВЛИЯНИЕ", "+1"), ("КУЛЬТУРА", "+2"), ("ЖИТЕЛИ", "+0,4")]
+    for i, (label, value) in enumerate(labels):
+        x = 72 + i * 151
+        s += text(x, 819, label, 10, MUTED, 700, letter_spacing=.65)
+        s += text(x, 860, value, 24, PAPER, 700)
         if i < len(labels) - 1:
-            s += line(x + 192, 796, x + 192, 910, PAPER, .18)
+            s += line(x + 130, 796, x + 130, 884, PAPER, .18)
+    s += text(72, 920, "ПОГИБЛО 0  ·  ЭМИГРАЦИЯ 0  ·  ЗАПАС ЕДЫ НА 4 ХОДА", 11, RUST, 700, letter_spacing=.45)
     s += line(1012, 714, 1012, 1018, PAPER, .21)
     s += text(1050, 725, "ЧТО ИЗМЕНИЛОСЬ", 12, SAGE, 700, letter_spacing=1)
     s += text(1050, 777, "Рынок завершён в столице", 18, PAPER, 550)
@@ -525,17 +571,12 @@ def battle_animation_screen():
     s += text(680, 564, "АТАКА", 10, PAPER, 700, "middle", letter_spacing=.7)
     s += text(866, 564, "ОБОРОНА", 10, PAPER, 700, "middle", letter_spacing=.7)
     # After the brief hit animation, the outcome settles into a small board-side notice.
-    s += '<rect x="1344" y="125" width="530" height="324" fill="#111714" opacity=".78"/>'
-    s += text(1384, 173, "ПОСЛЕ УДАРА", 11, SAGE, 700, letter_spacing=1.1)
-    s += text(1384, 217, "Переправа удержана", 24, PAPER, 720)
-    s += text(1384, 262, "Иерихон  ·  ополчение", 15, DIM, 500)
-    s += text(1384, 298, "Шумер  ·  полевые войска", 15, DIM, 500)
-    s += line(1384, 325, 1834, 325, PAPER, .20)
-    s += text(1384, 363, "7 погибло  ·  3 ранено", 14, PAPER, 550)
-    s += text(1384, 397, "Торговый путь прерван на ход", 14, DIM, 450)
-    s += text(1384, 448, "Летопись сохранит потери и последствия", 12, MUTED, 450)
-    s += line(1344, 485, 1874, 485, GOLD, .38)
-    s += text(1384, 532, "ИТОГ ОСТАНЕТСЯ В ЛЕТОПИСИ", 11, MUTED, 650, letter_spacing=.8)
+    s += '<rect x="1370" y="130" width="500" height="220" fill="#111714" opacity=".72"/>'
+    s += text(1400, 171, "ПЕРЕПРАВА  ·  АТАКА ОТБИТА", 11, GOLD, 700, letter_spacing=.95)
+    s += text(1400, 214, "Шумер  ·  колесничие", 15, PAPER, 550)
+    s += text(1400, 248, "Иерихон  ·  ополчение", 15, DIM, 500)
+    s += text(1400, 293, "7 погибло  ·  3 ранено  ·  2 пленено", 13, PAPER, 550)
+    s += text(1400, 327, "Подробности сохранены в летописи", 12, MUTED, 450)
     save("19-battle-animation", s)
 
 
@@ -547,7 +588,6 @@ def era_transition_screen():
     s += '<rect x="0" y="786" width="1920" height="294" fill="#111714" opacity=".87"/>'
     s += line(0, 786, 1920, 786, GOLD, .48, 2)
     s += text(72, 837, "ВАША ЦИВИЛИЗАЦИЯ МЕНЯЕТСЯ", 11, SAGE, 700, letter_spacing=1.2)
-    s += text(72, 885, "Общины", 21, DIM, 600)
     s += text(196, 885, "→", 25, GOLD, 650, "middle")
     s += text(229, 885, "Города", 27, PAPER, 750)
     s += text(72, 933, "Города становятся центрами ремесла, письма и обмена.", 15, DIM, 450)
@@ -589,14 +629,8 @@ def build():
     turn_resolution_screen()
     battle_animation_screen()
     era_transition_screen()
-    modal("21-campaign-result", "Наследие создано", "ПОБЕДА · КУЛЬТУРА", [
-        ("ИТОГИ", ["Ход 74 / 120   ·   население 86", "Знания 91   ·   доверие 78", "Открыт титул «Меценат» · +60 славы"]),
-        ("ДАЛЬШЕ", ["Разобрать летопись", "Поделиться историей", "Начать новую партию"]),
-    ], "Victory_Background.png", actions=("ЛЕТОПИСЬ", "НОВАЯ ПАРТИЯ", "НАГРАДЫ"))
-    modal("22-campaign-defeat", "Летопись продолжится", "СОПЕРНИК ДОСТИГ ЦЕЛИ", [
-        ("ИТОГИ", ["Ход 68 / 80", "Ваши города сохранили жителей и культурные районы"]),
-        ("ДАЛЬШЕ", ["Разобрать решающие ходы", "Посмотреть достижения", "Начать другую партию"]),
-    ], "Defeat_Background.png", actions=("РАЗОБРАТЬ ХОДЫ", "НОВАЯ ПАРТИЯ", "НАГРАДЫ"))
+    campaign_result_screen("21-campaign-result", victory=True)
+    campaign_result_screen("22-campaign-defeat", victory=False)
     create_boards()
 
 

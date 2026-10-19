@@ -97,6 +97,11 @@ namespace Nasledie.Client
             new TutorialStep("Читайте итоги хода", "Откройте летопись и найдите отчёт хода: изменения еды, населения, казны, знаний, влияния и культуры. Сверьте его с прогнозом города.", ScreenPage.Chronicle, TutorialObjective.ViewChronicle)
         };
 
+        private static readonly string[] GuideIndexCategories =
+        {
+            "Все разделы", "Город и люди", "Экономика", "Дипломатия", "Победа"
+        };
+
         private GameSimulation simulation;
         private Canvas canvas;
         private RectTransform safeRoot;
@@ -138,11 +143,14 @@ namespace Nasledie.Client
         private string selectedNationId = "jericho";
         private string guideSearchQuery = "";
         private int guideCategoryIndex;
+        private int guidePageIndex;
         private int tutorialStepIndex;
         private int tutorialCompletedMask;
         private string tutorialFeedback = "";
         private MapOverlay mapOverlay;
         private ChronicleFilter chronicleFilter;
+        private readonly List<AchievementDefinition> campaignEarnedAchievements = new List<AchievementDefinition>();
+        private int campaignEarnedRenown;
         private int textScaleIndex = 1;
         private bool highContrast;
         private bool hapticsEnabled;
@@ -153,6 +161,7 @@ namespace Nasledie.Client
         private int animationMode = 1; // 0: off, 1: quick, 2: full
         private bool presentationBusy;
         private bool dismissPresentationRequested;
+        private bool deferCampaignResult;
         private int movingUnitId = -1;
         private readonly HashSet<int> movingUnitIds = new HashSet<int>();
         private Vector2 mapScrollPosition = new Vector2(0.5f, 0.5f);
@@ -1103,17 +1112,30 @@ namespace Nasledie.Client
             cardLayout.flexibleHeight = 1f;
             if (state == null)
             {
-                UiKit.Label(card.transform, "Слот пуст или файл повреждён.", 16, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                UiKit.Label(card.transform, "Сохранение отсутствует или не читается.", 13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             }
             else
             {
                 CivilizationState player = state.Civilization(state.HumanCivilizationId);
-                UiKit.Label(card.transform, "Ход " + Math.Min(state.Turn, state.MaximumTurn) + "/" + state.MaximumTurn + " · " +
-                    PaceName(state.Pace) + " · " + (player == null ? "цивилизация не найдена" : player.Name) + " · мир " + state.Seed +
-                    (state.IsFinished ? " · кампания завершена" : ""), 15, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-                UiKit.Button(card.transform, "ЗАГРУЗИТЬ", load, GamePalette.Teal, 48, 15);
+                UiKit.Label(card.transform, "ХОД " + Math.Min(state.Turn, state.MaximumTurn) + "/" + state.MaximumTurn + " · " +
+                    (player == null ? "цивилизация не найдена" : player.Name) + (state.IsFinished ? " · ФИНАЛ" : ""),
+                    14, GamePalette.Paper, TextAnchor.MiddleLeft, true);
+                UiKit.Label(card.transform, EraName(player == null ? Era.Communities : player.Era) + " · " + DifficultyName(state.Difficulty) +
+                    " · " + PaceName(state.Pace) + " · МИР " + state.Seed, 12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             }
-            if (save != null) UiKit.Button(card.transform, "СОХРАНИТЬ СЮДА", save, GamePalette.Ink, 48, 15);
+            GameObject actions = UiKit.CreateObject("SaveSlotActions", card.transform);
+            UiKit.Horizontal(actions, 0, 8);
+            actions.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = save == null;
+            if (state != null)
+            {
+                Button loadButton = UiKit.Button(actions.transform, "ЗАГРУЗИТЬ", load, GamePalette.Gold, 46, 12);
+                loadButton.GetComponent<LayoutElement>().flexibleWidth = 1f;
+            }
+            if (save != null)
+            {
+                Button saveButton = UiKit.Button(actions.transform, "СОХРАНИТЬ СЮДА", save, GamePalette.InkSoft, 46, 12);
+                saveButton.GetComponent<LayoutElement>().flexibleWidth = 1f;
+            }
         }
 
         private void OpenSavedCampaign(GameState saved, string source)
@@ -1125,6 +1147,8 @@ namespace Nasledie.Client
                 return;
             }
             simulation = new GameSimulation(saved);
+            campaignEarnedAchievements.Clear();
+            campaignEarnedRenown = 0;
             CivilizationState savedPlayer = saved.Civilization(saved.HumanCivilizationId);
             if (savedPlayer != null) SetMusicEra(savedPlayer.Era);
             selectedCityId = simulation.FindCapital(saved.HumanCivilizationId);
@@ -1623,53 +1647,144 @@ namespace Nasledie.Client
         private void ShowEncyclopedia(string articleId)
         {
             RememberUtilityReturn("encyclopedia");
-            PrepareUtilityOverlay("Backgrounds/Archive_Background");
+            PrepareUtilityOverlay("Backgrounds/Archive_Background", 0.24f);
             activeUtilityScreen = "encyclopedia";
-            GameObject content = UiKit.ScrollView(menuHost, "EncyclopediaScroll");
-            UiKit.Vertical(content, 22, 12);
+            GameObject panel = UtilityPanel("EncyclopediaPanel", new Vector2(0.035f, 0.045f), new Vector2(0.965f, 0.955f));
+            UiKit.Vertical(panel, 16, 9);
             GuideArticle article = GameGuide.Find(articleId);
             if (article != null)
             {
-                AddUtilityHeader(content.transform, article.Title, ShowEncyclopedia, "←  К СПРАВОЧНИКУ");
-                UiKit.Label(content.transform, article.Category.ToUpperInvariant(), 13, GamePalette.Sage, TextAnchor.MiddleLeft, true);
-                UiKit.Label(content.transform, article.Summary, 19, GamePalette.PaperDim, TextAnchor.MiddleLeft, true);
-                UiKit.Label(content.transform, article.Body, 18, GamePalette.Paper, TextAnchor.UpperLeft, false);
+                AddUtilityHeader(panel.transform, article.Title, ShowEncyclopedia, "←  К СПРАВОЧНИКУ");
+                UiKit.Label(panel.transform, article.Category.ToUpperInvariant(), 12, GamePalette.Sage, TextAnchor.MiddleLeft, true);
+                UiKit.Label(panel.transform, article.Summary, 17, GamePalette.PaperDim, TextAnchor.MiddleLeft, true);
+
+                GameObject articleColumns = UiKit.CreateObject("GuideArticleColumns", panel.transform);
+                LayoutElement columnsLayout = articleColumns.AddComponent<LayoutElement>();
+                columnsLayout.flexibleHeight = 1f;
+                UiKit.Horizontal(articleColumns, 0, 28);
+                GameObject articleBody = UiKit.CreateObject("GuideArticleBody", articleColumns.transform);
+                LayoutElement bodyLayout = articleBody.AddComponent<LayoutElement>();
+                bodyLayout.flexibleWidth = 1.65f;
+                bodyLayout.flexibleHeight = 1f;
+                UiKit.Vertical(articleBody, 0, 8);
+                UiKit.Label(articleBody.transform, "ОБЪЯСНЕНИЕ", 12, GamePalette.Sage, TextAnchor.MiddleLeft, true);
+                GameObject articleScrollContent = UiKit.ScrollView(articleBody.transform, "GuideArticleBodyScroll");
+                GameObject articleScroll = articleScrollContent.transform.parent.parent.gameObject;
+                LayoutElement articleScrollLayout = articleScroll.AddComponent<LayoutElement>();
+                articleScrollLayout.flexibleHeight = 1f;
+                articleScrollLayout.minHeight = 220f;
+                UiKit.Label(articleScrollContent.transform, article.Body, 16, GamePalette.Paper, TextAnchor.UpperLeft, false);
+
+                GameObject related = UiKit.CreateObject("GuideRelatedTopics", articleColumns.transform);
+                LayoutElement relatedLayout = related.AddComponent<LayoutElement>();
+                relatedLayout.flexibleWidth = 0.75f;
+                relatedLayout.flexibleHeight = 1f;
+                UiKit.Vertical(related, 0, 8);
+                UiKit.Label(related.transform, "СВЯЗАННЫЕ ТЕМЫ", 12, GamePalette.Sage, TextAnchor.MiddleLeft, true);
+                GuideArticle[] relatedArticles = GameGuide.Search("", article.Category);
+                int shownRelated = 0;
+                for (int i = 0; i < relatedArticles.Length && shownRelated < 4; i++)
+                {
+                    GuideArticle relatedArticle = relatedArticles[i];
+                    if (relatedArticle.Id == article.Id) continue;
+                    Button relatedButton = UiKit.Button(related.transform, relatedArticle.Title + "  →",
+                        delegate { ShowEncyclopedia(relatedArticle.Id); }, GamePalette.Ink, 46, 13);
+                    StyleTextButton(relatedButton);
+                    shownRelated++;
+                }
                 return;
             }
 
-            AddUtilityHeader(content.transform, "Энциклопедия", CloseEncyclopedia);
-            UiKit.Label(content.transform, "Правила, причины событий и советы по развитию", 15, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
-            AddGuideSearchInput(content.transform);
-            GameObject controls = UiKit.CreateObject("GuideSearchControls", content.transform);
-            UiKit.Horizontal(controls, 0, 8);
-            Button category = UiKit.Button(controls.transform, "РАЗДЕЛ · " + GameGuide.Categories[guideCategoryIndex], CycleGuideCategory, GamePalette.InkSoft, 60, 16);
-            Button search = UiKit.Button(controls.transform, "НАЙТИ", ShowEncyclopedia, GamePalette.Teal, 60, 19);
-            Button clear = UiKit.Button(controls.transform, "ОЧИСТИТЬ", ClearGuideSearch, GamePalette.Ink, 60, 16);
-            category.GetComponent<LayoutElement>().flexibleWidth = 1.35f;
-            search.GetComponent<LayoutElement>().flexibleWidth = 0.65f;
-            clear.GetComponent<LayoutElement>().flexibleWidth = 0.85f;
-            GuideArticle[] results = GameGuide.Search(guideSearchQuery, GameGuide.Categories[guideCategoryIndex]);
-            UiKit.Label(content.transform, "Найдено статей: " + results.Length, 18, GamePalette.Muted, TextAnchor.MiddleLeft, true);
-            for (int i = 0; i < results.Length; i++)
+            AddUtilityHeader(panel.transform, "Справочник", CloseEncyclopedia);
+            GameObject searchRow = UiKit.CreateObject("GuideSearchRow", panel.transform);
+            UiKit.Horizontal(searchRow, 0, 8);
+            searchRow.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
+            GameObject searchField = AddGuideSearchInput(searchRow.transform, 48f);
+            searchField.GetComponent<LayoutElement>().flexibleWidth = 1f;
+            Button search = UiKit.Button(searchRow.transform, "НАЙТИ", delegate { guidePageIndex = 0; ShowEncyclopedia(); }, GamePalette.Teal, 48, 13);
+            Button clear = UiKit.Button(searchRow.transform, "ОЧИСТИТЬ", ClearGuideSearch, GamePalette.Ink, 48, 12);
+            SetToolbarButtonWidth(search, 126f);
+            SetToolbarButtonWidth(clear, 136f);
+
+            GameObject categories = UiKit.CreateObject("GuideCategoryTabs", panel.transform);
+            UiKit.Horizontal(categories, 0, 8);
+            categories.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
+            for (int i = 0; i < GuideIndexCategories.Length; i++)
+            {
+                int capturedCategory = i;
+                Button tab = UiKit.Button(categories.transform, GuideIndexCategories[i].ToUpperInvariant(), delegate
+                {
+                    guideCategoryIndex = capturedCategory;
+                    guidePageIndex = 0;
+                    ShowEncyclopedia();
+                }, guideCategoryIndex == i ? GamePalette.Gold : GamePalette.Ink, 44, 11);
+                tab.GetComponent<LayoutElement>().flexibleWidth = 1f;
+            }
+
+            string categoryName = GuideIndexCategories[Mathf.Clamp(guideCategoryIndex, 0, GuideIndexCategories.Length - 1)];
+            GuideArticle[] results = GameGuide.Search(guideSearchQuery, categoryName);
+            int pageCount = Mathf.Max(1, Mathf.CeilToInt(results.Length / 6f));
+            guidePageIndex = Mathf.Clamp(guidePageIndex, 0, pageCount - 1);
+            UiKit.Label(panel.transform, "СТАТЬИ  " + (results.Length == 0 ? "0" : (guidePageIndex * 6 + 1) + "–" + Mathf.Min(results.Length, (guidePageIndex + 1) * 6)) + " ИЗ " + results.Length,
+                12, GamePalette.Muted, TextAnchor.MiddleLeft, true);
+
+            float logicalWidth = Screen.width / Mathf.Max(0.1f, canvas.scaleFactor);
+            float logicalHeight = Screen.height / Mathf.Max(0.1f, canvas.scaleFactor);
+            float gridHeight = Mathf.Clamp(logicalHeight * 0.82f - 260f, 320f, 620f);
+            float cellWidth = (logicalWidth * 0.93f - 32f - 24f) / 3f;
+            float cellHeight = (gridHeight - 12f) / 2f;
+            GameObject grid = UiKit.CreateObject("GuideArticleGrid", panel.transform);
+            LayoutElement gridElement = grid.AddComponent<LayoutElement>();
+            gridElement.minHeight = gridElement.preferredHeight = gridHeight;
+            gridElement.flexibleWidth = 1f;
+            GridLayoutGroup gridLayout = grid.AddComponent<GridLayoutGroup>();
+            gridLayout.padding = new RectOffset(0, 0, 0, 0);
+            gridLayout.spacing = new Vector2(12f, 12f);
+            gridLayout.cellSize = new Vector2(cellWidth, cellHeight);
+            gridLayout.startCorner = GridLayoutGroup.Corner.UpperLeft;
+            gridLayout.startAxis = GridLayoutGroup.Axis.Horizontal;
+            gridLayout.childAlignment = TextAnchor.UpperLeft;
+            gridLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            gridLayout.constraintCount = 3;
+            int firstResult = guidePageIndex * 6;
+            int lastResult = Mathf.Min(results.Length, firstResult + 6);
+            for (int i = firstResult; i < lastResult; i++)
             {
                 GuideArticle entry = results[i];
-                GameObject card = UiKit.Card(content.transform, entry.Title + " · " + entry.Category);
-                UiKit.Label(card.transform, entry.Summary, 20, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-                UiKit.Button(card.transform, "ЧИТАТЬ", delegate { ShowEncyclopedia(entry.Id); }, GamePalette.Ink, 52, 17);
+                GameObject item = UiKit.CreateObject("GuideEntry_" + entry.Id, grid.transform);
+                UiKit.Vertical(item, 8, 5);
+                UiKit.Label(item.transform, entry.Category.ToUpperInvariant(), 11, GamePalette.Sage, TextAnchor.MiddleLeft, true);
+                UiKit.Label(item.transform, entry.Title, 19, GamePalette.Gold, TextAnchor.MiddleLeft, true);
+                Text summary = UiKit.Label(item.transform, entry.Summary, 14, GamePalette.PaperDim, TextAnchor.UpperLeft, false);
+                summary.GetComponent<LayoutElement>().flexibleHeight = 1f;
+                Button read = UiKit.Button(item.transform, "ЧИТАТЬ  →", delegate { ShowEncyclopedia(entry.Id); }, GamePalette.Ink, 40, 12);
+                StyleTextButton(read);
             }
             if (results.Length == 0)
-                UiKit.Label(content.transform, "По этому запросу ничего не найдено. Попробуйте слово из темы: «еда», «миграция», «наука», «договор» или «победа». ",
-                    20, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+                UiKit.Label(grid.transform, "Ничего не найдено · попробуйте «еда», «миграция», «наука» или «договор».",
+                    15, GamePalette.Muted, TextAnchor.MiddleLeft, false);
+
+            GameObject pager = UiKit.CreateObject("GuidePagination", panel.transform);
+            LayoutElement pagerLayout = pager.AddComponent<LayoutElement>();
+            pagerLayout.minHeight = pagerLayout.preferredHeight = 46f;
+            UiKit.Horizontal(pager, 0, 10);
+            pager.GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = false;
+            Button previous = UiKit.Button(pager.transform, "←  НАЗАД", delegate { guidePageIndex = Mathf.Max(0, guidePageIndex - 1); ShowEncyclopedia(); }, GamePalette.Ink, 44, 12);
+            Button next = UiKit.Button(pager.transform, "ДАЛЬШЕ  →", delegate { guidePageIndex = Mathf.Min(pageCount - 1, guidePageIndex + 1); ShowEncyclopedia(); }, GamePalette.Ink, 44, 12);
+            SetToolbarButtonWidth(previous, 140f);
+            SetToolbarButtonWidth(next, 140f);
+            previous.interactable = guidePageIndex > 0;
+            next.interactable = guidePageIndex + 1 < pageCount;
+            GameObject pageSpacer = UiKit.CreateObject("GuidePageSpacer", pager.transform);
+            pageSpacer.AddComponent<LayoutElement>().flexibleWidth = 1f;
+            UiKit.Label(pager.transform, "СТРАНИЦА " + (guidePageIndex + 1) + "/" + pageCount, 12, GamePalette.PaperDim, TextAnchor.MiddleRight, true);
         }
 
-        private void AddGuideSearchInput(Transform parent)
+        private GameObject AddGuideSearchInput(Transform parent, float height)
         {
-            GameObject field = UiKit.Panel(parent, "GuideSearchField", GamePalette.Paper, 60);
+            GameObject field = UiKit.Panel(parent, "GuideSearchField", GamePalette.Paper, height);
             Image image = field.GetComponent<Image>();
             image.color = GamePalette.Paper;
-            RectTransform rect = UiKit.Rect(field);
-            rect.anchorMin = new Vector2(0, 0.5f);
-            rect.anchorMax = new Vector2(1, 0.5f);
             InputField input = field.AddComponent<InputField>();
             input.targetGraphic = image;
             input.lineType = InputField.LineType.SingleLine;
@@ -1680,7 +1795,7 @@ namespace Nasledie.Client
             UiKit.SetAnchors(textRect, Vector2.zero, Vector2.one, new Vector2(16, 6), new Vector2(-16, -6));
             Text text = textObject.AddComponent<Text>();
             text.font = UiKit.Font;
-            text.fontSize = 22;
+            text.fontSize = 18;
             text.color = GamePalette.Ink;
             text.alignment = TextAnchor.MiddleLeft;
             text.supportRichText = false;
@@ -1691,7 +1806,7 @@ namespace Nasledie.Client
             UiKit.SetAnchors(placeholderRect, Vector2.zero, Vector2.one, new Vector2(16, 6), new Vector2(-16, -6));
             Text placeholder = placeholderObject.AddComponent<Text>();
             placeholder.font = UiKit.Font;
-            placeholder.fontSize = 21;
+            placeholder.fontSize = 17;
             placeholder.color = GamePalette.Muted;
             placeholder.text = "Например: жители уезжают";
             placeholder.alignment = TextAnchor.MiddleLeft;
@@ -1700,11 +1815,13 @@ namespace Nasledie.Client
             input.text = guideSearchQuery;
             input.onValueChanged.AddListener(delegate(string value) { guideSearchQuery = value; });
             input.onEndEdit.AddListener(delegate(string value) { guideSearchQuery = value; });
+            return field;
         }
 
         private void CycleGuideCategory()
         {
-            guideCategoryIndex = (guideCategoryIndex + 1) % GameGuide.Categories.Length;
+            guideCategoryIndex = (guideCategoryIndex + 1) % GuideIndexCategories.Length;
+            guidePageIndex = 0;
             ShowEncyclopedia();
         }
 
@@ -1712,6 +1829,7 @@ namespace Nasledie.Client
         {
             guideSearchQuery = "";
             guideCategoryIndex = 0;
+            guidePageIndex = 0;
             ShowEncyclopedia();
         }
 
@@ -1744,6 +1862,8 @@ namespace Nasledie.Client
                 case "settings": ShowSettings(); return;
                 case "achievements": ShowAchievements(); return;
                 case "saves": ShowSaves(); return;
+                case "campaign_result": ShowCampaignResultScreen(); return;
+                case "postgame_chronicle": ShowCampaignChronicle(); return;
                 default: ShowMenu(); return;
             }
         }
@@ -1971,6 +2091,8 @@ namespace Nasledie.Client
         {
             int seed = UnityEngine.Random.Range(100000, 999999);
             simulation = GameSimulation.NewCampaign(seed, selectedDifficulty, selectedPace, selectedNationId);
+            campaignEarnedAchievements.Clear();
+            campaignEarnedRenown = 0;
             SetMusicEra(simulation.State.Civilization(simulation.State.HumanCivilizationId).Era);
             selectedCityId = simulation.FindCapital(simulation.State.HumanCivilizationId);
             selectedUnitId = -1;
@@ -1993,10 +2115,19 @@ namespace Nasledie.Client
             MarkTutorialPageVisited(currentPage);
             CaptureMapScrollPosition();
             AchievementDefinition[] earned = AchievementService.Evaluate(simulation.State);
+            for (int i = 0; i < earned.Length; i++)
+            {
+                campaignEarnedAchievements.Add(earned[i]);
+                campaignEarnedRenown += earned[i].RenownReward;
+            }
             if (earned.Length > 0)
                 notice = "Достижение «" + earned[0].Name + "» · получен титул «" + earned[0].TitleReward + "» и " + earned[0].RenownReward + " славы" +
                     (earned.Length > 1 ? " · ещё наград: " + (earned.Length - 1) : "") + ".";
-            if (simulation.State.IsFinished) currentPage = ScreenPage.Victory;
+            if (simulation.State.IsFinished && !deferCampaignResult)
+            {
+                ShowCampaignResultScreen();
+                return;
+            }
             ApplySafeArea();
             menuHost.gameObject.SetActive(false);
             header.gameObject.SetActive(true);
@@ -2046,6 +2177,127 @@ namespace Nasledie.Client
                 case ScreenPage.Victory: RenderVictory(detailContent.transform); break;
                 case ScreenPage.Chronicle: RenderChronicle(detailContent.transform); break;
             }
+        }
+
+        private void ShowCampaignResultScreen()
+        {
+            if (simulation == null) { ShowMenu(); return; }
+            GameState state = simulation.State;
+            CivilizationState player = state.Civilization(state.HumanCivilizationId);
+            int[] winners = state.WinningCivilizationIds ?? Array.Empty<int>();
+            if (winners.Length == 0 && state.WinnerCivilizationId >= 0) winners = new[] { state.WinnerCivilizationId };
+            bool playerWon = Array.IndexOf(winners, state.HumanCivilizationId) >= 0 || state.WinnerCivilizationId == state.HumanCivilizationId;
+            CivilizationState leadingWinner = winners.Length == 0 ? null : state.Civilization(winners[0]);
+            var winnerNames = new List<string>();
+            for (int i = 0; i < winners.Length; i++)
+            {
+                CivilizationState winner = state.Civilization(winners[i]);
+                if (winner != null && !winnerNames.Contains(winner.Name)) winnerNames.Add(winner.Name);
+            }
+            string victor = winnerNames.Count == 0 ? "соперник" : string.Join(" и ", winnerNames.ToArray());
+            string resultPath = VictoryEvaluator.PathName(state.WinningPath);
+            string background = playerWon ? "Backgrounds/Victory_Background" : "Backgrounds/Defeat_Background";
+            PrepareUtilityOverlay(background, playerWon ? 0.14f : 0.24f);
+            activeUtilityScreen = "campaign_result";
+
+            Color shade = new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, playerWon ? 0.82f : 0.86f);
+            UiKit.HorizontalFade(menuHost, "CampaignResultAtmosphere", Vector2.zero, new Vector2(0.78f, 1f), shade,
+                new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.05f));
+            AddPresentationRail(menuHost, "CampaignResultActionGround", new Vector2(0f, 0f), new Vector2(1f, 0.265f),
+                new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.58f));
+
+            AddPresentationLabel(menuHost, "CampaignResultKicker", playerWon ? "ЭПОХА БУДЕТ ПОМНИТЬ ВАС" : "КАМПАНИЯ ЗАВЕРШЕНА",
+                14, playerWon ? GamePalette.Gold : GamePalette.Rust, TextAnchor.MiddleLeft, FontStyle.Bold,
+                new Vector2(0.065f, 0.885f), new Vector2(0.72f, 0.935f));
+            Text title = AddPresentationLabel(menuHost, "CampaignResultTitle", playerWon ? "ПОБЕДА" : "ПУТЬ ЗАВЕРШЁН",
+                playerWon ? 58 : 48, GamePalette.Paper, TextAnchor.MiddleLeft, FontStyle.Bold,
+                new Vector2(0.06f, 0.765f), new Vector2(0.74f, 0.885f));
+            AddTextOutline(title);
+            string explanation = playerWon
+                ? resultPath + " · ваша цивилизация оставила след в истории."
+                : "Летопись продолжается · победитель: " + victor + " · путь «" + resultPath + "».";
+            AddPresentationLabel(menuHost, "CampaignResultPath", explanation, 20, GamePalette.PaperDim,
+                TextAnchor.MiddleLeft, FontStyle.Normal, new Vector2(0.067f, 0.695f), new Vector2(0.82f, 0.76f));
+
+            string[] statNames = playerWon
+                ? new[] { "ХОД", "НАСЕЛЕНИЕ", "ЗНАНИЯ", "НАСЛЕДИЕ" }
+                : new[] { "ХОД", "ВАШИ ЖИТЕЛИ", "ПОБЕДИТЕЛЬ", "ПУТЬ" };
+            string[] statValues = playerWon
+                ? new[] {
+                    state.Turn + " / " + state.MaximumTurn,
+                    Format(simulation.CivilizationPopulationTenths(state.HumanCivilizationId)),
+                    Format(player == null ? 0 : player.KnowledgeTenths),
+                    VictoryEvaluator.HeritageScore(state, state.HumanCivilizationId).ToString()
+                }
+                : new[] {
+                    state.Turn + " / " + state.MaximumTurn,
+                    Format(simulation.CivilizationPopulationTenths(state.HumanCivilizationId)),
+                    leadingWinner == null ? "—" : Format(simulation.CivilizationPopulationTenths(leadingWinner.Id)),
+                    resultPath
+                };
+            float statStart = 0.068f;
+            float statWidth = 0.18f;
+            for (int i = 0; i < statNames.Length; i++)
+            {
+                float left = statStart + i * 0.195f;
+                AddPresentationLabel(menuHost, "CampaignStatName_" + i, statNames[i], 12, GamePalette.Sage,
+                    TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(left, 0.49f), new Vector2(left + statWidth, 0.54f));
+                AddPresentationLabel(menuHost, "CampaignStatValue_" + i, statValues[i], 30, GamePalette.Paper,
+                    TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(left, 0.405f), new Vector2(left + statWidth, 0.49f));
+                if (i < statNames.Length - 1)
+                    AddPresentationRail(menuHost, "CampaignStatDivider_" + i, new Vector2(left + 0.168f, 0.415f), new Vector2(left + 0.169f, 0.54f),
+                        new Color(GamePalette.Paper.r, GamePalette.Paper.g, GamePalette.Paper.b, 0.25f));
+            }
+
+            string rewardLine = campaignEarnedAchievements.Count == 1
+                ? "ОТКРЫТО ЗВАНИЕ «" + campaignEarnedAchievements[0].TitleReward + "»" +
+                    (campaignEarnedRenown > 0 ? " · +" + campaignEarnedRenown + " СЛАВЫ" : "")
+                : campaignEarnedAchievements.Count > 1
+                    ? "НОВЫЕ ДОСТИЖЕНИЯ · " + campaignEarnedAchievements.Count +
+                        (campaignEarnedRenown > 0 ? " · +" + campaignEarnedRenown + " СЛАВЫ" : "")
+                    : "НАГРАДЫ УЖЕ СОХРАНЕНЫ В ПРОФИЛЕ";
+            AddPresentationLabel(menuHost, "CampaignResultRewards", rewardLine, 13, GamePalette.Gold,
+                TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(0.068f, 0.325f), new Vector2(0.78f, 0.38f));
+
+            AddPresentationAction(menuHost, "CampaignResultChronicle", playerWon ? "ЛЕТОПИСЬ" : "РАЗОБРАТЬ ХОДЫ",
+                GamePalette.Gold, new Vector2(0.43f, 0.115f), new Vector2(0.60f, 0.205f), ShowCampaignChronicle);
+            Button awards = AddPresentationAction(menuHost, "CampaignResultAchievements", "НАГРАДЫ",
+                GamePalette.Ink, new Vector2(0.62f, 0.115f), new Vector2(0.75f, 0.205f), ShowAchievements);
+            StyleTextButton(awards);
+            Button newGame = AddPresentationAction(menuHost, "CampaignResultNewGame", "НОВАЯ ПАРТИЯ",
+                GamePalette.Ink, new Vector2(0.77f, 0.115f), new Vector2(0.95f, 0.205f), ShowNewCampaignConfirmation);
+            StyleTextButton(newGame);
+            Button menu = AddPresentationAction(menuHost, "CampaignResultMenu", "В МЕНЮ",
+                GamePalette.Ink, new Vector2(0.83f, 0.88f), new Vector2(0.95f, 0.94f), delegate
+                {
+                    simulation = null;
+                    campaignEarnedAchievements.Clear();
+                    campaignEarnedRenown = 0;
+                    ShowMenu();
+                });
+            StyleTextButton(menu);
+        }
+
+        private void ShowCampaignChronicle()
+        {
+            if (simulation == null) { ShowMenu(); return; }
+            PrepareUtilityOverlay("Backgrounds/Archive_Background", 0.24f);
+            activeUtilityScreen = "postgame_chronicle";
+            GameObject panel = UtilityPanel("PostgameChronicle", new Vector2(0.035f, 0.045f), new Vector2(0.965f, 0.955f));
+            UiKit.Vertical(panel, 10, 6);
+            AddUtilityHeader(panel.transform, "Летопись", ShowCampaignResultScreen, "←  К ИТОГУ");
+            GameObject content = UiKit.ScrollView(panel.transform, "PostgameChronicleScroll");
+            GameObject scroll = content.transform.parent.parent.gameObject;
+            LayoutElement scrollLayout = scroll.AddComponent<LayoutElement>();
+            scrollLayout.flexibleHeight = 1f;
+            scrollLayout.minHeight = 200f;
+            RenderChronicle(content.transform);
+        }
+
+        private void RefreshChronicle()
+        {
+            if (activeUtilityScreen == "postgame_chronicle") ShowCampaignChronicle();
+            else RenderGame();
         }
 
         private static string PageBackgroundArtwork(ScreenPage page)
@@ -2190,12 +2442,65 @@ namespace Nasledie.Client
             UiKit.Label(detail.transform, resource + (visible && cell.Improvement != ImprovementKind.None ? " · " + ImprovementName(cell.Improvement) : ""),
                 13, GamePalette.Muted, TextAnchor.MiddleLeft, false);
 
-            if (cell.OwnerId == player.Id)
+            if (currentPage != ScreenPage.City && cell.OwnerId == player.Id)
             {
-                CityState city = SelectedCity();
-                if (city != null && HexGrid.Distance(cell.Q, cell.R, city.Q, city.R) <= 2)
-                    UiKit.Button(section.transform, "РАБОТЫ НА КЛЕТКЕ", delegate { currentPage = ScreenPage.City; RenderGame(); }, GamePalette.Ink, 40, 12);
+                CityState city = NearestOwningCity(cell, player.Id);
+                if (city == null) return;
+                UiKit.Label(section.transform, "РАБОТЫ · " + city.Name, 11, GamePalette.Sage, TextAnchor.MiddleLeft, true);
+                bool projectAvailable = city.Project == null || city.Project.Kind == ProjectKind.None;
+                bool hasAction = false;
+
+                if (cell.Damage > 0 && projectAvailable)
+                {
+                    Button repair = UiKit.Button(section.transform, (cell.HasRoad ? "ПОЧИНИТЬ ДОРОГУ" : "ВОССТАНОВИТЬ УЧАСТОК") + " · 4 ПП", delegate
+                    {
+                        Issue(CommandKind.Repair, city.Id, q: cell.Q, r: cell.R);
+                    }, GamePalette.Rust, 44, 12);
+                    repair.interactable = projectAvailable;
+                    AddButtonArtwork(repair, ImprovementArtwork(cell.HasRoad ? ImprovementKind.Road : cell.Improvement, player.Era));
+                    hasAction = true;
+                }
+
+                if (string.IsNullOrEmpty(cell.DistrictBuildingId))
+                {
+                    for (int i = 0; i < RulesCatalog.Improvements.Length; i++)
+                    {
+                        ImprovementDefinition improvement = RulesCatalog.Improvements[i];
+                        if (!player.Knows(improvement.RequiredTechnology) ||
+                            Array.IndexOf(improvement.AllowedTerrain, cell.Terrain) < 0 || cell.Improvement == improvement.Kind) continue;
+                        ImprovementKind kind = improvement.Kind;
+                        Button build = UiKit.Button(section.transform,
+                            improvement.NameRu + " · " + improvement.ProductionCost + " ПП",
+                            delegate { Issue(CommandKind.BuildImprovement, city.Id, value: (int)kind, q: cell.Q, r: cell.R); },
+                            GamePalette.Ink, 44, 12);
+                        AddButtonArtwork(build, ImprovementArtwork(kind, player.Era));
+                        build.interactable = projectAvailable;
+                        hasAction = true;
+                    }
+                }
+
+                if (!hasAction)
+                    UiKit.Label(section.transform, projectAvailable ? "Сейчас нет доступной работы для этой клетки." :
+                        "Город завершает другой проект; работы здесь можно поставить позже.",
+                        12, GamePalette.Muted, TextAnchor.MiddleLeft, false);
             }
+        }
+
+        private CityState NearestOwningCity(HexCell cell, int ownerId)
+        {
+            CityState nearest = null;
+            int nearestDistance = int.MaxValue;
+            CityState[] cities = simulation.State.Cities;
+            for (int i = 0; i < cities.Length; i++)
+            {
+                CityState city = cities[i];
+                if (city.OwnerId != ownerId) continue;
+                int distance = HexGrid.Distance(cell.Q, cell.R, city.Q, city.R);
+                if (distance > 2 || distance >= nearestDistance) continue;
+                nearest = city;
+                nearestDistance = distance;
+            }
+            return nearest;
         }
 
         private static string ResourceName(ResourceKind resource)
@@ -3657,6 +3962,7 @@ namespace Nasledie.Client
                 yield return null;
             }
 
+            deferCampaignResult = true;
             simulation.EndTurn();
             BattleResolutionEvent[] turnBattles = simulation.LastResolvedBattles == null
                 ? new BattleResolutionEvent[0] : (BattleResolutionEvent[])simulation.LastResolvedBattles.Clone();
@@ -3668,7 +3974,7 @@ namespace Nasledie.Client
                 if (simulation.State.IsFinished) PlayFinalSound();
             }
             bool saved = !advanced || SaveService.SaveAuto(simulation.State);
-            ScreenPage resolvedPage = simulation.State.IsFinished ? ScreenPage.Victory : HasPendingEvent() ? ScreenPage.Events : ScreenPage.Overview;
+            ScreenPage resolvedPage = simulation.State.IsFinished ? ScreenPage.Overview : HasPendingEvent() ? ScreenPage.Events : ScreenPage.Overview;
             List<UnitMovePresentation> turnMoves = advanced && resolvedPage == ScreenPage.Overview && animationMode > 0
                 ? FindTurnUnitMoves(unitPositions)
                 : new List<UnitMovePresentation>();
@@ -3718,7 +4024,7 @@ namespace Nasledie.Client
                 List<BuildingMilestone> completed = FindNewlyCompletedBuildings(buildingLevels);
                 List<ImprovementMilestone> completedImprovements = FindNewlyCompletedImprovements(improvements);
                 bool hasEraTransition = nextEra != previousEra;
-                if (hasEraTransition || completed.Count > 0 || completedImprovements.Count > 0)
+                if ((hasEraTransition || completed.Count > 0 || completedImprovements.Count > 0) && currentPage != ScreenPage.Chronicle)
                 {
                     dismissPresentationRequested = false;
                     ShowTurnMilestones(layer.transform, previousTurn, previousEra, nextEra, completed, completedImprovements);
@@ -3733,6 +4039,14 @@ namespace Nasledie.Client
             if (presentationLayer != null) Destroy(presentationLayer);
             presentationLayer = null;
             presentationBusy = false;
+            deferCampaignResult = false;
+            if (simulation.State.IsFinished)
+            {
+                if (currentPage == ScreenPage.Chronicle) ShowCampaignChronicle();
+                else ShowCampaignResultScreen();
+                yield break;
+            }
+            if (currentPage != resolvedPage) RenderGame();
         }
 
         private Dictionary<int, UnitMovePresentation> CaptureUnitPositions()
@@ -3912,6 +4226,11 @@ namespace Nasledie.Client
                         new Color(GamePalette.Paper.r, GamePalette.Paper.g, GamePalette.Paper.b, 0.18f));
             }
 
+            AddPresentationLabel(layer, "TurnReportHumanConsequences",
+                "ПОГИБЛО " + Format(report.DeathsTenths) + "   ·   ЭМИГРАЦИЯ " + Format(report.EmigrationTenths),
+                11, report.DeathsTenths > 0 || report.EmigrationTenths > 0 ? GamePalette.Rust : GamePalette.Muted,
+                TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(0.05f, 0.065f), new Vector2(0.55f, 0.105f));
+
             AddPresentationRail(layer, "TurnReportEventsDivider", new Vector2(0.57f, 0.085f), new Vector2(0.571f, 0.315f),
                 new Color(GamePalette.Paper.r, GamePalette.Paper.g, GamePalette.Paper.b, 0.2f));
             AddPresentationLabel(layer, "TurnReportEventsTitle", "СОБЫТИЯ", 11, GamePalette.Sage,
@@ -3934,10 +4253,17 @@ namespace Nasledie.Client
             }
             if (visibleBattleCount > 0 || report.TreatyCount > 0)
                 AddPresentationLabel(layer, "TurnReportCounts", visibleBattleCount + " видимых боёв  ·  " + report.TreatyCount + " договоров", 11, GamePalette.Muted,
-                    TextAnchor.MiddleLeft, FontStyle.Normal, new Vector2(0.595f, 0.08f), new Vector2(0.79f, 0.115f));
+                    TextAnchor.MiddleRight, FontStyle.Normal, new Vector2(0.80f, 0.27f), new Vector2(0.95f, 0.315f));
+
+            AddPresentationAction(layer, "TurnReportChronicle", "ЛЕТОПИСЬ",
+                GamePalette.InkSoft, new Vector2(0.595f, 0.065f), new Vector2(0.79f, 0.13f), delegate
+                {
+                    currentPage = ScreenPage.Chronicle;
+                    dismissPresentationRequested = true;
+                });
 
             AddPresentationAction(layer, "TurnReportContinue", "ДАЛЬШЕ  →", GamePalette.Gold,
-                new Vector2(0.825f, 0.105f), new Vector2(0.95f, 0.18f), delegate { dismissPresentationRequested = true; });
+                new Vector2(0.825f, 0.065f), new Vector2(0.95f, 0.13f), delegate { dismissPresentationRequested = true; });
             if (dock != null) dock.raycastTarget = false;
             CanvasGroup group = layer.gameObject.GetComponent<CanvasGroup>();
             if (group == null) group = layer.gameObject.AddComponent<CanvasGroup>();
@@ -4004,7 +4330,8 @@ namespace Nasledie.Client
                 for (int i = 0; i < technologies.Length && itemIndex < 3; i++)
                 {
                     if (technologies[i].Era != newEra) continue;
-                    AddMilestoneItem(layer, itemIndex++, technologies[i].NameRu, "новое направление исследований", null);
+                    AddMilestoneItem(layer, itemIndex++, technologies[i].NameRu,
+                        CompactHint(technologies[i].Unlock, 42), null);
                 }
             }
             int totalMilestones = buildings.Count + improvements.Count;
@@ -4458,14 +4785,31 @@ namespace Nasledie.Client
                 }
             }
 
-            string winner = battle.AttackerWon ? "Атака удержала позицию" : "Защитники отбили атаку";
-            string losses = "Потери: " + Format(battle.AttackerDeathsTenths + battle.DefenderDeathsTenths) + " погибло · " +
-                Format(battle.AttackerWoundedTenths + battle.DefenderWoundedTenths) + " ранено";
-            notice = winner + " · " + losses + ". Подробности сохранены в летописи.";
             outcome.text = battle.AttackerWon ? "ПОБЕДА АТАКИ" : "ПОБЕДА ОБОРОНЫ";
             outcomeGroup.alpha = 1f;
             impactGroup.alpha = 0f;
-            float resultHold = 0.28f * AnimationScale;
+            CivilizationState attackerOwner = simulation.State.Civilization(battle.AttackerOwnerId);
+            CivilizationState defenderOwner = simulation.State.Civilization(battle.DefenderOwnerId);
+            CityState battleCity = CityAt(battle.CellQ, battle.CellR);
+            string battlePlace = battleCity == null ? "позиция " + battle.CellQ + ", " + battle.CellR : battleCity.Name;
+            notice = "Сражение у " + battlePlace + " завершено · подробности в летописи.";
+            outcomeGroup.alpha = 0f;
+            if (blocker != null) blocker.raycastTarget = false;
+            AddPresentationRail(layer.transform, "BattleAftermathRail", new Vector2(0.665f, 0.735f), new Vector2(0.975f, 0.965f),
+                new Color(GamePalette.Ink.r, GamePalette.Ink.g, GamePalette.Ink.b, 0.86f));
+            AddPresentationLabel(layer.transform, "BattleAftermathTitle", (battle.AttackerWon ? "АТАКА УДЕРЖАЛА " : "ОБОРОНА УДЕРЖАЛА ") + battlePlace.ToUpperInvariant(),
+                14, GamePalette.Gold, TextAnchor.MiddleLeft, FontStyle.Bold, new Vector2(0.685f, 0.915f), new Vector2(0.955f, 0.96f));
+            string attackerLine = (attackerOwner == null ? "Атакующие" : attackerOwner.Name) + " · " + UnitDisplayName(battle.AttackerKind);
+            string defenderLine = (defenderOwner == null ? "Защитники" : defenderOwner.Name) + " · " + UnitDisplayName(battle.DefenderKind);
+            AddPresentationLabel(layer.transform, "BattleAftermathSides", attackerLine + "  /  " + defenderLine, 12, GamePalette.Paper,
+                TextAnchor.MiddleLeft, FontStyle.Normal, new Vector2(0.685f, 0.865f), new Vector2(0.955f, 0.915f));
+            string casualtyLine = "Погибло " + Format(battle.AttackerDeathsTenths + battle.DefenderDeathsTenths) +
+                "  ·  ранено " + Format(battle.AttackerWoundedTenths + battle.DefenderWoundedTenths);
+            if (battle.AttackerPrisonersTenths + battle.DefenderPrisonersTenths > 0)
+                casualtyLine += "  ·  пленено " + Format(battle.AttackerPrisonersTenths + battle.DefenderPrisonersTenths);
+            AddPresentationLabel(layer.transform, "BattleAftermathLosses", casualtyLine, 12, GamePalette.PaperDim,
+                TextAnchor.MiddleLeft, FontStyle.Normal, new Vector2(0.685f, 0.815f), new Vector2(0.955f, 0.865f));
+            float resultHold = animationMode == 2 ? 1.8f : 0.95f;
             while (resultHold > 0f)
             {
                 resultHold -= Time.unscaledDeltaTime;
@@ -4473,6 +4817,13 @@ namespace Nasledie.Client
             }
             movingUnitIds.Clear();
             RenderGame();
+        }
+
+        private static string UnitDisplayName(UnitKind kind)
+        {
+            for (int i = 0; i < RulesCatalog.Units.Length; i++)
+                if (RulesCatalog.Units[i].Kind == kind) return RulesCatalog.Units[i].NameRu;
+            return kind.ToString();
         }
 
         private RectTransform CreateBattleUnitSprite(Transform parent, UnitKind kind, Era era, Vector2 position, string name)
@@ -5297,33 +5648,6 @@ namespace Nasledie.Client
         {
             GameState state = simulation.State;
             CivilizationState player = state.Civilization(state.HumanCivilizationId);
-            if (state.IsFinished)
-            {
-                int[] winners = state.WinningCivilizationIds ?? Array.Empty<int>();
-                if (winners.Length == 0 && state.WinnerCivilizationId >= 0) winners = new[] { state.WinnerCivilizationId };
-                var winnerNames = new List<string>();
-                bool playerWon = false;
-                for (int i = 0; i < winners.Length; i++)
-                {
-                    CivilizationState candidate = state.Civilization(winners[i]);
-                    if (candidate != null) winnerNames.Add(candidate.Name);
-                    if (winners[i] == player.Id) playerWon = true;
-                }
-                string resultTitle = winnerNames.Count == 0 ? "Кампания завершена" : winnerNames.Count == 1 ? winnerNames[0] + " победила" : "Совместная победа · " + string.Join(", ", winnerNames.ToArray());
-                GameObject final = UiKit.Section(parent, resultTitle);
-                UiKit.Label(final.transform, (playerWon ? "ПОБЕДА · " : "ПОРАЖЕНИЕ · ") + VictoryEvaluator.PathName(state.WinningPath),
-                    16, GamePalette.Gold, TextAnchor.MiddleLeft, true);
-                UiKit.Label(final.transform, playerWon ? "Ваша держава завершила кампанию." : "Изучите ход соперника в летописи и попробуйте другой путь развития.",
-                    13, GamePalette.PaperDim, TextAnchor.MiddleLeft, false);
-                UiKit.Label(final.transform, "Наследие " + VictoryEvaluator.HeritageScore(state, player.Id) + " · жители " + Format(simulation.CivilizationPopulationTenths(player.Id)) +
-                    " · технологии " + player.CompletedTechnologies + " · престиж " + player.CulturePrestige + " · репутация " + player.Reputation,
-                    13, GamePalette.Paper, TextAnchor.MiddleLeft, false);
-                GameObject actions = CreateActionRow(final.transform, "CampaignResultActions", 8);
-                AddCompactActionButton(actions.transform, "ДОСТИЖЕНИЯ И НАГРАДЫ", ShowAchievements, GamePalette.InkSoft);
-                AddCompactActionButton(actions.transform, "В ГЛАВНОЕ МЕНЮ", delegate { simulation = null; ShowMenu(); }, GamePalette.Teal);
-                return;
-            }
-
             CityState selectedCity = SelectedCity();
             int selectedCityId = selectedCity == null ? -1 : selectedCity.Id;
             GameObject overview = UiKit.Section(parent, "ПУТИ К ПОБЕДЕ");
@@ -5462,11 +5786,11 @@ namespace Nasledie.Client
         {
             GameState state = simulation.State;
             GameObject filters = CreateActionRow(parent, "ChronicleFilters", 6);
-            AddCompactActionButton(filters.transform, "ВСЕ", delegate { chronicleFilter = ChronicleFilter.All; RenderGame(); },
+            AddCompactActionButton(filters.transform, "ВСЕ", delegate { chronicleFilter = ChronicleFilter.All; RefreshChronicle(); },
                 chronicleFilter == ChronicleFilter.All ? GamePalette.Gold : GamePalette.Ink);
-            AddCompactActionButton(filters.transform, "ГОРОДА", delegate { chronicleFilter = ChronicleFilter.Cities; RenderGame(); },
+            AddCompactActionButton(filters.transform, "ГОРОДА", delegate { chronicleFilter = ChronicleFilter.Cities; RefreshChronicle(); },
                 chronicleFilter == ChronicleFilter.Cities ? GamePalette.Gold : GamePalette.Ink);
-            AddCompactActionButton(filters.transform, "СОСЕДИ", delegate { chronicleFilter = ChronicleFilter.Neighbors; RenderGame(); },
+            AddCompactActionButton(filters.transform, "СОСЕДИ", delegate { chronicleFilter = ChronicleFilter.Neighbors; RefreshChronicle(); },
                 chronicleFilter == ChronicleFilter.Neighbors ? GamePalette.Gold : GamePalette.Ink);
 
             HashSet<string> recentReportEntries = new HashSet<string>();
