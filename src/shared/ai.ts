@@ -665,6 +665,13 @@ function maybeBuy(game: Game, p: Player, city: City): void {
 // ---------------------------------------------------------------------------------------------
 // Diplomacy
 
+/** Beginner protection: computers hold back from attacking humans early, more so on easier settings. */
+function graceTurns(p: Player, target: Player, game: Game): number {
+  void game;
+  const base = p.aiLevel === 'easy' ? 80 : p.aiLevel === 'hard' ? 35 : 55;
+  return target.ai ? 25 : base;
+}
+
 function runDiplomacy(game: Game, p: Player): void {
   const others = game.players.filter((o) => o.alive && o.id !== p.id && game.relation(p.id, o.id) !== 'unmet');
   const myPower = game.militaryPower(p.id);
@@ -680,7 +687,7 @@ function runDiplomacy(game: Game, p: Player): void {
         : theirPower > myPower * 1.25 && since >= 6 && game.rng.chance(0.3);
       const alreadyAsked = game.s.proposals.some((x) => x.from === p.id && x.to === o.id);
       if (wantsPeace && !alreadyAsked) exec(game, p.id, { t: 'peace', to: o.id });
-    } else if (rel === 'peace' && since >= PEACE_MIN_TURNS && wars.length === 0 && game.turn > 25) {
+    } else if (rel === 'peace' && since >= PEACE_MIN_TURNS && wars.length === 0 && game.turn > graceTurns(p, o, game)) {
       const theirPower = game.militaryPower(o.id);
       const ratio = myPower / Math.max(1, theirPower);
       const neighbours = game.cities.some((c) => c.owner === p.id && game.cities.some((e) => e.owner === o.id && game.dist(c.x, c.y, e.x, e.y) < 14));

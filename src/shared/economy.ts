@@ -4,7 +4,7 @@ import type { BuildingId, City, Player, Tile } from './types';
 import type { Game } from './game';
 
 /** Global knobs: how expensive technology (per era) and production items are relative to the base tables. */
-export const TECH_ERA_FACTOR = [1.0, 2.2, 3.4, 4.6];
+export const TECH_ERA_FACTOR = [1.0, 2.4, 3.9, 5.6];
 export const PROD_COST_FACTOR = 0.75;
 
 export interface Yield {
