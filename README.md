@@ -1,0 +1,89 @@
+# JERICHO
+
+A Civilization-style turn-based strategy game that runs in your browser — play solo against computer rivals, share one screen in **hot-seat**, or **play online with friends** (up to 8 players, any mix of humans and AI).
+
+Found cities, work the land, research 22 technologies across four eras, race for wonders, make and break treaties, and conquer your neighbours — or out-research them to win by Enlightenment.
+
+> The original Unity prototype is archived in [`legacy/`](legacy/README_unity_ru.md). This web version is a ground-up rewrite built around a small, deterministic, fully tested game engine.
+
+## Play
+
+```sh
+npm install
+npm start          # builds the client and serves game + multiplayer on http://localhost:8080
+```
+
+Open <http://localhost:8080>. From the title screen:
+
+| Mode | What it is |
+| --- | --- |
+| **New game vs computer** | 1–7 AI rivals, three difficulties, map sizes, quick/standard speed. Autosaves every turn (**Continue game**). |
+| **Play online with friends** | Create a room, send the 4-letter code or invite link. Simultaneous turns, optional turn timer, lobby chat, reconnect after a refresh, host can hand a vanished player to the AI, and **Play again** after the game. |
+| **Hot-seat** | 2–4 humans on one device with a "pass the device" curtain between turns, plus optional AI. |
+
+### Playing with friends who are not on your network
+
+The server is one Node process that serves both the game and the WebSocket lobby. Any of these works:
+
+* **Quick tunnel** (no account): run `npm start`, then in another terminal `npx cloudflared tunnel --url http://localhost:8080` (or `npx localtunnel --port 8080`). Send the printed `https://…` link to your friends.
+* **Docker**: `docker build -t jericho . && docker run -p 8080:8080 -v jericho-data:/data jericho`
+* **Any Node host** (Fly.io, Render, Railway, a VPS…): build command `npm ci && npm run build`, start command `npm run server`. Set `PORT` if the platform asks; set `DATA_DIR` to a persistent volume to keep rooms across restarts. Health check: `/healthz`.
+
+Room state (the whole game) is saved on the server after every turn, so a restart does not end a game — players just rejoin with the same link.
+
+## How to play
+
+1. **Found your capital** — select the Settler and press `B`. Pick food-rich land near hills and the coast.
+2. **Choose production** in the city panel (`C`): warriors for safety, workers and settlers to grow, then libraries, markets, walls… Queue several items, or spend gold to **buy** the current one.
+3. **Pick research** (`T`). Technologies unlock units, buildings, wonders and tile improvements.
+4. **Explore and expand.** Cities must be 3 tiles apart. Workers build farms, mines and roads (or set them to **Auto**). Scouts can auto-explore (`A`).
+5. **Meet the neighbours.** By default civilisations start at *peace* (armies cannot enter each other's borders). You can only attack civilisations you are at war with: declare war from **Diplomacy** (`D`) once a treaty has held for 10 turns. The *Start at war* option makes everyone hostile on contact.
+6. **Fight.** Click an enemy to attack — hover first to preview the damage. Ranged units (archers, catapults, crossbowmen, cannons) shoot two tiles away without retaliation. Reduce a city to 0 HP and walk a melee unit in to capture it; capturing a lone worker or settler takes it prisoner.
+7. **Win** by being the last civilisation standing, by discovering **Enlightenment** first (science), or by holding the highest score when the turn limit ends.
+
+### Controls
+
+| Input | Action |
+| --- | --- |
+| Click / tap | Select · move · attack (on touch: tap a destination, tap again to confirm) |
+| Right-click | Always issues a command to the selected unit |
+| Drag, arrow keys | Pan the map · wheel / pinch to zoom |
+| `Enter` | Do the next thing (choose production → research → next unit → end turn) |
+| `N` · `Space` | Next unit · skip this unit |
+| `B` `F` `Z` `A` | Found city · fortify · sleep · auto-work / auto-explore |
+| `C` `T` `D` `L` | Capital/city panel · technology · diplomacy · city list |
+| `Y` `G` `M` `/` | Tile yields · grid · mute · chat (online) |
+| `Esc` | Close panel / deselect / menu |
+
+## Project layout
+
+```
+src/shared/   Pure TypeScript game engine – no DOM, no Node APIs, deterministic from a seed
+  game.ts       state + command handling + turn processing
+  combat.ts     damage model, previews, city capture
+  economy.ts    tile/city yields, growth, research, costs
+  ai.ts         computer players (settling, workers, scouting, defence, offence, diplomacy, research)
+  mapgen.ts     continents, resources, fair start positions
+  view.ts       per-player fog-of-war snapshot sent to clients
+  data.ts       every rule number: terrain, units, buildings, wonders, techs, civilisations
+src/server/   Node + ws: static files, rooms, lobby, authoritative game, per-player views, turn timer, persistence
+src/client/   Canvas hex renderer, animations, HUD and screens (vanilla TypeScript, no framework)
+tests/        Vitest: engine rules, determinism, full AI games, multiplayer server integration
+scripts/      simulate.ts (AI-vs-AI games) · fuzz.ts (stability) · idle.ts (AI aggression) · e2e.ts (browser tests)
+legacy/       The archived Unity prototype and its design documents
+```
+
+The same engine runs in the browser for solo/hot-seat games and on the server for online games; clients only ever receive what their player can see.
+
+## Development
+
+```sh
+npm run dev         # Vite dev server (proxies /ws to a server on :8080 – run `npm run server` too for online play)
+npm test            # engine + server tests
+npm run typecheck
+npm run sim -- 4 4 200      # 4 AI-only games, 4 players, 200 turn limit
+npm run fuzz -- 30          # stress many random games
+npm run build && npm run e2e   # full browser tests (needs Playwright + Chromium)
+```
+
+Balance knobs live in `src/shared/data.ts` (unit/building/tech tables) and the top of `src/shared/economy.ts` (`TECH_ERA_FACTOR`, `PROD_COST_FACTOR`).

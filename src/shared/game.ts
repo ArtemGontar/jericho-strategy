@@ -31,6 +31,7 @@ export type Command =
   | { t: 'peace'; to: number }
   | { t: 'accept'; proposal: number; accept: boolean }
   | { t: 'war'; to: number }
+  | { t: 'gift'; to: number; amount: number }
   | { t: 'end' }
   | { t: 'unend' };
 
@@ -406,6 +407,7 @@ export class Game {
       case 'peace': res = this.cmdPeace(p, cmd.to); break;
       case 'accept': res = this.cmdAccept(p, cmd.proposal, cmd.accept); break;
       case 'war': res = this.cmdWar(p, cmd.to); break;
+      case 'gift': res = this.cmdGift(p, cmd.to, cmd.amount); break;
       case 'end': res = this.cmdEnd(p); return res;
       case 'unend': p.endedTurn = false; return { ok: true };
       default: return { ok: false, error: 'Unknown command.' };
@@ -802,6 +804,20 @@ export class Game {
     return { ok: true };
   }
 
+  private cmdGift(p: Player, to: number, amount: number): CmdResult {
+    const o = this.s.players[to];
+    if (!o || !o.alive || to === p.id) return { ok: false, error: 'Invalid player.' };
+    if (this.relation(p.id, to) === 'unmet') return { ok: false, error: 'You have not met them yet.' };
+    const n = Math.floor(amount);
+    if (!(n >= 1)) return { ok: false, error: 'Nothing to give.' };
+    if (p.gold < n) return { ok: false, error: 'You do not have that much gold.' };
+    p.gold -= n;
+    o.gold += n;
+    this.note([to], `${p.name} gave you ${n} gold!`, 'good');
+    this.note([p.id], `You gave ${n} gold to ${o.name}.`, 'info');
+    return { ok: true };
+  }
+
   declareWar(a: number, b: number): void {
     this.setRelation(a, b, 'war');
     this.s.proposals = this.s.proposals.filter((x) => !((x.from === a && x.to === b) || (x.from === b && x.to === a)));
@@ -812,14 +828,14 @@ export class Game {
   processTurn(): void {
     // 1. AI players act
     for (const p of this.s.players) {
-      if (p.ai && p.alive) aiTakeTurn(this, p.id);
+      if (p.ai && p.alive) this.guard(`AI ${p.name}`, () => aiTakeTurn(this, p.id));
     }
     this.updateVisibility();
     // 2. economies
-    for (const p of this.s.players) if (p.alive) this.economyTurn(p);
+    for (const p of this.s.players) if (p.alive) this.guard(`economy ${p.name}`, () => this.economyTurn(p));
     // 3. cities shoot, units heal, workers work
-    this.cityDefense();
-    this.unitUpkeep();
+    this.guard('city defence', () => this.cityDefense());
+    this.guard('unit upkeep', () => this.unitUpkeep());
     // 4. new turn bookkeeping
     this.s.turn++;
     this.s.proposals = this.s.proposals.filter((x) => this.s.turn - x.turn < 6 && this.s.players[x.from].alive && this.s.players[x.to].alive);
@@ -832,16 +848,19 @@ export class Game {
     }
     for (const c of this.s.cities) c.shot = false;
     this.updateVisibility();
+    this.warnOfThreats();
     for (const p of this.s.players) {
       p.endedTurn = p.ai || !p.alive;
     }
     // 5. standing orders (goto, explore, auto-work)
     for (const u of this.s.units.slice()) {
       if (!this.unit(u.id)) continue;
-      if (u.order && u.order.kind === 'goto') this.followOrder(u);
-      if (!this.unit(u.id) || u.order) continue;
-      if (u.auto === 'work') aiAutoWorker(this, u);
-      else if (u.auto === 'explore') aiAutoExplore(this, u);
+      this.guard('standing orders', () => {
+        if (u.order && u.order.kind === 'goto') this.followOrder(u);
+        if (!this.unit(u.id) || u.order) return;
+        if (u.auto === 'work') aiAutoWorker(this, u);
+        else if (u.auto === 'explore') aiAutoExplore(this, u);
+      });
     }
     this.updateVisibility();
     for (const p of this.s.players) if (p.alive) refreshPlayer(this, p.id);
@@ -849,6 +868,31 @@ export class Game {
     this.checkVictory();
     this.updateScores();
     this.events.push({ kind: 'turn', turn: this.s.turn });
+  }
+
+  /** A bug in one subsystem must never wedge a running game: log it and carry on with the turn. */
+  private guard(what: string, fn: () => void): void {
+    try {
+      fn();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(`[jericho] ${what} failed on turn ${this.s.turn}:`, e);
+    }
+  }
+
+  /** Tell human players when hostile armies stand near their cities. */
+  private warnOfThreats(): void {
+    for (const c of this.s.cities) {
+      const owner = this.s.players[c.owner];
+      if (owner.ai) continue;
+      let count = 0;
+      for (const q of tilesWithin(c.x, c.y, 3, this.width, this.height)) {
+        for (const u of this.unitsAt(q.x, q.y)) {
+          if (u.owner !== c.owner && this.atWar(c.owner, u.owner) && !UNITS[u.type].civilian && (this.tile(q.x, q.y).visible & (1 << c.owner))) count++;
+        }
+      }
+      if (count > 0) this.note([c.owner], `${count} enemy unit${count > 1 ? 's' : ''} near ${c.name}!`, 'war', { x: c.x, y: c.y });
+    }
   }
 
   private economyTurn(p: Player): void {
@@ -864,7 +908,7 @@ export class Game {
     let sci = p.income.science * aiMult;
     if (!p.researching) {
       if (p.ai) p.researching = aiChooseResearch(this, p);
-      else if (availableTechs(p).length) this.note([p.id], 'Choose a technology to research.', 'info');
+      else if (availableTechs(p).length && this.s.turn % 6 === 1) this.note([p.id], 'Choose a technology to research.', 'info');
     }
     p.research += sci;
     if (p.researching) {

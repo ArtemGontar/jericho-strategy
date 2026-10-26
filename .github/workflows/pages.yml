@@ -1,0 +1,25 @@
+name: Deploy solo & hot-seat build to GitHub Pages
+
+# Optional: publishes the static client. Solo and hot-seat work on Pages; for online play point the page at your own
+# server by opening it with ?server=wss://your-server.example/ws (or just use the server's own URL).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx vite build --base=./
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: dist }
+      - uses: actions/deploy-pages@v4

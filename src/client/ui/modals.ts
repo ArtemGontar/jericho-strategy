@@ -77,6 +77,13 @@ export function showDiplomacy(gs: GameScreen): HTMLElement {
         b.disabled = !can;
         actions.append(b);
       }
+      if (p.relation !== 'unmet') {
+        for (const amt of [25, 100]) {
+          const g = btn(`🎁 ${amt}`, async () => { await gs.cmd({ t: 'gift', to: p.id, amount: amt }); }, 'small', `Gift ${amt} gold to ${p.name}`);
+          g.disabled = v.gold < amt;
+          actions.append(g);
+        }
+      }
       if (!p.ai && !p.connected && gs.opts.hostActions) actions.append(btn('🤖 Give to AI', () => gs.opts.hostActions!.takeover(p.id), 'small', 'Replace this disconnected player with the computer'));
     }
     return h('tr', null,
