@@ -827,12 +827,15 @@ export class Game {
   // ------------------------------------------------------------------ turn processing
   processTurn(): void {
     // 1. AI players act
-    for (const p of this.s.players) {
+    // the starting seat rotates every turn so nobody gets first pick of contested sites and wonders
+    const n = this.s.players.length;
+    const order = this.s.players.map((_, i) => this.s.players[(i + this.s.turn) % n]);
+    for (const p of order) {
       if (p.ai && p.alive) this.guard(`AI ${p.name}`, () => aiTakeTurn(this, p.id));
     }
     this.updateVisibility();
     // 2. economies
-    for (const p of this.s.players) if (p.alive) this.guard(`economy ${p.name}`, () => this.economyTurn(p));
+    for (const p of order) if (p.alive) this.guard(`economy ${p.name}`, () => this.economyTurn(p));
     // 3. cities shoot, units heal, workers work
     this.guard('city defence', () => this.cityDefense());
     this.guard('unit upkeep', () => this.unitUpkeep());
