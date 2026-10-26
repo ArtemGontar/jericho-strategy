@@ -849,6 +849,7 @@ export class Game {
     for (const c of this.s.cities) c.shot = false;
     this.updateVisibility();
     this.warnOfThreats();
+    this.tip();
     for (const p of this.s.players) {
       p.endedTurn = p.ai || !p.alive;
     }
@@ -878,6 +879,19 @@ export class Game {
       // eslint-disable-next-line no-console
       console.error(`[jericho] ${what} failed on turn ${this.s.turn}:`, e);
     }
+  }
+
+  private tip(): void {
+    const tips: Record<number, string> = {
+      2: 'Tip: the big button (bottom right) always shows what needs you next — production, research, a unit, or ending the turn.',
+      5: 'Tip: set Workers to Auto (A) and Scouts to Explore (A) so you can focus on the big decisions.',
+      9: 'Tip: you cannot attack a civilisation you are at peace with. Open Diplomacy (D) to declare war once the treaty is 10 turns old.',
+      14: 'Tip: queue several items in a city with the + button, and spend spare gold on Buy to finish them early.',
+    };
+    const t = tips[this.s.turn];
+    if (!t) return;
+    const humans = this.s.players.filter((p) => !p.ai && p.alive).map((p) => p.id);
+    if (humans.length) this.note(humans, t, 'info');
   }
 
   /** Tell human players when hostile armies stand near their cities. */

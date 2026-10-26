@@ -102,7 +102,7 @@ function startLocal(cfg: SoloConfig, mode: 'solo' | 'hotseat'): void {
   for (let i = 0; i < cfg.opponents; i++) players.push({ name: 'Computer', ai: true, aiLevel: cfg.aiLevel });
   const n = players.length;
   const size = cfg.size === 'auto' ? undefined : cfg.size;
-  const game = Game.create({ seed: cfg.seed ?? undefined, size: size ?? (n <= 3 ? 'small' : n <= 5 ? 'medium' : 'large'), speed: cfg.speed, turnLimit: cfg.turnLimit, startAtWar: cfg.startAtWar, players });
+  const game = Game.create({ seed: cfg.seed ?? undefined, size: size ?? (n <= 3 ? 'small' : n <= 5 ? 'medium' : 'large'), speed: cfg.speed, turnLimit: cfg.turnLimit, startAtWar: cfg.startAtWar, allowScience: cfg.scienceVictory, players });
   game.players.forEach((p) => {
     if (p.ai) p.name = `${game.civOf(p.id).leader} (AI)`;
   });

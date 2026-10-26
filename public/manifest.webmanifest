@@ -1,0 +1,11 @@
+{
+  "name": "JERICHO",
+  "short_name": "JERICHO",
+  "description": "Civilization-style strategy for you and your friends",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0b1322",
+  "theme_color": "#0b1322",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

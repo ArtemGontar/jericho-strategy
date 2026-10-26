@@ -101,6 +101,7 @@ class Room {
       turnLimit: this.settings.turnLimit,
       turnTimer: this.settings.turnTimer,
       startAtWar: this.settings.startAtWar,
+      allowScience: this.settings.scienceVictory,
       players,
     });
     active.forEach((s, i) => {
@@ -331,6 +332,7 @@ wss.on('connection', (ws) => {
         if (typeof s.turnTimer === 'number') r.settings.turnTimer = Math.max(0, Math.min(600, Math.floor(s.turnTimer)));
         if (s.seed === null || typeof s.seed === 'number') r.settings.seed = s.seed;
         if (typeof s.startAtWar === 'boolean') r.settings.startAtWar = s.startAtWar;
+        if (typeof s.scienceVictory === 'boolean') r.settings.scienceVictory = s.scienceVictory;
         return r.broadcastRoom();
       }
       case 'slot': {

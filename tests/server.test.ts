@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import WebSocket from 'ws';
 import { startServer } from '../src/server/server';
 import type { ClientMsg, RoomInfo, ServerMsg } from '../src/shared/protocol';
@@ -145,5 +148,44 @@ describe('multiplayer server', () => {
     c.send({ t: 'join', code: 'ZZZZ', name: 'Nobody' });
     await c.until(() => c.msgs.some((m) => m.t === 'error'));
     c.ws.close();
+  });
+});
+
+describe('persistence', () => {
+  it('restores running games after a server restart', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jericho-'));
+    const first = await startServer({ port: 0, dataDir: dir, dist: '/nonexistent' });
+    const savedPort = port;
+    port = first.port;
+    const a = new Client();
+    await a.open();
+    a.send({ t: 'create', name: 'Alice' });
+    await a.until(() => !!a.room);
+    const code = a.room!.code;
+    const token = a.room!.you.token;
+    a.send({ t: 'slot', slot: 1, kind: 'ai' });
+    a.send({ t: 'settings', settings: { size: 'small' } });
+    await a.until(() => a.room!.slots[1].kind === 'ai');
+    a.send({ t: 'start' });
+    await a.until(() => !!a.view);
+    const settler = a.view!.units.find((u) => u.type === 'settler')!;
+    await a.cmd({ t: 'found', unit: settler.id });
+    await a.cmd({ t: 'end' });
+    await a.until(() => a.view!.turn === 2);
+    a.ws.close();
+    await first.close();
+
+    const second = await startServer({ port: 0, dataDir: dir, dist: '/nonexistent' });
+    port = second.port;
+    const b = new Client();
+    await b.open();
+    b.send({ t: 'join', code, name: 'Alice', token });
+    await b.until(() => !!b.view);
+    expect(b.view!.turn).toBe(2);
+    expect(b.view!.cities.filter((c) => c.mine)).toHaveLength(1);
+    b.ws.close();
+    await second.close();
+    port = savedPort;
+    rmSync(dir, { recursive: true, force: true });
   });
 });

@@ -199,7 +199,7 @@ function tryGenerate(w: number, h: number, players: number, seed: number): Gener
       food += def.food + (nt.resource ? RESOURCES[nt.resource].food : 0);
       prod += def.prod + (nt.resource ? RESOURCES[nt.resource].prod : 0);
     }
-    return land >= 11 && food >= 13 && prod >= 5 ? food + prod * 1.2 + land * 0.5 : -1;
+    return land >= 12 && food >= 17 && prod >= 6 ? food + prod * 1.2 + land * 0.5 : -1;
   };
   const candidates: Tile[] = tiles.filter(
     (t) => comp[idx(t.x, t.y)] === main && ['grass', 'plains', 'hills', 'forest', 'desert'].includes(t.terrain) && quality(t) > 0,
