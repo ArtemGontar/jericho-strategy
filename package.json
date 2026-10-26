@@ -1,0 +1,27 @@
+{
+  "name": "jericho",
+  "version": "1.0.0",
+  "private": true,
+  "description": "JERICHO — a Civilization-style turn-based strategy game for the browser, playable solo, hot-seat or online with friends.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "server": "tsx src/server/server.ts",
+    "start": "npm run build && tsx src/server/server.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "sim": "tsx scripts/simulate.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}
