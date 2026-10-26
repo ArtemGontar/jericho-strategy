@@ -35,7 +35,7 @@ export type Command =
   | { t: 'unend' };
 
 export type GameEvent =
-  | { kind: 'move'; unit: number; owner: number; type: UnitTypeId; path: Pos[]; mask: number }
+  | { kind: 'move'; unit: number; owner: number; type: UnitTypeId; from: Pos; path: Pos[]; mask: number }
   | { kind: 'attack'; attacker: number; owner: number; type: UnitTypeId; from: Pos; to: Pos; ranged: boolean; dmgDef: number; dmgAtt: number; defOwner: number; defType: UnitTypeId | 'city'; killedDef: boolean; killedAtt: boolean; mask: number }
   | { kind: 'found'; city: number; owner: number; at: Pos; mask: number }
   | { kind: 'capture'; city: number; by: number; from: number; at: Pos; mask: number }
@@ -240,7 +240,7 @@ export class Game {
   humans(): Player[] { return this.s.players.filter((p) => !p.ai && p.alive); }
 
   note(players: number[], text: string, kind: Note['kind'] = 'info', at?: Pos): void {
-    this.s.notes.push({ turn: this.s.turn, players, text, kind, at });
+    this.s.notes.push({ id: this.s.nextId++, turn: this.s.turn, players, text, kind, at });
     if (this.s.notes.length > 300) this.s.notes.splice(0, this.s.notes.length - 300);
   }
 
@@ -472,6 +472,7 @@ export class Game {
     if (!u.order || u.order.kind !== 'goto') return;
     const target = u.order.to;
     const trail: Pos[] = [];
+    const origin = { x: u.x, y: u.y };
     let replans = 0;
     while (u.mp > 0 && u.order && u.order.kind === 'goto') {
       if (u.x === target.x && u.y === target.y) {
@@ -495,7 +496,7 @@ export class Game {
     }
     if (u.order && u.order.kind === 'goto' && u.x === target.x && u.y === target.y) u.order = null;
     if (trail.length) {
-      this.events.push({ kind: 'move', unit: u.id, owner: u.owner, type: u.type, path: trail, mask: this.trailMask(trail, u) });
+      this.events.push({ kind: 'move', unit: u.id, owner: u.owner, type: u.type, from: origin, path: trail, mask: this.trailMask([origin, ...trail], u) });
     }
   }
 

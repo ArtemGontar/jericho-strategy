@@ -3,8 +3,9 @@ import { BUILDINGS, CIV_BY_ID, FOCUS_WEIGHTS, IMPROVEMENT_YIELD, RESOURCES, TECH
 import type { BuildingId, City, Player, Tile } from './types';
 import type { Game } from './game';
 
-/** Global knob: how expensive technology is relative to the base table. */
-export const TECH_COST_FACTOR = 2.3;
+/** Global knobs: how expensive technology (per era) and production items are relative to the base tables. */
+export const TECH_ERA_FACTOR = [1.0, 2.2, 3.4, 4.6];
+export const PROD_COST_FACTOR = 0.75;
 
 export interface Yield {
   food: number;
@@ -62,7 +63,7 @@ export function cityCenterYield(game: Game, city: City): Yield {
   const t = game.tile(city.x, city.y);
   const y = tileYield(t);
   y.food = Math.max(2, y.food);
-  y.prod = Math.max(2, y.prod);
+  y.prod = Math.max(3, y.prod);
   y.gold += 1;
   if (civOf(game, city.owner).id === 'jericho') y.food += 1;
   if (civOf(game, city.owner).id === 'egypt' && city.capital) y.prod += 1;
@@ -115,7 +116,7 @@ export function cityYield(game: Game, city: City): CityYield {
     prod += t.prod;
     gold += t.gold;
   }
-  let science = 2 + Math.floor(city.pop * 0.7);
+  let science = 3 + Math.floor(city.pop * 0.7) + (city.capital ? 2 : 0);
   let culture = 1;
   let upkeep = 0;
   for (const b of city.buildings) {
@@ -154,7 +155,7 @@ export function techCost(game: Game, player: Player, techId: string): number {
   const def = TECH_BY_ID[techId];
   const cities = game.cities.filter((c) => c.owner === player.id).length;
   const scale = 1 + 0.07 * Math.max(0, cities - 1);
-  return Math.max(5, Math.round(def.cost * TECH_COST_FACTOR * game.speedMult * scale));
+  return Math.max(5, Math.round(def.cost * TECH_ERA_FACTOR[def.era] * game.speedMult * scale));
 }
 
 export function itemCost(game: Game, playerId: number, kind: 'unit' | 'building', id: string): number {
@@ -168,7 +169,7 @@ export function itemCost(game: Game, playerId: number, kind: 'unit' | 'building'
     base = b.cost;
     if (civ.id === 'egypt' && b.wonder) base *= 0.85;
   }
-  return Math.max(5, Math.round(base * game.speedMult));
+  return Math.max(5, Math.round(base * PROD_COST_FACTOR * game.speedMult));
 }
 
 /** Recompute worked tiles + per-turn totals shown in the UI. */

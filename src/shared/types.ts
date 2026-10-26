@@ -128,6 +128,7 @@ export interface Proposal {
 }
 
 export interface Note {
+  id: number;
   turn: number;
   /** player ids that should see this note, empty = everyone */
   players: number[];
