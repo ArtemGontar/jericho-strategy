@@ -80,6 +80,8 @@ label.field > * { text-transform: none; letter-spacing: 0; font-size: 14px; colo
 .lobby { width: min(980px, 100%); display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
 @media (max-width: 760px) { .lobby { grid-template-columns: 1fr; } }
 .slot { display: grid; grid-template-columns: 14px 1fr auto auto; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--line); }
+.slot select { padding: 6px 8px; font-size: 13px; }
+.slot .row { flex-wrap: nowrap; }
 .slot.me { border-color: var(--gold); }
 .slot.empty { opacity: .6; }
 .code { font-family: ui-monospace, Menlo, monospace; font-size: 38px; letter-spacing: .3em; font-weight: 800; color: var(--gold2); }
