@@ -147,6 +147,8 @@ export interface GameSettings {
   turnTimer: number;
   allowScience: boolean;
   allowDomination: boolean;
+  /** civilisations are at war when they first meet (otherwise at peace) */
+  startAtWar: boolean;
 }
 
 export interface GameState {

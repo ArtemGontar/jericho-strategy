@@ -12,14 +12,14 @@ import { sfx, isMuted, setMuted } from './audio';
 import { btn, clear, fmtSigned, h, put } from './ui/dom';
 import type { GameTransport } from './transport';
 import { renderCityPanel } from './ui/citypanel';
-import { showHelp, showMenu, showTechTree, showDiplomacy, showVictory } from './ui/modals';
+import { showHelp, showMenu, showTechTree, showDiplomacy, showVictory, showCities, showLog } from './ui/modals';
 
 export interface GameScreenOptions {
   /** called when the user leaves to the main menu */
   onExit: () => void;
   /** online only */
   invite?: { code: string };
-  hostActions?: { forceEnd: () => void; takeover: (slot: number) => void } | null;
+  hostActions?: { forceEnd: () => void; takeover: (slot: number) => void; rematch: () => void } | null;
   sendChat?: (text: string) => void;
 }
 
@@ -44,6 +44,7 @@ export class GameScreen {
   showYields = false;
   showGrid = true;
   busy = false;
+  noteHistory: Array<{ id: number; turn: number; text: string; kind: string; at?: Pos }> = [];
   private lastNoteId = -1;
   private lastTurn = 0;
   private firstView = true;
@@ -110,11 +111,11 @@ export class GameScreen {
     transport.refresh();
   }
 
-  destroy(): void {
+  destroy(keepTransport = false): void {
     cancelAnimationFrame(this.raf);
     if (this.timerTick) clearInterval(this.timerTick);
     for (const c of this.cleanup) c();
-    this.transport.close();
+    if (!keepTransport) this.transport.close();
     this.root.remove();
   }
 
@@ -180,6 +181,7 @@ export class GameScreen {
     for (const n of v.notes) {
       if (n.id <= this.lastNoteId) continue;
       this.toast(n.text, n.kind, n.at);
+      this.noteHistory.push({ id: n.id, turn: n.turn, text: n.text, kind: n.kind, at: n.at });
       if (n.kind === 'tech') sfx('tech');
       else if (n.kind === 'wonder') sfx('wonder');
       else if (n.kind === 'war') sfx('notify');
@@ -225,7 +227,7 @@ export class GameScreen {
   }
 
   private initCamera(): void {
-    this.cam.zoom = Math.min(1.1, Math.max(this.cam.minZoom(), 0.9));
+    this.cam.zoom = Math.max(this.cam.minZoom(), Math.min(1.0, this.cam.w / 1100));
     const focus = this.myUnits().find((u) => u.type === 'settler') ?? this.myCities()[0] ?? this.myUnits()[0];
     if (focus) this.focus(focus.x, focus.y, false);
   }
@@ -725,6 +727,8 @@ export class GameScreen {
       case 'delete': if (u) this.disband(u); break;
       case 't': this.openModal('tech', showTechTree(this)); break;
       case 'd': this.openModal('diplo', showDiplomacy(this)); break;
+      case 'l': this.openModal('cities', showCities(this)); break;
+      case '/': e.preventDefault(); if (this.opts.sendChat) this.toggleChat(); break;
       case 'c': {
         const c = this.openCity ?? this.view.cities.find((cc) => cc.mine && cc.capital) ?? this.myCities()[0];
         if (c) this.openCityPanel(c.id);
@@ -812,6 +816,7 @@ export class GameScreen {
   primaryState(): { label: string; sub?: string; kind: 'city' | 'research' | 'unit' | 'end' | 'wait'; action: () => void } {
     const v = this.view;
     const me = v.players[v.me];
+    if (!me.alive && !v.over) return { label: 'Spectating', sub: 'You were eliminated', kind: 'wait', action: () => {} };
     if (v.over) return { label: 'Game over', kind: 'wait', action: () => this.openModal('victory', showVictory(this)) };
     if (me.endedTurn) {
       const waiting = v.players.filter((p) => p.alive && !p.ai && !p.endedTurn).map((p) => p.name);
@@ -900,7 +905,10 @@ export class GameScreen {
       );
     }
     t.append(sb);
-    t.append(
+    put(t,
+      this.opts.sendChat ? btn('💬', () => this.toggleChat(), 'ghost', 'Chat (/)') : null,
+      btn('🏙', () => this.openModal('cities', showCities(this)), 'ghost', 'Your cities (L)'),
+      btn('📜', () => this.openModal('log', showLog(this)), 'ghost', 'Message log'),
       btn('🏛', () => this.openModal('diplo', showDiplomacy(this)), 'ghost', 'Diplomacy (D)'),
       btn('?', () => this.openModal('help', showHelp(this)), 'ghost', 'Help (H)'),
     );
@@ -1094,7 +1102,7 @@ export class GameScreen {
   private rerenderModal(): void {
     if (!this.modal) return;
     const kind = this.modalKind;
-    const content = kind === 'tech' ? showTechTree(this) : kind === 'diplo' ? showDiplomacy(this) : kind === 'menu' ? showMenu(this) : kind === 'help' ? showHelp(this) : null;
+    const content = kind === 'tech' ? showTechTree(this) : kind === 'diplo' ? showDiplomacy(this) : kind === 'cities' ? showCities(this) : kind === 'log' ? showLog(this) : kind === 'menu' ? showMenu(this) : kind === 'help' ? showHelp(this) : null;
     if (!content) return;
     const scrollers = Array.from(this.modal.querySelectorAll<HTMLElement>('.body')).map((b) => b.scrollTop);
     clear(this.modal);

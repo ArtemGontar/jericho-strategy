@@ -18,6 +18,7 @@ export interface SoloConfig {
   speed: 'standard' | 'quick';
   seed: number | null;
   turnLimit: number;
+  startAtWar: boolean;
   /** extra local humans (hot-seat), names */
   friends: string[];
 }
@@ -109,6 +110,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
   const size = h('select', null, h('option', { value: 'auto' }, 'Automatic'), ...Object.entries(MAP_SIZES).map(([k, v]) => h('option', { value: k }, v.label)));
   const speed = h('select', null, h('option', { value: 'standard' }, 'Standard (200 turns)'), h('option', { value: 'quick' }, 'Quick (120 turns, cheaper everything)'));
   const seed = h('input', { placeholder: 'Random', inputMode: 'numeric' });
+  const stance = h('select', null, h('option', { value: 'peace' }, 'Start at peace (declare war when ready)'), h('option', { value: 'war' }, 'Start at war (everyone is hostile)'));
   const friendInputs = [1, 2, 3].map((i) => h('input', { placeholder: `Player ${i + 1} name`, maxLength: 20, class: mode === 'hotseat' ? '' : 'hidden' }));
   const grid = h('div', { class: 'civ-grid' });
   const draw = () => {
@@ -127,7 +129,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
     const humanCount = 1 + (mode === 'hotseat' ? Number(friendCount.value) : 0);
     onStart({
       name, civ, opponents: Number(opp.value), aiLevel: level.value as AiLevel, size: size.value as SoloConfig['size'], speed: speed.value as SoloConfig['speed'],
-      seed: seed.value.trim() ? Number(seed.value) || null : null, turnLimit: speed.value === 'quick' ? 120 : 200, friends: friends.slice(0, humanCount - 1),
+      seed: seed.value.trim() ? Number(seed.value) || null : null, turnLimit: speed.value === 'quick' ? 120 : 200, startAtWar: stance.value === 'war', friends: friends.slice(0, humanCount - 1),
     });
   };
   const friendCount = h('select', { class: mode === 'hotseat' ? '' : 'hidden' }, h('option', { value: '1' }, '2 humans'), h('option', { value: '2' }, '3 humans'), h('option', { value: '3' }, '4 humans'));
@@ -146,6 +148,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
       h('label', { class: 'field' }, 'Difficulty', level),
       h('label', { class: 'field' }, 'Map size', size),
       h('label', { class: 'field' }, 'Game speed', speed),
+      h('label', { class: 'field' }, 'Diplomacy', stance),
       h('label', { class: 'field' }, 'Map seed (optional)', seed),
     ),
     h('div', { class: 'row' }, btn('← Back', onBack), h('span', { class: 'spacer' }), btn('Start game →', start, 'primary big')),
@@ -221,7 +224,7 @@ export function lobbyScreen(rt: RemoteTransport, onLeave: () => void): { el: HTM
     const s = room.settings;
     const sel = <K extends keyof RoomSettings>(label: string, key: K, options: Array<[string, string]>) => {
       const select = h('select', { disabled: !host }, ...options.map(([v, l]) => h('option', { value: v, selected: String(s[key]) === v }, l)));
-      select.addEventListener('change', () => send({ t: 'settings', settings: { [key]: key === 'turnTimer' || key === 'turnLimit' ? Number(select.value) : select.value } as Partial<RoomSettings> }));
+      select.addEventListener('change', () => send({ t: 'settings', settings: { [key]: key === 'turnTimer' || key === 'turnLimit' ? Number(select.value) : key === 'startAtWar' ? select.value === 'true' : select.value } as Partial<RoomSettings> }));
       return h('label', { class: 'field' }, label, select);
     };
     const right = h('div', { style: { display: 'grid', gap: '12px', alignContent: 'start' } },
@@ -234,6 +237,7 @@ export function lobbyScreen(rt: RemoteTransport, onLeave: () => void): { el: HTM
         sel('Map size', 'size', Object.entries(MAP_SIZES).map(([k, v]) => [k, v.label])),
         sel('Speed', 'speed', [['standard', 'Standard'], ['quick', 'Quick (cheaper)']]),
         sel('Turn limit', 'turnLimit', [['100', '100'], ['120', '120'], ['150', '150'], ['200', '200'], ['300', '300']]),
+        sel('Diplomacy', 'startAtWar', [['false', 'Start at peace'], ['true', 'Start at war']]),
         sel('Turn timer', 'turnTimer', [['0', 'Off — wait for everyone'], ['60', '1 minute'], ['120', '2 minutes'], ['180', '3 minutes'], ['300', '5 minutes']]),
         host ? btn('Start game ▶', () => send({ t: 'start' }), 'primary big') : null),
       h('div', { class: 'card' }, h('div', { class: 'sec-title' }, 'Chat'), chatLog, h('div', { style: { height: '6px' } }), chatIn),

@@ -42,7 +42,8 @@ export class ViewMap {
     if (!this.explored(x, y)) return true;
     if (!this.terrain(x, y).passable) return true;
     const owner = this.owner(x, y);
-    if (owner >= 0 && owner !== u.owner && this.view.players[owner]?.relation === 'peace') return true;
+    const d0 = UNITS[u.type];
+    if (owner >= 0 && owner !== u.owner && this.view.players[owner]?.relation === 'peace' && !d0.civilian && !d0.scout) return true;
     const city = this.cityAt(x, y);
     if (city && city.owner !== u.owner) return true;
     const def = UNITS[u.type];

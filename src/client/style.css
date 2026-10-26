@@ -52,10 +52,10 @@ label.field > * { text-transform: none; letter-spacing: 0; font-size: 14px; colo
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; box-shadow: 0 0 0 2px rgba(0,0,0,.4); }
 
 /* ---------- screens ---------- */
-.screen { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; overflow: auto; }
+.screen { position: absolute; inset: 0; display: flex; padding: 16px; overflow: auto; }
 .screen.bg-map canvas.bg { position: absolute; inset: 0; width: 100%; height: 100%; filter: blur(2px) saturate(.8); opacity: .55; }
 .screen.bg-map::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(11,19,34,.35), rgba(11,19,34,.92)); pointer-events: none; }
-.screen > .content { position: relative; z-index: 1; }
+.screen > .content { position: relative; z-index: 1; margin: auto; width: 100%; display: flex; justify-content: center; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
 .title-wrap { display: grid; gap: 18px; justify-items: center; text-align: center; max-width: 520px; width: 100%; }
 .logo { font-family: var(--serif); font-size: clamp(44px, 9vw, 84px); letter-spacing: .16em; font-weight: 700; margin: 0;
@@ -204,5 +204,7 @@ kbd { background: #222d49; border: 1px solid var(--line); border-bottom-width: 2
   .minimap { width: 120px !important; height: auto !important; }
   .endturn { min-width: 130px; font-size: 14px; padding: 10px 12px; }
   .unit-panel { min-width: 0; }
-  .toasts { max-width: 70vw; }
+  .toasts { max-width: 70vw; top: 96px; }
+  .stat small { font-size: 10px; }
+  .stat { min-height: 28px; }
 }

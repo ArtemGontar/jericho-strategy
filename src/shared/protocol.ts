@@ -22,6 +22,7 @@ export interface RoomSettings {
   /** seconds, 0 = off */
   turnTimer: number;
   seed: number | null;
+  startAtWar: boolean;
 }
 
 export interface RoomInfo {
@@ -44,6 +45,7 @@ export type ClientMsg =
   | { t: 'preview'; id: number; unit: number; to: { x: number; y: number } }
   | { t: 'chat'; text: string }
   | { t: 'forceEnd' }
+  | { t: 'rematch' }
   | { t: 'takeover'; slot: number }
   | { t: 'leave' }
   | { t: 'ping' };
@@ -56,4 +58,4 @@ export type ServerMsg =
   | { t: 'error'; message: string }
   | { t: 'pong' };
 
-export const DEFAULT_ROOM_SETTINGS: RoomSettings = { size: 'medium', speed: 'standard', turnLimit: 200, turnTimer: 0, seed: null };
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = { size: 'medium', speed: 'standard', turnLimit: 200, turnTimer: 0, seed: null, startAtWar: false };

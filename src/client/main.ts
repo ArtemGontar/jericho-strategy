@@ -102,7 +102,7 @@ function startLocal(cfg: SoloConfig, mode: 'solo' | 'hotseat'): void {
   for (let i = 0; i < cfg.opponents; i++) players.push({ name: 'Computer', ai: true, aiLevel: cfg.aiLevel });
   const n = players.length;
   const size = cfg.size === 'auto' ? undefined : cfg.size;
-  const game = Game.create({ seed: cfg.seed ?? undefined, size: size ?? (n <= 3 ? 'small' : n <= 5 ? 'medium' : 'large'), speed: cfg.speed, turnLimit: cfg.turnLimit, players });
+  const game = Game.create({ seed: cfg.seed ?? undefined, size: size ?? (n <= 3 ? 'small' : n <= 5 ? 'medium' : 'large'), speed: cfg.speed, turnLimit: cfg.turnLimit, startAtWar: cfg.startAtWar, players });
   game.players.forEach((p) => {
     if (p.ai) p.name = `${game.civOf(p.id).leader} (AI)`;
   });
@@ -122,6 +122,10 @@ function startGame(transport: LocalTransport | RemoteTransport, extra: Partial<C
 }
 
 // ----------------------------------------------------------------------------- online
+function hostActions(rt: RemoteTransport) {
+  return { forceEnd: () => rt.raw({ t: 'forceEnd' }), takeover: (slot: number) => rt.raw({ t: 'takeover', slot }), rematch: () => rt.raw({ t: 'rematch' }) };
+}
+
 async function connectOnline(initial: () => ClientMsg, name: string): Promise<void> {
   let joined: RoomInfo | null = null;
   const rt = new RemoteTransport(RemoteTransport.defaultUrl(), () => (joined ? { t: 'join', code: joined.code, name, token: joined.you.token } : initial()));
@@ -147,6 +151,14 @@ async function connectOnline(initial: () => ClientMsg, name: string): Promise<vo
     joined = room;
     rememberOnline(room, name);
     if (room.phase === 'lobby') {
+      if (playing) {
+        // host started a rematch: back to the lobby with the same connection
+        playing = false;
+        current?.destroy(true);
+        current = null;
+        lobby = null;
+        publish();
+      }
       if (!lobby) {
         lobby = lobbyScreen(rt, () => {
           rt.raw({ t: 'leave' });
@@ -163,10 +175,10 @@ async function connectOnline(initial: () => ClientMsg, name: string): Promise<vo
       startGame(rt, {
         invite: { code: room.code },
         sendChat: (text) => rt.sendChat(text),
-        hostActions: room.you.host ? { forceEnd: () => rt.raw({ t: 'forceEnd' }), takeover: (slot) => rt.raw({ t: 'takeover', slot }) } : null,
+        hostActions: room.you.host ? hostActions(rt) : null,
       });
     } else if (current && room.you.host) {
-      current.opts.hostActions = { forceEnd: () => rt.raw({ t: 'forceEnd' }), takeover: (slot) => rt.raw({ t: 'takeover', slot }) };
+      current.opts.hostActions = hostActions(rt);
     }
   };
   try {
@@ -178,6 +190,10 @@ async function connectOnline(initial: () => ClientMsg, name: string): Promise<vo
 
 // ----------------------------------------------------------------------------- boot
 const roomParam = new URLSearchParams(location.search).get('room');
-if (roomParam) showOnlineEntry(roomParam.toUpperCase().slice(0, 4));
+const previous = savedOnline();
+if (roomParam && previous && previous.code === roomParam.toUpperCase().slice(0, 4)) {
+  // opened our own invite link again (e.g. after a refresh): slip straight back into the game
+  void connectOnline(() => ({ t: 'join', code: previous.code, name: previous.name, token: previous.token }), previous.name);
+} else if (roomParam) showOnlineEntry(roomParam.toUpperCase().slice(0, 4));
 else showTitle();
 void savedName;

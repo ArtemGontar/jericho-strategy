@@ -88,7 +88,7 @@ export function showDiplomacy(gs: GameScreen): HTMLElement {
   body.push(h('table', { class: 'table' },
     h('thead', null, h('tr', null, ...['Civilisation', 'Relation', 'Score', 'Cities', 'Techs', 'Army', ''].map((t) => h('th', null, t)))),
     h('tbody', null, ...rows)));
-  body.push(h('div', { class: 'muted', style: { fontSize: '12px' } }, 'Civilisations are at war when they first meet. Peace treaties close borders to each other and must hold for 10 turns before you can break them.'));
+  body.push(h('div', { class: 'muted', style: { fontSize: '12px' } }, 'Peace treaties keep armies out of each other’s borders (scouts, settlers and workers may still pass) and must hold for 10 turns before you can break them.'));
   return modal('Diplomacy', body, () => gs.closeModal());
 }
 
@@ -123,7 +123,7 @@ export function showHelp(gs: GameScreen): HTMLElement {
     h('div', null, h('h4', null, '🔬 Research'),
       h('p', null, 'Press ', h('kbd', null, 'T'), ' to pick a technology. Techs unlock units, buildings, wonders and tile improvements. Discover ', h('b', null, 'Enlightenment'), ' first to win by science.')),
     h('div', null, h('h4', null, '⚔ War & peace'),
-      h('p', null, 'You are at war with civilisations you meet. Click an enemy next to your unit to attack; hover to preview damage. Melee units fight back, ranged units hit from 2 tiles away without retaliation.'),
+      h('p', null, 'Click an enemy next to your unit to attack; hover to preview damage. Melee units fight back, ranged units hit from 2 tiles away without retaliation. You can only attack civilisations you are at war with — use Diplomacy to declare war (after a 10-turn treaty) or make peace.'),
       h('p', null, 'Reduce a city to 0 HP and walk a melee unit in to capture it. Capture every rival capital — or propose peace in Diplomacy (', h('kbd', null, 'D'), ').')),
     h('div', null, h('h4', null, '🏆 Winning'),
       h('p', null, h('b', null, 'Conquest:'), ' be the last civilisation standing. ', h('b', null, 'Science:'), ' discover Enlightenment. ', h('b', null, 'Score:'), ` the highest score when the turn limit (${gs.view.settings.turnLimit}) ends — cities, population, techs, wonders, culture and land all count.`)),
@@ -154,6 +154,31 @@ export function showVictory(gs: GameScreen): HTMLElement {
       h('h2', null, won ? '🏆 You win!' : winner ? `${winner.name} wins` : 'Nobody wins'),
       h('p', { class: 'muted' }, winner ? `${CIV_BY_ID[winner.civ].name} triumphs through ${how[v.victory ?? ''] ?? v.victory}.` : '')),
     h('table', { class: 'table' }, h('thead', null, h('tr', null, ...['#', 'Civilisation', 'Score', '', ''].map((t) => h('th', null, t)))), h('tbody', null, ...rows)),
-    h('div', { class: 'row' }, btn('Back to main menu', () => gs.opts.onExit(), 'primary'), btn('Keep looking at the map', () => gs.closeModal())),
+    h('div', { class: 'row' }, btn('Back to main menu', () => gs.opts.onExit(), 'primary'), gs.opts.hostActions ? btn('🔁 Play again (new lobby)', () => gs.opts.hostActions!.rematch(), 'primary') : null, btn('Keep looking at the map', () => gs.closeModal())),
   ], () => gs.closeModal(), true);
+}
+
+// ------------------------------------------------------------------ cities & log
+export function showCities(gs: GameScreen): HTMLElement {
+  const v = gs.view;
+  const rows = gs.myCities().map((c) => {
+    const head = c.queue?.[0];
+    const info = head ? (head.kind === 'unit' ? UNITS[head.id as keyof typeof UNITS] : BUILDINGS[head.id as keyof typeof BUILDINGS]) : null;
+    return h('tr', { style: { cursor: 'pointer' }, on: { click: () => { gs.closeModal(); gs.focus(c.x, c.y); gs.openCityPanel(c.id); } } },
+      h('td', null, (c.capital ? '★ ' : '') + c.name), h('td', null, String(c.pop)),
+      h('td', null, `${c.yield!.surplus >= 0 ? '+' : ''}${c.yield!.surplus}`), h('td', null, String(c.yield!.prod)), h('td', null, String(c.yield!.science)),
+      h('td', null, info ? `${info.icon} ${info.name} (${turnsLeft(head!.cost - (c.prod ?? 0), c.yield!.prod)}t)` : h('span', { class: 'neg' }, 'Idle!')),
+      h('td', { class: 'muted' }, String(c.buildings?.length ?? 0)));
+  });
+  const body = rows.length
+    ? h('table', { class: 'table' }, h('thead', null, h('tr', null, ...['City', 'Pop', 'Food', 'Prod', 'Sci', 'Building', 'Blds'].map((t) => h('th', null, t)))), h('tbody', null, ...rows))
+    : h('p', { class: 'muted' }, 'You have no cities yet — found one with your Settler (B).');
+  void v;
+  return modal('Your cities', body, () => gs.closeModal(), true);
+}
+
+export function showLog(gs: GameScreen): HTMLElement {
+  const items = gs.noteHistory.slice(-120).reverse().map((n) =>
+    h('div', { class: `toast ${n.kind}`, style: { animation: 'none' }, on: { click: () => { if (n.at) { gs.closeModal(); gs.focus(n.at.x, n.at.y); } } } }, h('span', { class: 'muted' }, `T${n.turn} · `), n.text));
+  return modal('Message log', h('div', { style: { display: 'grid', gap: '6px' } }, ...(items.length ? items : [h('p', { class: 'muted' }, 'Nothing yet.')])), () => gs.closeModal(), true);
 }

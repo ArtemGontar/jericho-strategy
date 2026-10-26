@@ -26,7 +26,8 @@ export function canEnterTerrain(game: Game, unit: Unit, x: number, y: number): b
 export function tileBlockedFor(game: Game, unit: Unit, x: number, y: number, finalStep: boolean): boolean {
   const t = game.tile(x, y);
   if (!TERRAIN[t.terrain].passable) return true;
-  if (t.owner >= 0 && t.owner !== unit.owner && game.relation(unit.owner, t.owner) === 'peace') return true;
+  const def0 = UNITS[unit.type];
+  if (t.owner >= 0 && t.owner !== unit.owner && game.relation(unit.owner, t.owner) === 'peace' && !def0.civilian && !def0.scout) return true;
   const occupants = game.unitsAt(x, y);
   const def = UNITS[unit.type];
   const seen = (t.visible & (1 << unit.owner)) !== 0;

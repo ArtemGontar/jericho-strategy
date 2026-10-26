@@ -12,9 +12,17 @@ import {
 } from '../shared/protocol';
 import type { GameState } from '../shared/types';
 
-const PORT = Number(process.env.PORT ?? 8080);
-const DIST = resolve(process.env.DIST ?? join(process.cwd(), 'dist'));
-const DATA = resolve(process.env.DATA_DIR ?? join(process.cwd(), 'server-data'));
+export interface ServerOptions {
+  port?: number;
+  dist?: string;
+  dataDir?: string;
+  /** do not persist rooms to disk (tests) */
+  ephemeral?: boolean;
+}
+
+let DIST = '';
+let DATA = '';
+let EPHEMERAL = false;
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.map': 'application/json',
@@ -92,6 +100,7 @@ class Room {
       speed: this.settings.speed,
       turnLimit: this.settings.turnLimit,
       turnTimer: this.settings.turnTimer,
+      startAtWar: this.settings.startAtWar,
       players,
     });
     active.forEach((s, i) => {
@@ -141,7 +150,7 @@ class Room {
   }
 
   persist(): void {
-    if (!this.game) return;
+    if (!this.game || EPHEMERAL) return;
     try {
       mkdirSync(DATA, { recursive: true });
       const snapshot = { code: this.code, phase: this.phase, slots: this.slots, settings: this.settings, tokens: this.members.map((m) => ({ slot: m.slot, token: m.token })), state: this.game.toJSON() };
@@ -152,7 +161,8 @@ class Room {
   }
 }
 
-const rooms = new Map<string, Room>();
+
+let rooms = new Map<string, Room>();
 
 function newCode(): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -210,8 +220,7 @@ function serveStatic(req: IncomingMessage, res: ServerResponse): void {
   res.end(readFileSync(file));
 }
 
-const server = createServer(serveStatic);
-const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
+function attachSockets(wss: WebSocketServer): void {
 
 wss.on('connection', (ws) => {
   let room: Room | null = null;
@@ -321,6 +330,7 @@ wss.on('connection', (ws) => {
         if (typeof s.turnLimit === 'number') r.settings.turnLimit = Math.max(40, Math.min(400, Math.floor(s.turnLimit)));
         if (typeof s.turnTimer === 'number') r.settings.turnTimer = Math.max(0, Math.min(600, Math.floor(s.turnTimer)));
         if (s.seed === null || typeof s.seed === 'number') r.settings.seed = s.seed;
+        if (typeof s.startAtWar === 'boolean') r.settings.startAtWar = s.startAtWar;
         return r.broadcastRoom();
       }
       case 'slot': {
@@ -378,6 +388,22 @@ wss.on('connection', (ws) => {
         r.send(ws, { t: 'result', id: msg.id, res: { ok: true }, preview: previewAttack(r.game, u, msg.to.x, msg.to.y) });
         return;
       }
+      case 'rematch': {
+        if (!isHost || r.phase !== 'over') return;
+        if (r.timer) clearTimeout(r.timer);
+        r.timer = null;
+        r.game = null;
+        r.phase = 'lobby';
+        // drop seats of people who left, keep everyone still connected plus computer opponents
+        for (const s of r.slots) {
+          if (s.kind === 'human' && !s.connected && !s.host) {
+            s.kind = 'open'; s.name = ''; s.civ = null;
+            r.members = r.members.filter((x) => x.slot !== s.slot);
+          }
+        }
+        r.broadcastRoom();
+        return;
+      }
       case 'forceEnd': {
         if (!isHost || !r.game) return;
         r.forceEndTurn();
@@ -424,19 +450,42 @@ wss.on('connection', (ws) => {
   });
 });
 
-// housekeeping: drop empty rooms nobody touched for a while
-setInterval(() => {
-  const now = Date.now();
-  for (const [code, r] of rooms) {
-    const anyone = r.members.some((m) => m.ws);
-    if (!anyone && now - r.lastActive > 6 * 3600 * 1000) {
-      if (r.timer) clearTimeout(r.timer);
-      rooms.delete(code);
-    }
-  }
-}, 10 * 60 * 1000).unref();
 
-loadRooms();
-server.listen(PORT, () => {
-  console.log(`JERICHO server listening on http://localhost:${PORT}  (serving ${DIST})`);
-});
+}
+
+export function startServer(opts: ServerOptions = {}): Promise<{ port: number; close: () => Promise<void> }> {
+  DIST = resolve(opts.dist ?? process.env.DIST ?? join(process.cwd(), 'dist'));
+  DATA = resolve(opts.dataDir ?? process.env.DATA_DIR ?? join(process.cwd(), 'server-data'));
+  EPHEMERAL = !!opts.ephemeral;
+  rooms = new Map();
+  const server = createServer(serveStatic);
+  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
+  attachSockets(wss);
+  const sweep = setInterval(() => {
+    const now = Date.now();
+    for (const [code, r] of rooms) {
+      const anyone = r.members.some((m) => m.ws);
+      if (!anyone && now - r.lastActive > 6 * 3600 * 1000) {
+        if (r.timer) clearTimeout(r.timer);
+        rooms.delete(code);
+      }
+    }
+  }, 10 * 60 * 1000);
+  sweep.unref();
+  if (!EPHEMERAL) loadRooms();
+  return new Promise((resolveStart) => {
+    server.listen(opts.port ?? Number(process.env.PORT ?? 8080), () => {
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+      resolveStart({
+        port,
+        close: () => new Promise((res) => {
+          clearInterval(sweep);
+          for (const r of rooms.values()) if (r.timer) clearTimeout(r.timer);
+          for (const c of wss.clients) c.terminate();
+          wss.close(() => server.close(() => res()));
+        }),
+      });
+    });
+  });
+}

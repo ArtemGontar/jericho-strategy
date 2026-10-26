@@ -59,6 +59,7 @@ export interface NewGameOptions {
   players: PlayerSlot[];
   allowScience?: boolean;
   allowDomination?: boolean;
+  startAtWar?: boolean;
 }
 
 export const STATE_VERSION = 1;
@@ -83,7 +84,10 @@ export class Game {
   static create(opts: NewGameOptions): Game {
     const n = Math.min(MAX_PLAYERS, Math.max(2, opts.players.length));
     const seed = (opts.seed ?? Math.floor(Math.random() * 2 ** 31)) >>> 0;
-    const size = MAP_SIZES[opts.size ?? (n <= 3 ? 'small' : n <= 5 ? 'medium' : 'large')];
+    const order = ['small', 'medium', 'large'] as const;
+    const minimum = n <= 3 ? 0 : n <= 5 ? 1 : 2;
+    const wanted = opts.size ? order.indexOf(opts.size) : minimum;
+    const size = MAP_SIZES[order[Math.max(minimum, wanted)]];
     const speed = opts.speed ?? 'standard';
     const settings: GameSettings = {
       width: size.width,
@@ -94,6 +98,7 @@ export class Game {
       turnTimer: opts.turnTimer ?? 0,
       allowScience: opts.allowScience ?? true,
       allowDomination: opts.allowDomination ?? true,
+      startAtWar: opts.startAtWar ?? false,
     };
     const map = generateMap(size.width, size.height, n, seed);
     const rng = new Rng(seed ^ 0xa5a5a5a5);
@@ -329,7 +334,7 @@ export class Game {
   }
 
   private meet(a: number, b: number): void {
-    this.setRelation(a, b, 'war');
+    this.setRelation(a, b, this.s.settings.startAtWar ? 'war' : 'peace');
     this.note([a], `You have met ${CIV_BY_ID[this.players[b].civ].adjective} civilisation (${this.playerName(b)}).`, 'info');
     this.note([b], `You have met ${CIV_BY_ID[this.players[a].civ].adjective} civilisation (${this.playerName(a)}).`, 'info');
   }
@@ -744,6 +749,7 @@ export class Game {
     for (const u of this.playerUnits(mover).slice()) {
       const t = this.tile(u.x, u.y);
       if (t.owner !== landlord) continue;
+      if (UNITS[u.type].civilian || UNITS[u.type].scout) continue;
       const home = this.s.cities.filter((c) => c.owner === mover).sort((c1, c2) => this.dist(c1.x, c1.y, u.x, u.y) - this.dist(c2.x, c2.y, u.x, u.y))[0];
       if (home) this.placeUnit(u, home.x, home.y);
       else this.removeUnit(u);
