@@ -6,12 +6,15 @@ export const HEX_W = Math.sqrt(3) * HEX;
 export const HEX_H = 2 * HEX;
 const RES = 2; // sprite resolution multiplier
 
+/** Vertical foreshortening of the ground plane: 1 for the flat top-down view, below 1 when the map is drawn tilted. */
+export const proj = { tilt: 1 };
+
 export function hexPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
   ctx.beginPath();
   for (let i = 0; i < 6; i++) {
     const a = ((60 * i - 30) * Math.PI) / 180;
     const x = cx + r * Math.cos(a);
-    const y = cy + r * Math.sin(a);
+    const y = cy + r * Math.sin(a) * proj.tilt;
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }

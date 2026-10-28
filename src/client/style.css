@@ -141,6 +141,7 @@ input[type=range] { padding: 0; accent-color: var(--gold); border: 0; }
 
 /* ---------- in-game frame ---------- */
 .game { position: absolute; inset: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+.game canvas.mapgl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 .game canvas.map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
 .game canvas.map.grabbing { cursor: grabbing; }
 .game canvas.map.pointer { cursor: pointer; }

@@ -6,6 +6,7 @@ import type { AiLevel } from '../../shared/types';
 import type { RoomInfo, RoomSettings, RoomSlot } from '../../shared/protocol';
 import { Animator } from '../anim';
 import { Camera, MapRenderer } from '../render';
+import { GLRenderer } from '../gl/glrenderer';
 import { btn, clear, h, put } from './dom';
 import { emblem } from './hud';
 import type { RemoteTransport } from '../transport';
@@ -33,13 +34,68 @@ export function saveName(n: string): void {
 }
 
 /** Paint a generated world behind the menus. */
+let backdropCache: HTMLCanvasElement | null = null;
+
+/** One 3D render of a finished world, kept as a picture and reused behind every menu. */
+function snapshotBackdrop(view: ReturnType<typeof buildView>, w: number, h: number): HTMLCanvasElement | null {
+  if (backdropCache) return backdropCache;
+  if (!GLRenderer.supported() || new URLSearchParams(location.search).has('flat')) return null;
+  try {
+    const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+    const glCanvas = document.createElement('canvas');
+    const overlay = document.createElement('canvas');
+    const cam = new Camera();
+    const gr = new GLRenderer(glCanvas, overlay, cam, new Animator());
+    gr.resizeTo(w, h, dpr);
+    cam.setWorld(view.settings.width, view.settings.height);
+    cam.zoom = Math.max(w / (cam.worldW + 60), h / ((cam.worldH + 60) * cam.tilt)) * 1.05;
+    cam.x = cam.worldW / 2;
+    cam.y = cam.worldH / 2;
+    const st = {
+      view, vm: new ViewMap(view), selectedUnit: null, selectedCity: null, hover: null, reach: null, path: null, pathTurns: 0,
+      attackTargets: new Set<number>(), showYields: false, showGrid: false, workedTiles: null, now: 4000,
+    };
+    gr.draw(st);
+    gr.draw({ ...st, now: 4016 });
+    const out = document.createElement('canvas');
+    out.width = Math.floor(w * dpr);
+    out.height = Math.floor(h * dpr);
+    const ctx = out.getContext('2d')!;
+    ctx.drawImage(glCanvas, 0, 0, out.width, out.height);
+    ctx.drawImage(overlay, 0, 0, out.width, out.height);
+    gr.dispose();
+    backdropCache = out;
+    return out;
+  } catch (e) {
+    console.warn('3D backdrop failed, using the flat one', e);
+    return null;
+  }
+}
+
 export function paintBackdrop(canvas: HTMLCanvasElement): void {
   try {
+    if (backdropCache) {
+      canvas.width = backdropCache.width;
+      canvas.height = backdropCache.height;
+      canvas.getContext('2d')!.drawImage(backdropCache, 0, 0);
+      return;
+    }
     const game = Game.create({ seed: Math.floor(Math.random() * 1e6), size: 'medium', players: [{ name: 'a', ai: true }, { name: 'b', ai: true }, { name: 'c', ai: true }] });
     for (let i = 0; i < 18; i++) game.processTurn();
     for (const t of game.tiles) t.explored = 0xff;
     for (const t of game.tiles) t.visible = 0xff;
     const view = buildView(game, 0);
+    view.units = [];
+    view.hut = view.hut.map(() => 0);
+    const w = Math.max(640, window.innerWidth);
+    const h = Math.max(400, window.innerHeight);
+    const snap = snapshotBackdrop(view, w, h);
+    if (snap) {
+      canvas.width = snap.width;
+      canvas.height = snap.height;
+      canvas.getContext('2d')!.drawImage(snap, 0, 0);
+      return;
+    }
     const cam = new Camera();
     cam.setWorld(view.settings.width, view.settings.height);
     const r = new MapRenderer(canvas, cam, new Animator());
@@ -47,8 +103,6 @@ export function paintBackdrop(canvas: HTMLCanvasElement): void {
     cam.zoom = Math.max(cam.w / (cam.worldW + 60), cam.h / (cam.worldH + 60)) * 1.02;
     cam.x = cam.worldW / 2;
     cam.y = cam.worldH / 2;
-    view.units = [];
-    view.hut = view.hut.map(() => 0);
     r.draw({
       view, vm: new ViewMap(view), selectedUnit: null, selectedCity: null, hover: null, reach: null, path: null, pathTurns: 0,
       attackTargets: new Set(), showYields: false, showGrid: false, workedTiles: null, now: 0,

@@ -6,7 +6,8 @@ import { ViewMap } from '../shared/viewpath';
 import type { AttackPreview } from '../shared/combat';
 import type { WorkKind } from '../shared/types';
 import { Animator } from './anim';
-import { Camera, MapRenderer, civColor, type RenderState } from './render';
+import { Camera, MapRenderer, civColor, type MapDrawer, type RenderState } from './render';
+import { GLRenderer } from './gl/glrenderer';
 import { HEX, HEX_W } from './sprites';
 import { sfx, isMuted, setMuted } from './audio';
 import { askConfirm, btn, clear, h, put } from './ui/dom';
@@ -33,7 +34,8 @@ export class GameScreen {
   mini: HTMLCanvasElement;
   cam = new Camera();
   anim = new Animator();
-  renderer: MapRenderer;
+  renderer: MapDrawer;
+  glCanvas: HTMLCanvasElement | null = null;
   view!: GameView;
   vm!: ViewMap;
   selUnitId: number | null = null;
@@ -98,12 +100,14 @@ export class GameScreen {
     this.drawer = h('div', { class: 'drawer hidden' });
     this.tooltip = h('div', { class: 'tooltip hidden' });
     this.connBanner = h('div', { class: 'conn hidden' }, 'Reconnecting…');
+    const useGL = GLRenderer.supported();
+    if (useGL) this.glCanvas = h('canvas', { class: 'mapgl' });
     this.root.append(
-      this.canvas, this.topbar, this.medallions, this.notes, this.tileinfo,
+      ...(this.glCanvas ? [this.glCanvas] : []), this.canvas, this.topbar, this.medallions, this.notes, this.tileinfo,
       h('div', { class: 'mapdock' }, h('div', { class: 'minimap-wrap' }, this.mini), this.lenses),
       this.unitbar, this.turncontrol, this.drawer, this.tooltip, this.connBanner);
     parent.append(this.root);
-    this.renderer = new MapRenderer(this.canvas, this.cam, this.anim);
+    this.renderer = this.glCanvas ? new GLRenderer(this.glCanvas, this.canvas, this.cam, this.anim) : new MapRenderer(this.canvas, this.cam, this.anim);
 
     transport.onView = (v, ev) => this.onView(v, ev);
     transport.onStatus = (ok) => this.connBanner.classList.toggle('hidden', ok);
@@ -111,6 +115,7 @@ export class GameScreen {
     transport.onChat = (from, slot, text) => this.addChat(from, slot, text);
     transport.onCurtain = (name, done) => this.showCurtain(name, done);
 
+    this.cleanup.push(() => this.renderer.dispose?.());
     this.bindInput();
     const onResize = () => {
       this.renderer.resize();
@@ -319,7 +324,7 @@ export class GameScreen {
     }
     const animating = this.anim.update(now, sfx);
     const selected = this.selUnit || this.attackTargets.size > 0;
-    const ambient = now - this.lastAmbient > 48 && !document.hidden;
+    const ambient = (this.renderer.continuous || now - this.lastAmbient > 48) && !document.hidden;
     if (!this.dirty && !animating && !selected && !ambient) return;
     if (ambient) this.lastAmbient = now;
     this.dirty = false;
@@ -473,7 +478,7 @@ export class GameScreen {
         if (pointers.size === 1 && (downButton === 0 || downButton === 1 || downButton === 2) && Math.hypot(e.clientX - startX, e.clientY - startY) > 6) {
           dragging = true;
           this.cam.x -= dx / this.cam.zoom;
-          this.cam.y -= dy / this.cam.zoom;
+          this.cam.y -= dy / (this.cam.zoom * this.cam.tilt);
           this.cam.clamp();
           cv.classList.add('grabbing');
           this.dirty = true;
@@ -542,7 +547,9 @@ export class GameScreen {
   }
 
   private tileAtScreen(sx: number, sy: number): Pos | null {
-    return this.cam.tileAt(sx, sy, this.view.settings.width, this.view.settings.height);
+    const W = this.view.settings.width;
+    const H = this.view.settings.height;
+    return this.renderer.pickTile?.(sx, sy, W, H) ?? this.cam.tileAt(sx, sy, W, H);
   }
 
   private updateHover(sx: number, sy: number): void {
@@ -632,7 +639,8 @@ export class GameScreen {
     if (city?.mine) {
       const wp = this.cam.worldOfTile(t.x, t.y);
       const s = this.cam.toScreen(wp.x, wp.y);
-      if (sy < s.y - HEX * 0.45 * this.cam.zoom) {
+      const hit = this.renderer.bannerHit ? this.renderer.bannerHit(city.id, sx, sy) : sy < s.y - HEX * 0.45 * this.cam.zoom;
+      if (hit) {
         this.openCityPanel(city.id);
         return;
       }

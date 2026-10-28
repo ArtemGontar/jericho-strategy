@@ -32,6 +32,10 @@ const browser = await chromium.launch();
 
 async function newPage(name: string, opts: Parameters<typeof browser.newContext>[0] = { viewport: { width: 1280, height: 780 } }) {
   const ctx = await browser.newContext(opts);
+  // E2E_FLAT=1 runs the browser tests on the 2D map renderer, which is far lighter for software-rendered CI machines
+  if (process.env.E2E_FLAT) await ctx.addInitScript(() => localStorage.setItem('jericho.flat', '1'));
+  // E2E_GL=1 forces the 3D renderer even on a software rasteriser
+  if (process.env.E2E_GL) await ctx.addInitScript(() => localStorage.setItem('jericho.gl', '1'));
   const page = await ctx.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(`${name}: ${e.message}`));

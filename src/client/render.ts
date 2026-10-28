@@ -3,7 +3,7 @@ import { BUILDINGS, CIV_BY_ID, IMPROVEMENT_YIELD, RESOURCES, TERRAIN, UNITS } fr
 import { RESOURCE_LIST, TERRAIN_LIST, type GameView, type ViewCity, type ViewUnit } from '../shared/view';
 import type { ViewMap } from '../shared/viewpath';
 import type { Animator } from './anim';
-import { HEX, HEX_W, hexPath } from './sprites';
+import { HEX, HEX_W, hexPath, proj } from './sprites';
 import { cloudShadow, citySprite, decorSprite, dimmed, farmSprite, groundSprite, hutSprite, mineSprite, resourceSprite, stamp, unitSprite, type Sprite } from './art';
 import { drawIcon } from './icons';
 
@@ -23,6 +23,15 @@ export class Camera {
   h = 600;
   worldW = 0;
   worldH = 0;
+  /** ground foreshortening (sin of the pitch) and how far a unit of height lifts a point up the screen (cos of the pitch) */
+  tilt = 1;
+  lift = 0;
+  setPitch(deg: number): void {
+    const r = (deg * Math.PI) / 180;
+    this.tilt = Math.sin(r);
+    this.lift = Math.cos(r);
+    proj.tilt = this.tilt;
+  }
 
   setWorld(cols: number, rows: number): void {
     this.worldW = HEX_W * (cols + 0.5);
@@ -32,11 +41,13 @@ export class Camera {
     const p = hexToPixel(x, y, HEX);
     return { x: p.px + HEX_W / 2, y: p.py + HEX };
   }
-  toScreen(wx: number, wy: number): { x: number; y: number } {
-    return { x: (wx - this.x) * this.zoom + this.w / 2, y: (wy - this.y) * this.zoom + this.h / 2 };
+  /** Screen position of a world point; `hgt` is its height above the ground in world units. */
+  toScreen(wx: number, wy: number, hgt = 0): { x: number; y: number } {
+    return { x: (wx - this.x) * this.zoom + this.w / 2, y: (wy - this.y) * this.zoom * this.tilt - hgt * this.zoom * this.lift + this.h / 2 };
   }
+  /** Ground point under a screen position. */
   toWorld(sx: number, sy: number): { x: number; y: number } {
-    return { x: (sx - this.w / 2) / this.zoom + this.x, y: (sy - this.h / 2) / this.zoom + this.y };
+    return { x: (sx - this.w / 2) / this.zoom + this.x, y: (sy - this.h / 2) / (this.zoom * this.tilt) + this.y };
   }
   tileAt(sx: number, sy: number, cols: number, rows: number): Pos | null {
     const w = this.toWorld(sx, sy);
@@ -49,7 +60,7 @@ export class Camera {
     this.y = Math.max(-60, Math.min(my - 60, this.y));
   }
   minZoom(): number {
-    return Math.max(0.28, Math.min(this.w / (this.worldW + 100), this.h / (this.worldH + 100)) * 0.9);
+    return Math.max(0.28, Math.min(this.w / (this.worldW + 100), this.h / ((this.worldH + 100) * this.tilt)) * 0.9);
   }
   focusTile(x: number, y: number): void {
     const p = this.worldOfTile(x, y);
@@ -110,10 +121,23 @@ const LAND_BASE: Record<string, string> = {
 
 function corner(cx: number, cy: number, r: number, i: number): [number, number] {
   const a = ((60 * i - 30) * Math.PI) / 180;
-  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  return [cx + r * Math.cos(a), cy + r * Math.sin(a) * proj.tilt];
 }
 
-export class MapRenderer {
+/** What the game screen needs from a map renderer. */
+export interface MapDrawer {
+  /** true when the picture is always in motion and wants a frame every tick */
+  readonly continuous?: boolean;
+  resize(): void;
+  draw(st: RenderState): void;
+  dispose?(): void;
+  /** tile under a screen point, when the renderer knows better than the flat ground plane */
+  pickTile?(sx: number, sy: number, W: number, H: number): { x: number; y: number } | null;
+  /** whether a screen point lies on a city's banner */
+  bannerHit?(cityId: number, sx: number, sy: number): boolean;
+}
+
+export class MapRenderer implements MapDrawer {
   ctx: CanvasRenderingContext2D;
   constructor(public canvas: HTMLCanvasElement, public cam: Camera, public anim: Animator) {
     this.ctx = canvas.getContext('2d')!;
@@ -131,6 +155,7 @@ export class MapRenderer {
   draw(st: RenderState): void {
     const ctx = this.ctx;
     const cam = this.cam;
+    proj.tilt = cam.tilt;
     const dpr = this.canvas.width / cam.w;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#0a111d';

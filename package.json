@@ -2,7 +2,7 @@
   "name": "jericho",
   "version": "1.0.0",
   "private": true,
-  "description": "JERICHO \u2014 a Civilization-style turn-based strategy game for the browser, playable solo, hot-seat or online with friends.",
+  "description": "JERICHO — a Civilization-style turn-based strategy game for the browser, playable solo, hot-seat or online with friends.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "@types/three": "^0.170.0",
     "@types/ws": "^8.18.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
@@ -26,6 +27,7 @@
     "vitest": "^5.0.5"
   },
   "dependencies": {
+    "three": "^0.170.0",
     "ws": "^8.22.0"
   }
 }
