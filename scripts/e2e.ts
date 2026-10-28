@@ -60,10 +60,21 @@ try {
     let s = await screenState(page);
     check('founded a capital with the B key', s.cities === 1);
     const label = () => page.locator('.turnlabel').first().innerText().then((t) => t.split('\n')[0].trim());
-    for (let step = 0; step < 300; step++) {
+    let lastKey = '';
+    let repeats = 0;
+    for (let step = 0; step < 400; step++) {
       const turn = (await screenState(page)).turn;
       if (turn >= 15) break;
       const l = await label();
+      const diag = await page.evaluate(() => { const sc = (window as any).__jericho.screen; const u = sc.selUnit; return `${sc.view.turn}|${u ? u.type : '-'}|city=${sc.openCityId}|modal=${sc.modalKind}|busy=${sc.busy}`; });
+      repeats = `${l}${diag}` === lastKey ? repeats + 1 : 0;
+      lastKey = `${l}${diag}`;
+      if (repeats > 8) {
+        console.log(`  (stuck at "${l}" ${diag}; nudging)`);
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(150);
+        repeats = 0;
+      }
       if (l.toLowerCase().startsWith('choose production')) {
         if (await page.locator('.drawer.hidden').count()) await page.locator('.nextturn').first().click();
         const names = await page.locator('.item.pick .nm').allInnerTexts();
@@ -72,6 +83,10 @@ try {
       } else if (l.toLowerCase().startsWith('choose research')) {
         await page.locator('.nextturn').first().click();
         await page.locator('.node.avail').first().click();
+      } else if (l.toLowerCase().startsWith('choose policy')) {
+        await page.locator('.nextturn').first().click();
+        await page.locator('.choice button').first().click();
+        await page.keyboard.press('Escape');
       } else if (l.toLowerCase().startsWith('next unit')) {
         await page.locator('.nextturn').first().click();
         const type = await page.evaluate(() => (window as any).__jericho.screen.selUnit?.type);
