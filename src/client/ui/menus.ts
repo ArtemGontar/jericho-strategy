@@ -84,9 +84,9 @@ export function titleScreen(hd: TitleHandlers): HTMLElement {
   const list = h('div', { class: 'menu-list' });
   if (hd.continueGame) list.append(btn(h('span', null, '▶ Continue game ', h('small', null, '(autosave)')), hd.onContinue, 'primary'));
   if (hd.rejoin) list.append(btn(h('span', null, `🔗 Rejoin online game `, h('small', null, hd.rejoin)), hd.onRejoin, 'primary'));
-  list.append(
+  put(list,
     btn('⚔ New game vs computer', hd.onNew, hd.continueGame || hd.rejoin ? '' : 'primary'),
-    btn('🌍 Play online with friends', hd.onOnline),
+    import.meta.env.VITE_SOLO_ONLY ? null : btn('🌍 Play online with friends', hd.onOnline),
     btn('🪑 Hot-seat (same device)', hd.onHotseat),
     btn('📖 How to play', hd.onHelp, 'ghost'),
   );
@@ -94,7 +94,7 @@ export function titleScreen(hd: TitleHandlers): HTMLElement {
     h('h1', { class: 'logo' }, 'JERICHO'),
     h('p', { class: 'tagline' }, 'Found cities. Discover the ages. Outwit your friends.'),
     list,
-    h('p', { class: 'muted', style: { fontSize: '12px' } }, 'A turn-based strategy game for 1–8 players · runs in your browser'),
+    h('p', { class: 'muted', style: { fontSize: '12px' } }, import.meta.env.VITE_SOLO_ONLY ? 'Solo and hot-seat edition · online rooms need the game server (see the repository README)' : 'A turn-based strategy game for 1–8 players · runs in your browser'),
   ));
   return el;
 }

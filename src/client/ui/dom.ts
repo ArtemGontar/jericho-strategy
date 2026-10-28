@@ -62,3 +62,18 @@ export function put<T extends Element>(el: T, ...children: Child[]): T {
   append(el, children);
   return el;
 }
+
+/** In-page replacement for window.confirm (which embedded pages cannot show). */
+export function askConfirm(message: string, okLabel = 'Yes'): Promise<boolean> {
+  return new Promise((resolve) => {
+    const done = (v: boolean) => {
+      back.remove();
+      resolve(v);
+    };
+    const back = h('div', { class: 'modal-back', style: { zIndex: '60' } },
+      h('div', { class: 'modal narrow' },
+        h('div', { class: 'body' }, h('p', { style: { margin: '0', fontSize: '16px' } }, message),
+          h('div', { class: 'row', style: { justifyContent: 'flex-end' } }, btn('Cancel', () => done(false)), btn(okLabel, () => done(true), 'primary')))));
+    (document.querySelector('.game') ?? document.body).append(back);
+  });
+}

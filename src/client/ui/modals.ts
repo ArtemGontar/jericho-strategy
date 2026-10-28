@@ -1,7 +1,7 @@
 import { BUILDINGS, CIV_BY_ID, ERA_NAMES, TECHS, TECH_BY_ID, UNITS } from '../../shared/data';
 import type { GameScreen } from '../gamescreen';
 import { isMuted, setMuted, sfx } from '../audio';
-import { btn, h, turnsLeft } from './dom';
+import { askConfirm, btn, h, turnsLeft } from './dom';
 
 function modal(title: string, body: HTMLElement | HTMLElement[], onClose: () => void, narrow = false, extra: HTMLElement[] = []): HTMLElement {
   return h('div', { class: `modal ${narrow ? 'narrow' : ''}` },
@@ -73,7 +73,7 @@ export function showDiplomacy(gs: GameScreen): HTMLElement {
         actions.append(b);
       } else if (p.relation === 'peace') {
         const can = p.relationAge >= 10;
-        const b = btn('⚔ Declare war', async () => { if (confirm(`Declare war on ${p.name}?`)) await gs.cmd({ t: 'war', to: p.id }); }, 'small danger', can ? '' : `The treaty must hold for 10 turns (${p.relationAge} so far)`);
+        const b = btn('⚔ Declare war', async () => { if (await askConfirm(`Declare war on ${p.name}?`, 'Declare war')) await gs.cmd({ t: 'war', to: p.id }); }, 'small danger', can ? '' : `The treaty must hold for 10 turns (${p.relationAge} so far)`);
         b.disabled = !can;
         actions.append(b);
       }
@@ -114,7 +114,7 @@ export function showMenu(gs: GameScreen): HTMLElement {
     rows.push(h('div', { class: 'panel' }, h('div', { class: 'muted' }, 'Room code'), h('div', { class: 'code', style: { fontSize: '28px' } }, invite.code),
       btn('📋 Copy invite link', () => { void navigator.clipboard?.writeText(link); gs.toast('Invite link copied'); }, 'small')));
   }
-  rows.push(btn('🚪 Leave game', () => { if (confirm(gs.transport.kind === 'local' ? 'Leave to the main menu? Your game is saved automatically each turn.' : 'Leave the game? You can rejoin with the room code.')) gs.opts.onExit(); }, 'danger'));
+  rows.push(btn('🚪 Leave game', async () => { if (await askConfirm(gs.transport.kind === 'local' ? 'Leave to the main menu? Your game is saved automatically each turn.' : 'Leave the game? You can rejoin with the room code.', 'Leave')) gs.opts.onExit(); }, 'danger'));
   return modal('Menu', h('div', { style: { display: 'grid', gap: '8px' } }, ...rows), () => gs.closeModal(), true);
 }
 

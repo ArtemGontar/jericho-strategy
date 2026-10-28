@@ -9,7 +9,7 @@ import { Animator } from './anim';
 import { Camera, MapRenderer, civColor, tileYieldFromView, type RenderState } from './render';
 import { HEX, HEX_W } from './sprites';
 import { sfx, isMuted, setMuted } from './audio';
-import { btn, clear, fmtSigned, h, put } from './ui/dom';
+import { askConfirm, btn, clear, fmtSigned, h, put } from './ui/dom';
 import type { GameTransport } from './transport';
 import { renderCityPanel } from './ui/citypanel';
 import { showHelp, showMenu, showTechTree, showDiplomacy, showVictory, showCities, showLog } from './ui/modals';
@@ -804,7 +804,7 @@ export class GameScreen {
   }
 
   async disband(u: ViewUnit): Promise<void> {
-    if (!confirm(`Disband this ${UNITS[u.type].name}?`)) return;
+    if (!(await askConfirm(`Disband this ${UNITS[u.type].name}?`, 'Disband'))) return;
     await this.cmd({ t: 'order', unit: u.id, order: 'cancel' });
     await this.cmd({ t: 'disband', unit: u.id });
     this.selUnitId = null;
