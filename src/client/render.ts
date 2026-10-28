@@ -3,7 +3,8 @@ import { BUILDINGS, CIV_BY_ID, IMPROVEMENT_YIELD, RESOURCES, TERRAIN, UNITS } fr
 import { RESOURCE_LIST, TERRAIN_LIST, type GameView, type ViewCity, type ViewUnit } from '../shared/view';
 import type { ViewMap } from '../shared/viewpath';
 import type { Animator } from './anim';
-import { HEX, HEX_H, HEX_W, SPRITE_RES, VARIANTS, hexPath, terrainSprite } from './sprites';
+import { HEX, HEX_W, hexPath } from './sprites';
+import { cloudShadow, citySprite, decorSprite, dimmed, farmSprite, groundSprite, hutSprite, mineSprite, resourceSprite, stamp, unitSprite, type Sprite } from './art';
 import { drawIcon } from './icons';
 
 export const DISPLAY_FONT = "'Cinzel','Palatino Linotype','Book Antiqua',Georgia,serif";
@@ -97,6 +98,16 @@ export function tileYieldFromView(view: GameView, i: number): { food: number; pr
 const EDGE_NEIGHBOR_EVEN: Array<[number, number]> = [[1, 0], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1]];
 const EDGE_NEIGHBOR_ODD: Array<[number, number]> = [[1, 0], [1, 1], [0, 1], [-1, 0], [0, -1], [1, -1]];
 
+const LAND_BASE: Record<string, string> = {
+  grass: '#5f8f38',
+  plains: '#b8a55a',
+  desert: '#dcc283',
+  tundra: '#b9c4c7',
+  forest: '#42702f',
+  hills: '#9a9650',
+  mountain: '#7a766f',
+};
+
 function corner(cx: number, cy: number, r: number, i: number): [number, number] {
   const a = ((60 * i - 30) * Math.PI) / 180;
   return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
@@ -135,30 +146,136 @@ export class MapRenderer {
     const maxRow = Math.min(H - 1, Math.ceil((br.y + HEX) / (HEX * 1.5)));
     const minCol = Math.max(0, Math.floor((tl.x - HEX_W) / HEX_W) - 1);
     const maxCol = Math.min(W - 1, Math.ceil((br.x + HEX_W) / HEX_W));
-    const sw = (HEX_W * SPRITE_RES + 4) / SPRITE_RES;
-    const sh = (HEX_H * SPRITE_RES + 4) / SPRITE_RES;
+    const idx = (x: number, y: number) => y * W + x;
+    const variant = (x: number, y: number) => (x * 7 + y * 13) % 4;
+    const putGround = (x: number, y: number, i: number) => {
+      const wp = cam.worldOfTile(x, y);
+      const s = cam.toScreen(wp.x, wp.y);
+      const spr = groundSprite(TERRAIN_LIST[v.terrain[i]], variant(x, y));
+      stamp(ctx, v.state[i] === 1 ? dimmed(spr) : spr, s.x, s.y, z);
+    };
 
-    // 1. terrain
+    // 1. terrain: water first, then a flat base under every land tile, then the feathered land textures on top
     for (let y = minRow; y <= maxRow; y++) {
       for (let x = minCol; x <= maxCol; x++) {
-        const i = y * W + x;
-        const state = v.state[i];
+        const i = idx(x, y);
+        if (v.state[i] === 0) continue;
+        const t = TERRAIN_LIST[v.terrain[i]];
+        if (TERRAIN[t].land) continue;
         const wp = cam.worldOfTile(x, y);
         const s = cam.toScreen(wp.x, wp.y);
-        if (state === 0) {
-          hexPath(ctx, s.x, s.y, HEX * z * 1.01);
-          ctx.fillStyle = '#0e1626';
-          ctx.fill();
-          continue;
-        }
-        const terr = TERRAIN_LIST[v.terrain[i]];
-        const spr = terrainSprite(terr, (x * 7 + y * 13) % VARIANTS);
-        ctx.drawImage(spr, s.x - (sw * z) / 2, s.y - (sh * z) / 2, sw * z, sh * z);
+        hexPath(ctx, s.x, s.y, HEX * z * 1.02);
+        ctx.fillStyle = t === 'ocean' ? '#1a4a80' : '#46a2ba';
+        ctx.fill();
+      }
+    }
+    for (let y = minRow; y <= maxRow; y++) {
+      for (let x = minCol; x <= maxCol; x++) {
+        const i = idx(x, y);
+        if (v.state[i] === 0 || TERRAIN[TERRAIN_LIST[v.terrain[i]]].land) continue;
+        putGround(x, y, i);
+      }
+    }
+    for (let y = minRow; y <= maxRow; y++) {
+      for (let x = minCol; x <= maxCol; x++) {
+        const i = idx(x, y);
+        if (v.state[i] === 0 || !TERRAIN[TERRAIN_LIST[v.terrain[i]]].land) continue;
+        const wp = cam.worldOfTile(x, y);
+        const s = cam.toScreen(wp.x, wp.y);
+        hexPath(ctx, s.x, s.y, HEX * z * 0.99);
+        ctx.fillStyle = LAND_BASE[TERRAIN_LIST[v.terrain[i]]];
+        ctx.fill();
+      }
+    }
+    for (let y = minRow; y <= maxRow; y++) {
+      for (let x = minCol; x <= maxCol; x++) {
+        const i = idx(x, y);
+        if (v.state[i] === 0 || !TERRAIN[TERRAIN_LIST[v.terrain[i]]].land) continue;
+        putGround(x, y, i);
         if (st.workedTiles?.has(i)) {
+          const wp = cam.worldOfTile(x, y);
+          const s = cam.toScreen(wp.x, wp.y);
           hexPath(ctx, s.x, s.y, HEX * z * 0.92);
           ctx.fillStyle = 'rgba(255,230,140,0.18)';
           ctx.fill();
         }
+      }
+    }
+    // water glints
+    if (z > 0.5) {
+      ctx.lineCap = 'round';
+      for (let y = minRow; y <= maxRow; y++) {
+        for (let x = minCol; x <= maxCol; x++) {
+          const i = idx(x, y);
+          if (v.state[i] !== 2) continue;
+          const t = TERRAIN_LIST[v.terrain[i]];
+          if (t !== 'ocean' && t !== 'coast') continue;
+          const wp = cam.worldOfTile(x, y);
+          const s = cam.toScreen(wp.x, wp.y);
+          for (let k = 0; k < 2; k++) {
+            const ph = (x * 31 + y * 17 + k * 53) % 100;
+            const a = Math.sin(st.now / 1100 + ph) * 0.5 + 0.5;
+            if (a < 0.35) continue;
+            const gx = s.x + (((ph * 7) % 50) - 25) * z * 0.9;
+            const gy = s.y + (((ph * 13) % 40) - 20) * z * 0.9;
+            ctx.strokeStyle = `rgba(235,248,255,${(a - 0.3) * 0.5})`;
+            ctx.lineWidth = Math.max(1, 1.5 * z);
+            ctx.beginPath();
+            ctx.moveTo(gx - 6 * z, gy);
+            ctx.quadraticCurveTo(gx - 3 * z, gy - 2.4 * z, gx, gy);
+            ctx.quadraticCurveTo(gx + 3 * z, gy + 2.4 * z, gx + 6 * z, gy);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    // unexplored tiles: dark shroud, with a soft fade creeping onto explored neighbours
+    for (let y = minRow; y <= maxRow; y++) {
+      for (let x = minCol; x <= maxCol; x++) {
+        const i = idx(x, y);
+        const wp = cam.worldOfTile(x, y);
+        const s = cam.toScreen(wp.x, wp.y);
+        if (v.state[i] === 0) {
+          hexPath(ctx, s.x, s.y, HEX * z * 1.02);
+          ctx.fillStyle = '#0a1120';
+          ctx.fill();
+          continue;
+        }
+        const nbs = y & 1 ? EDGE_NEIGHBOR_ODD : EDGE_NEIGHBOR_EVEN;
+        for (let e = 0; e < 6; e++) {
+          const nx = x + nbs[e][0];
+          const ny = y + nbs[e][1];
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H || v.state[idx(nx, ny)] !== 0) continue;
+          const [ax, ay] = corner(s.x, s.y, HEX * z, e);
+          const [bx, by] = corner(s.x, s.y, HEX * z, e + 1);
+          const mx = (ax + bx) / 2;
+          const my = (ay + by) / 2;
+          const ix = s.x + (mx - s.x) * 0.25;
+          const iy = s.y + (my - s.y) * 0.25;
+          const g = ctx.createLinearGradient(mx, my, ix, iy);
+          g.addColorStop(0, 'rgba(10,17,32,0.95)');
+          g.addColorStop(1, 'rgba(10,17,32,0)');
+          ctx.save();
+          hexPath(ctx, s.x, s.y, HEX * z * 1.0);
+          ctx.clip();
+          ctx.fillStyle = g;
+          ctx.fillRect(s.x - HEX * z, s.y - HEX * z, HEX * z * 2, HEX * z * 2);
+          ctx.restore();
+        }
+      }
+    }
+
+    // drifting cloud shadows
+    if (z > 0.35) {
+      const pat = ctx.createPattern(cloudShadow(), 'repeat');
+      if (pat) {
+        const sc = z * 2.2;
+        pat.setTransform(new DOMMatrix().translate(cam.w / 2 - cam.x * z + st.now * 0.006 * z, cam.h / 2 - cam.y * z + st.now * 0.002 * z).scale(sc, sc));
+        ctx.globalAlpha = 0.16;
+        ctx.fillStyle = pat;
+        ctx.fillRect(0, 0, cam.w, cam.h);
+        ctx.globalAlpha = 1;
       }
     }
 
@@ -175,22 +292,43 @@ export class MapRenderer {
         const s = cam.toScreen(wp.x, wp.y);
         const col = civColor(v, owner);
         const r = HEX * z;
-        hexPath(ctx, s.x, s.y, r);
-        ctx.fillStyle = hexA(col, 0.13);
-        ctx.fill();
         const nbs = y & 1 ? EDGE_NEIGHBOR_ODD : EDGE_NEIGHBOR_EVEN;
+        const edges: number[] = [];
         for (let e = 0; e < 6; e++) {
           const nx = x + nbs[e][0];
           const ny = y + nbs[e][1];
           const nOwner = nx < 0 || ny < 0 || nx >= W || ny >= H ? -2 : v.owner[ny * W + nx] - 1;
-          if (nOwner === owner) continue;
+          if (nOwner !== owner) edges.push(e);
+        }
+        if (!edges.length) continue;
+        ctx.save();
+        hexPath(ctx, s.x, s.y, r);
+        ctx.clip();
+        for (const [lw, a] of [[16 * z, 0.14], [9 * z, 0.2]] as const) {
+          ctx.strokeStyle = hexA(col, a);
+          ctx.lineWidth = lw;
+          for (const e of edges) {
+            const [ax, ay] = corner(s.x, s.y, r, e);
+            const [bx, by] = corner(s.x, s.y, r, e + 1);
+            ctx.beginPath();
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(bx, by);
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+        ctx.lineWidth = Math.max(2, 3.2 * z);
+        for (const e of edges) {
           const [ax, ay] = corner(s.x, s.y, r * 0.97, e);
           const [bx, by] = corner(s.x, s.y, r * 0.97, e + 1);
-          ctx.strokeStyle = hexA(col, 0.95);
-          ctx.lineWidth = Math.max(2, 3.2 * z);
+          ctx.strokeStyle = 'rgba(8,10,16,0.45)';
+          ctx.lineWidth = Math.max(3, 5 * z);
           ctx.beginPath();
           ctx.moveTo(ax, ay);
           ctx.lineTo(bx, by);
+          ctx.stroke();
+          ctx.strokeStyle = hexA(col, 0.98);
+          ctx.lineWidth = Math.max(2, 3 * z);
           ctx.stroke();
         }
       }
@@ -242,7 +380,7 @@ export class MapRenderer {
       }
     }
 
-    // 4. roads, improvements, resources
+    // 4. roads
     for (let y = minRow; y <= maxRow; y++) {
       for (let x = minCol; x <= maxCol; x++) {
         const i = y * W + x;
@@ -252,30 +390,15 @@ export class MapRenderer {
         if (v.road[i] === 1) this.drawRoads(ctx, v, x, y, s.x, s.y, z);
       }
     }
-    for (let y = minRow; y <= maxRow; y++) {
-      for (let x = minCol; x <= maxCol; x++) {
-        const i = y * W + x;
-        if (v.state[i] === 0) continue;
-        const wp = cam.worldOfTile(x, y);
-        const s = cam.toScreen(wp.x, wp.y);
-        const imp = v.improvement[i];
-        if (imp === 1) this.drawFarm(ctx, s.x, s.y, z);
-        else if (imp === 2) this.drawMine(ctx, s.x, s.y, z);
-        const res = v.resource[i];
-        if (res > 0 && z > 0.45) this.drawBadge(ctx, RESOURCE_LIST[res - 1], s.x + HEX * 0.5 * z, s.y + HEX * 0.42 * z, z, RESOURCES[RESOURCE_LIST[res - 1]].strategic);
-        if (v.hut[i] === 1 && z > 0.4) this.drawBadge(ctx, 'hut', s.x - HEX * 0.1 * z, s.y + HEX * 0.1 * z, z * 1.25, false, true);
-        if (st.lockedTiles?.has(i)) this.drawBadge(ctx, 'tile', s.x, s.y - HEX * 0.46 * z, z, false, true);
-      }
-    }
 
-    // 5. fog
+    // 5. fog of war over explored-but-unseen ground
     for (let y = minRow; y <= maxRow; y++) {
       for (let x = minCol; x <= maxCol; x++) {
         if (v.state[y * W + x] !== 1) continue;
         const wp = cam.worldOfTile(x, y);
         const s = cam.toScreen(wp.x, wp.y);
         hexPath(ctx, s.x, s.y, HEX * z * 1.01);
-        ctx.fillStyle = 'rgba(8,12,22,0.52)';
+        ctx.fillStyle = 'rgba(8,14,30,0.32)';
         ctx.fill();
       }
     }
@@ -339,11 +462,44 @@ export class MapRenderer {
     }
     if (st.path && st.path.length) this.drawPath(ctx, st, st.path, z);
 
-    // 8. cities
+    // 8. standing terrain, resources, improvements, cities (all depth-sorted with the units)
     const sorted: Array<{ y: number; draw: () => void }> = [];
+    const cityAt = new Set<number>();
+    for (const c of v.cities) cityAt.add(c.y * W + c.x);
+    for (let y = minRow; y <= maxRow; y++) {
+      for (let x = minCol; x <= maxCol; x++) {
+        const i = y * W + x;
+        const state = v.state[i];
+        if (state === 0) continue;
+        const wp = cam.worldOfTile(x, y);
+        const sp = cam.toScreen(wp.x, wp.y);
+        const fog = state === 1;
+        const put = (spr: Sprite, ox: number, oy: number, k = 1) => stamp(ctx, fog ? dimmed(spr) : spr, sp.x + ox * z, sp.y + oy * z, z, k);
+        const terr = TERRAIN_LIST[v.terrain[i]];
+        const imp = v.improvement[i];
+        const base = y * 10;
+        if (!cityAt.has(i)) {
+          const flat = (terr === 'grass' || terr === 'plains') && imp === 1;
+          if (!flat) {
+            const dec = decorSprite(terr, variant(x, y));
+            if (dec) sorted.push({ y: base, draw: () => put(dec, 0, 0) });
+          }
+          if (imp === 1) sorted.push({ y: base + 1, draw: () => put(farmSprite(variant(x, y)), 0, 6, 1.05) });
+          else if (imp === 2) sorted.push({ y: base + 1, draw: () => put(mineSprite(), -4, 16, 1.05) });
+          if (v.hut[i] === 1) sorted.push({ y: base + 1, draw: () => put(hutSprite(), 0, 6, 1.05) });
+          const res = v.resource[i];
+          if (res > 0) {
+            const rid = RESOURCE_LIST[res - 1];
+            const onWater = terr === 'ocean' || terr === 'coast';
+            sorted.push({ y: base + 2, draw: () => put(resourceSprite(rid), onWater ? 0 : 14, onWater ? 4 : 18, 0.95) });
+          }
+        }
+        if (st.lockedTiles?.has(i)) sorted.push({ y: base + 3, draw: () => this.drawBadge(ctx, 'tile', sp.x, sp.y - HEX * 0.46 * z, z, false, true) });
+      }
+    }
     for (const c of v.cities) {
       if (c.x < minCol - 1 || c.x > maxCol + 1 || c.y < minRow - 1 || c.y > maxRow + 1) continue;
-      sorted.push({ y: c.y * 10, draw: () => this.drawCity(ctx, v, c, z, st) });
+      sorted.push({ y: c.y * 10 + 4, draw: () => this.drawCity(ctx, v, c, z) });
     }
     // 9. units (sorted by row, civilians behind military)
     const unitList = v.units.slice();
@@ -371,6 +527,17 @@ export class MapRenderer {
     }
     sorted.sort((a, b) => a.y - b.y);
     for (const s of sorted) s.draw();
+    for (const c of v.cities) {
+      if (c.x < minCol - 1 || c.x > maxCol + 1 || c.y < minRow - 1 || c.y > maxRow + 1) continue;
+      this.drawBanner(ctx, v, c, z);
+    }
+
+    // soft vignette so the map sits in its frame
+    const vg = ctx.createRadialGradient(cam.w / 2, cam.h / 2, Math.min(cam.w, cam.h) * 0.35, cam.w / 2, cam.h / 2, Math.hypot(cam.w, cam.h) * 0.62);
+    vg.addColorStop(0, 'rgba(6,10,20,0)');
+    vg.addColorStop(1, 'rgba(6,10,20,0.42)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, cam.w, cam.h);
 
     // 10. hover & selection
     if (st.hover) {
@@ -478,10 +645,7 @@ export class MapRenderer {
     const W = v.settings.width;
     const H = v.settings.height;
     const nbs = y & 1 ? EDGE_NEIGHBOR_ODD : EDGE_NEIGHBOR_EVEN;
-    ctx.strokeStyle = 'rgba(92,66,40,0.9)';
-    ctx.lineWidth = Math.max(2, 4 * z);
-    ctx.lineCap = 'round';
-    let any = false;
+    const arms: Array<[number, number]> = [];
     for (let e = 0; e < 6; e++) {
       const nx = x + nbs[e][0];
       const ny = y + nbs[e][1];
@@ -490,106 +654,56 @@ export class MapRenderer {
       const isCity = v.cities.some((c) => c.x === nx && c.y === ny);
       if (v.road[ni] !== 1 && !isCity) continue;
       if (v.state[ni] === 0) continue;
-      // neighbour direction vector (edge normal)
       const [ax, ay] = corner(0, 0, HEX * z, e);
       const [bx, by] = corner(0, 0, HEX * z, e + 1);
-      const mx = (ax + bx) / 2;
-      const my = (ay + by) / 2;
-      ctx.beginPath();
-      ctx.moveTo(sx, sy);
-      ctx.lineTo(sx + mx, sy + my);
-      ctx.stroke();
-      any = true;
+      arms.push([(ax + bx) / 2, (ay + by) / 2]);
     }
-    if (!any) {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const trace = () => {
+      for (const [mx, my] of arms) {
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.quadraticCurveTo(sx + mx * 0.5 + my * 0.06, sy + my * 0.5 - mx * 0.06, sx + mx, sy + my);
+        ctx.stroke();
+      }
+    };
+    if (!arms.length) {
       ctx.beginPath();
-      ctx.arc(sx, sy, 2.5 * z, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(92,66,40,0.9)';
+      ctx.arc(sx, sy, 3 * z, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(120,92,58,0.9)';
       ctx.fill();
+      return;
     }
-  }
-
-  private drawFarm(ctx: CanvasRenderingContext2D, sx: number, sy: number, z: number): void {
-    ctx.save();
-    ctx.strokeStyle = 'rgba(240,226,120,0.85)';
+    ctx.strokeStyle = 'rgba(60,42,24,0.55)';
+    ctx.lineWidth = Math.max(3, 7.5 * z);
+    trace();
+    ctx.strokeStyle = '#b79a68';
+    ctx.lineWidth = Math.max(2, 4.6 * z);
+    trace();
+    ctx.strokeStyle = 'rgba(232,212,160,0.55)';
     ctx.lineWidth = Math.max(1, 1.6 * z);
-    for (let i = -2; i <= 2; i++) {
-      ctx.beginPath();
-      ctx.moveTo(sx - HEX * 0.5 * z + i * 6 * z, sy + HEX * 0.1 * z + i * 3 * z);
-      ctx.lineTo(sx - HEX * 0.1 * z + i * 6 * z, sy + HEX * 0.42 * z + i * 3 * z);
-      ctx.stroke();
-    }
-    ctx.restore();
+    trace();
   }
 
-  private drawMine(ctx: CanvasRenderingContext2D, sx: number, sy: number, z: number): void {
-    ctx.save();
-    const x = sx - HEX * 0.4 * z;
-    const y = sy + HEX * 0.4 * z;
-    ctx.fillStyle = '#3a2d22';
-    ctx.beginPath();
-    ctx.moveTo(x - 9 * z, y + 6 * z);
-    ctx.lineTo(x - 7 * z, y - 6 * z);
-    ctx.lineTo(x + 7 * z, y - 6 * z);
-    ctx.lineTo(x + 9 * z, y + 6 * z);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#120d08';
-    ctx.fillRect(x - 4 * z, y - 1 * z, 8 * z, 7 * z);
-    ctx.restore();
-  }
-
-  private drawCity(ctx: CanvasRenderingContext2D, v: GameView, c: ViewCity, z: number, st: RenderState): void {
+  private drawCity(ctx: CanvasRenderingContext2D, v: GameView, c: ViewCity, z: number): void {
     const wp = this.cam.worldOfTile(c.x, c.y);
     const s = this.cam.toScreen(wp.x, wp.y);
     const col = civColor(v, c.owner);
     const fogged = v.state[c.y * v.settings.width + c.x] === 1;
-    ctx.save();
-    if (fogged) ctx.globalAlpha = 0.8;
-    // platform
-    ctx.beginPath();
-    ctx.ellipse(s.x, s.y + HEX * 0.2 * z, HEX * 0.66 * z, HEX * 0.4 * z, 0, 0, Math.PI * 2);
-    ctx.fillStyle = hexA(col, 0.38);
-    ctx.fill();
-    ctx.strokeStyle = hexA(col, 0.95);
-    ctx.lineWidth = Math.max(1.5, 2.2 * z);
-    ctx.stroke();
-    // walls
-    if (c.mine && c.buildings?.includes('walls')) {
-      ctx.strokeStyle = '#c9c2b0';
-      ctx.lineWidth = Math.max(2, 3.4 * z);
-      ctx.setLineDash([5 * z, 2.5 * z]);
-      ctx.beginPath();
-      ctx.ellipse(s.x, s.y + HEX * 0.2 * z, HEX * 0.74 * z, HEX * 0.47 * z, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    // houses
-    const n = Math.min(7, 2 + Math.floor(c.pop / 2));
-    const spots = [[0, -4], [-13, 2], [13, 3], [-7, 11], [8, 12], [-20, 9], [21, 10]];
-    for (let i = n - 1; i >= 0; i--) {
-      const [hx, hy] = spots[i];
-      const x = s.x + hx * z * 0.9;
-      const y = s.y + hy * z * 0.9;
-      const big = i === 0;
-      const w = (big ? 15 : 10) * z;
-      const h = (big ? 13 : 9) * z;
-      ctx.fillStyle = '#e8dcc0';
-      ctx.fillRect(x - w / 2, y - h / 2, w, h);
-      ctx.fillStyle = hexA(col, 1);
-      ctx.beginPath();
-      ctx.moveTo(x - w / 2 - 1.5 * z, y - h / 2);
-      ctx.lineTo(x, y - h / 2 - (big ? 9 : 6) * z);
-      ctx.lineTo(x + w / 2 + 1.5 * z, y - h / 2);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = 'rgba(40,30,20,0.55)';
-      ctx.fillRect(x - 1.4 * z, y + h / 2 - 4.5 * z, 2.8 * z, 4.5 * z);
-    }
-    if (c.wonders.length) drawIcon(ctx, c.wonders[0], s.x + 25 * z, s.y - 12 * z, 17 * z, '#f2d98c', '#f2d98c', 1.9);
-    ctx.restore();
+    const walls = !!c.mine && !!c.buildings?.includes('walls');
+    const tier = Math.min(3, Math.floor(c.pop / 4));
+    const spr = citySprite(tier, walls, c.capital, col);
+    stamp(ctx, fogged ? dimmed(spr) : spr, s.x, s.y + 6 * z, z, 1.4);
+    if (c.wonders.length) drawIcon(ctx, c.wonders[0], s.x + 30 * z, s.y - 14 * z, 17 * z, '#f2d98c', '#f2d98c', 1.9);
+  }
 
-    // banner: pop shield, name, and what the city is building
+  /** City banner in the Civilization manner: population shield, name plate and the current build. */
+  private drawBanner(ctx: CanvasRenderingContext2D, v: GameView, c: ViewCity, z: number): void {
+    const wp = this.cam.worldOfTile(c.x, c.y);
+    const s = this.cam.toScreen(wp.x, wp.y);
+    const col = civColor(v, c.owner);
+    const fogged = v.state[c.y * v.settings.width + c.x] === 1;
     const fs = Math.max(11, Math.min(15, 12.5 * z + 1));
     ctx.font = `600 ${fs}px ${DISPLAY_FONT}`;
     const label = (c.capital ? '\u2605 ' : '') + c.name;
@@ -600,10 +714,12 @@ export class MapRenderer {
     const right = head ? bh : 8;
     const bw = left + tw + right + 8;
     const bx = s.x - bw / 2;
-    const by = s.y - HEX * 1.02 * z - bh / 2 + 8 * z;
+    const by = s.y + HEX * 0.5 * z + 6;
     ctx.save();
     if (fogged) ctx.globalAlpha = 0.85;
-    // body
+    ctx.shadowColor = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 2;
     ctx.beginPath();
     ctx.moveTo(bx + 6, by);
     ctx.lineTo(bx + bw - 6, by);
@@ -613,14 +729,14 @@ export class MapRenderer {
     ctx.lineTo(bx, by + bh / 2);
     ctx.closePath();
     const g = ctx.createLinearGradient(0, by, 0, by + bh);
-    g.addColorStop(0, 'rgba(24,31,43,0.96)');
-    g.addColorStop(1, 'rgba(8,11,17,0.96)');
+    g.addColorStop(0, 'rgba(30,38,52,0.97)');
+    g.addColorStop(1, 'rgba(9,12,19,0.97)');
     ctx.fillStyle = g;
     ctx.fill();
+    ctx.shadowColor = 'transparent';
     ctx.lineWidth = 1.6;
     ctx.strokeStyle = hexA(col, 1);
     ctx.stroke();
-    // population shield
     const pr = bh * 0.52;
     ctx.beginPath();
     ctx.arc(bx + pr + 1, by + bh / 2, pr, 0, Math.PI * 2);
@@ -631,17 +747,14 @@ export class MapRenderer {
     ctx.stroke();
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#0c1017';
+    ctx.fillStyle = lum(col) > 0.62 ? '#10151d' : '#ffffff';
     ctx.font = `700 ${fs}px ${DISPLAY_FONT}`;
     ctx.fillText(String(c.pop), bx + pr + 1, by + bh / 2 + 0.5);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#efe7d0';
     ctx.font = `600 ${fs}px ${DISPLAY_FONT}`;
     ctx.fillText(label, bx + left + 2, by + bh / 2 + 0.5);
-    if (head) {
-      drawIcon(ctx, head.id, bx + bw - bh * 0.62, by + bh / 2, bh * 0.62, '#e5974a', '#e5974a', 1.8);
-    }
-    // damage bar
+    if (head) drawIcon(ctx, head.id, bx + bw - bh * 0.62, by + bh / 2, bh * 0.62, '#e5974a', '#e5974a', 1.8);
     if (c.hp < c.maxHp && c.visible) {
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
       ctx.fillRect(bx + 4, by + bh + 2, bw - 8, 4);
@@ -649,10 +762,9 @@ export class MapRenderer {
       ctx.fillRect(bx + 4, by + bh + 2, (bw - 8) * Math.max(0, c.hp / c.maxHp), 4);
     }
     ctx.restore();
-    void st;
   }
 
-  /** Unit flag: a shield-shaped banner in the civilisation colour carrying the unit's glyph. */
+  /** A painted figure standing on a civilisation-coloured base, with health and status marks above it. */
   private drawUnit(ctx: CanvasRenderingContext2D, v: GameView, u: ViewUnit, tx: number, ty: number, z: number, st: RenderState, ghost = false): void {
     const def = UNITS[u.type];
     const wp = this.cam.worldOfTile(tx, ty);
@@ -660,60 +772,58 @@ export class MapRenderer {
     const col = civColor(v, u.owner);
     const civ = !!def.civilian;
     const onCity = v.cities.some((c) => c.x === Math.round(tx) && c.y === Math.round(ty));
-    const ox = (civ ? -14 : onCity ? 16 : 0) * z;
-    const oy = (civ ? 10 : onCity ? 12 : -4) * z;
-    const x = s.x + ox;
-    const y = s.y + oy;
+    const x = s.x + (civ ? -16 : onCity ? 26 : 0) * z;
+    const y = s.y + (civ ? 20 : onCity ? 14 : 16) * z;
     const mine = u.owner === v.me;
     const selected = st.selectedUnit?.id === u.id;
-    const k = Math.max(0.75, z) * (selected ? 1.1 : 1);
-    const w = 28 * k;
-    const h = 34 * k;
+    const k = Math.max(0.8, z) * 1.12 * (selected ? 1.06 : 1);
     ctx.save();
-    // drop shadow
+    // base disc in the owner's colour
+    const rx = 17 * k;
+    const ry = 6.6 * k;
     ctx.beginPath();
-    ctx.ellipse(x, y + h * 0.58, w * 0.5, h * 0.12, 0, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.ellipse(x, y + 1.5 * k, rx, ry, 0, 0, Math.PI * 2);
+    const bg = ctx.createRadialGradient(x - rx * 0.3, y, 1, x, y + 1.5 * k, rx);
+    bg.addColorStop(0, shade(col, 0.25));
+    bg.addColorStop(1, shade(col, -0.2));
+    ctx.fillStyle = bg;
     ctx.fill();
-    const flag = () => {
-      ctx.beginPath();
-      ctx.moveTo(x - w / 2, y - h / 2);
-      ctx.lineTo(x + w / 2, y - h / 2);
-      ctx.lineTo(x + w / 2, y + h * 0.14);
-      ctx.lineTo(x, y + h / 2);
-      ctx.lineTo(x - w / 2, y + h * 0.14);
-      ctx.closePath();
-    };
-    flag();
-    const g = ctx.createLinearGradient(x - w / 2, y - h / 2, x + w / 2, y + h / 2);
-    g.addColorStop(0, shade(col, 0.22));
-    g.addColorStop(0.55, col);
-    g.addColorStop(1, shade(col, -0.28));
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.lineWidth = Math.max(1.6, 2 * k);
-    ctx.strokeStyle = selected ? '#f2d98c' : 'rgba(5,8,13,0.85)';
+    ctx.lineWidth = selected ? 2.4 : 1.5;
+    ctx.strokeStyle = selected ? `rgba(255,222,120,${0.75 + 0.25 * Math.sin(st.now / 200)})` : 'rgba(8,10,16,0.85)';
     ctx.stroke();
-    // inner rule
-    ctx.save();
-    flag();
-    ctx.clip();
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-    ctx.strokeRect(x - w / 2 + 3 * k, y - h / 2 + 3 * k, w - 6 * k, h);
-    ctx.restore();
-    const ink = lum(col) > 0.62 ? '#161b26' : '#ffffff';
-    drawIcon(ctx, def.id, x, y - h * 0.06, 19 * k, ink, ink, 1.9);
-    // hit points
+    if (!ghost && mine && (u.mp ?? 0) > 0 && !u.order && !u.auto && !u.fortified && !u.skipped && !selected) {
+      ctx.strokeStyle = `rgba(255,255,255,${0.35 + 0.4 * Math.sin(st.now / 280)})`;
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+    }
+    // the figure
+    const spr = unitSprite(u.type, col);
+    stamp(ctx, spr, x, y, k, 1);
+    // a small banner on a pole so ownership reads at a glance
+    const top = y - 50 * k;
+    ctx.strokeStyle = 'rgba(20,16,12,0.9)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(x - 13 * k, y - 4 * k);
+    ctx.lineTo(x - 13 * k, y - 36 * k);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - 13 * k, y - 36 * k);
+    ctx.lineTo(x - 2 * k, y - 33 * k);
+    ctx.lineTo(x - 13 * k, y - 29 * k);
+    ctx.closePath();
+    ctx.fillStyle = col;
+    ctx.fill();
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
     if (u.hp < 100 && !ghost) {
-      const bw = w * 0.9;
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(x - bw / 2, y + h * 0.58 + 1, bw, 4);
+      const bw = 28 * k;
+      ctx.fillStyle = 'rgba(0,0,0,0.8)';
+      ctx.fillRect(x - bw / 2, top, bw, 5);
       ctx.fillStyle = u.hp > 60 ? '#82d48d' : u.hp > 30 ? '#e8c14a' : '#ec6c5d';
-      ctx.fillRect(x - bw / 2, y + h * 0.58 + 1, (bw * u.hp) / 100, 4);
+      ctx.fillRect(x - bw / 2 + 0.5, top + 0.5, ((bw - 1) * u.hp) / 100, 4);
     }
     if (!ghost && mine) {
-      // status chip
       let chip: string | null = null;
       if (u.auto === 'work') chip = 'auto';
       else if (u.auto === 'explore') chip = 'explore';
@@ -723,8 +833,8 @@ export class MapRenderer {
       else if (u.order?.kind === 'goto') chip = 'chevron';
       if (chip) {
         const r = 7.5 * Math.max(0.85, z);
-        const cx = x + w / 2 - 1;
-        const cy = y - h / 2 + 1;
+        const cx = x + 16 * k;
+        const cy = y - 38 * k;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fillStyle = '#0c1017';
@@ -734,17 +844,7 @@ export class MapRenderer {
         ctx.stroke();
         drawIcon(ctx, chip, cx, cy, r * 1.35, '#f2d98c', '#f2d98c', 2.1);
       }
-      if (u.level > 0) {
-        for (let i = 0; i < u.level; i++) drawIcon(ctx, 'star', x - w / 2 + 5 * k + i * 6 * k, y - h / 2 - 3 * k, 8 * k, '#ffe08a', '#ffe08a', 1.2);
-      }
-      if ((u.mp ?? 0) > 0 && !u.order && !u.auto && !u.fortified && !u.skipped && !selected) {
-        ctx.save();
-        flag();
-        ctx.strokeStyle = `rgba(255,255,255,${0.4 + 0.35 * Math.sin(st.now / 280)})`;
-        ctx.lineWidth = 2.6;
-        ctx.stroke();
-        ctx.restore();
-      }
+      for (let i = 0; i < u.level; i++) drawIcon(ctx, 'star', x - 10 * k + i * 7 * k, y - 43 * k, 8 * k, '#ffe08a', '#ffe08a', 1.2);
     }
     ctx.restore();
   }

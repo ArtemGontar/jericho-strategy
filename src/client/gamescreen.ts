@@ -44,7 +44,8 @@ export class GameScreen {
   attackTargets = new Set<number>();
   pending: Pos | null = null;
   showYields = false;
-  showGrid = true;
+  showGrid = false;
+  private lastAmbient = 0;
   busy = false;
   noteHistory: Array<{ id: number; turn: number; text: string; kind: string; at?: Pos }> = [];
   private lastNoteId = -1;
@@ -82,7 +83,7 @@ export class GameScreen {
     try {
       const prefs = JSON.parse(localStorage.getItem(SAVE_TOGGLES) ?? '{}') as { yields?: boolean; grid?: boolean };
       this.showYields = !!prefs.yields;
-      this.showGrid = prefs.grid !== false;
+      this.showGrid = prefs.grid === true;
     } catch { /* ignore */ }
     this.root = h('div', { class: 'game' });
     this.canvas = h('canvas', { class: 'map' });
@@ -318,7 +319,9 @@ export class GameScreen {
     }
     const animating = this.anim.update(now, sfx);
     const selected = this.selUnit || this.attackTargets.size > 0;
-    if (!this.dirty && !animating && !selected && !this.showAlways) return;
+    const ambient = now - this.lastAmbient > 48 && !document.hidden;
+    if (!this.dirty && !animating && !selected && !ambient) return;
+    if (ambient) this.lastAmbient = now;
     this.dirty = false;
     const city = this.openCity;
     const st: RenderState = {
@@ -340,7 +343,6 @@ export class GameScreen {
     this.renderer.draw(st);
     this.drawMinimap();
   }
-  private get showAlways(): boolean { return false; }
 
   private pathToDraw(): Array<Pos & { cost: number }> | null {
     return this.path;
