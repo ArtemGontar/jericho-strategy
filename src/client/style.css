@@ -159,6 +159,7 @@ input[type=range] { padding: 0; accent-color: var(--gold); border: 0; }
 .era b { display: block; color: var(--text); font-size: 15px; letter-spacing: 0.12em; }
 .rankings { display: flex; gap: 4px; align-items: center; margin: 0 12px; }
 .rank { position: relative; display: grid; justify-items: center; gap: 1px; cursor: pointer; padding: 3px 4px; }
+.emblem.portrait { border-style: solid; background-size: cover; background-position: center; background-color: #10151e; box-shadow: 0 0 0 1px rgba(6, 9, 14, 0.9), inset 0 0 0 1px rgba(0, 0, 0, 0.35); }
 .rank .emblem { width: 26px; height: 26px; font-size: 12px; }
 .rank small { font-size: 10px; font-weight: 700; color: var(--text2); line-height: 1; }
 .rank .tick { position: absolute; top: 0; right: 0; width: 11px; height: 11px; border-radius: 50%; background: var(--good); color: #0c1a10; display: grid; place-items: center; }

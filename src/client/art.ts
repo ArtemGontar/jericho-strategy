@@ -1368,3 +1368,413 @@ export function stamp(ctx: CanvasRenderingContext2D, s: Sprite, x: number, y: nu
   const f = (z * k) / ART_RES;
   ctx.drawImage(s.c, x - s.ax * f, y - s.ay * f, s.c.width * f, s.c.height * f);
 }
+
+// ---------------------------------------------------------------- leader portraits
+interface Look {
+  skin: [string, string, string];
+  hair: string;
+  beard: 'none' | 'short' | 'long' | 'curled';
+  robe: string;
+  trim: string;
+  head: 'wrap' | 'leaf' | 'nemes' | 'fillet' | 'laurel' | 'crown' | 'jade' | 'helm';
+  female?: boolean;
+  bg: string;
+}
+
+const LOOKS: Record<string, Look> = {
+  jericho: { skin: ['#d9a77a', '#b97f54', '#8a5a38'], hair: '#2a1d16', beard: 'short', robe: '#c9892a', trim: '#f0d58a', head: 'wrap', bg: '#e0a526' },
+  sumer: { skin: ['#e1b186', '#c18a5c', '#8e5f3c'], hair: '#1c1512', beard: 'none', robe: '#2f6fc0', trim: '#f2c94c', head: 'leaf', female: true, bg: '#3b8fe0' },
+  egypt: { skin: ['#d7a26f', '#b5784a', '#83532f'], hair: '#14110f', beard: 'none', robe: '#f1ead8', trim: '#d9a53a', head: 'nemes', female: true, bg: '#d9642e' },
+  indus: { skin: ['#c98d5c', '#a56a3c', '#744626'], hair: '#171210', beard: 'long', robe: '#d8d0bd', trim: '#46b36b', head: 'fillet', bg: '#46b36b' },
+  rome: { skin: ['#e6bb94', '#c79068', '#946446'], hair: '#3a2a1e', beard: 'none', robe: '#efe9dc', trim: '#8a1f3a', head: 'laurel', bg: '#b8323f' },
+  persia: { skin: ['#d8a678', '#b67e52', '#85583a'], hair: '#18120f', beard: 'curled', robe: '#6f3fa8', trim: '#f0c860', head: 'crown', bg: '#9d5bd6' },
+  maya: { skin: ['#c58a5a', '#a2693f', '#704425'], hair: '#0f0c0b', beard: 'none', robe: '#1e8c82', trim: '#e3c15a', head: 'jade', bg: '#1fa89b' },
+  greece: { skin: ['#e3b58b', '#c48b62', '#8f5e3f'], hair: '#7d7468', beard: 'short', robe: '#f3f1ea', trim: '#3d6fb0', head: 'helm', bg: '#8da0c8' },
+};
+
+const portraitCache = new Map<string, string>();
+/** A painted bust of a civilisation's leader, as a data URL (square, `px` pixels). */
+export function portraitUrl(civ: string, px = 192): string {
+  const key = `${civ}:${px}`;
+  const hit = portraitCache.get(key);
+  if (hit) return hit;
+  const L = LOOKS[civ] ?? LOOKS.jericho;
+  const { c, ctx } = canvas(px, px);
+  ctx.scale(px / 100, px / 100);
+  // backdrop
+  let g = ctx.createRadialGradient(50, 36, 6, 50, 50, 78);
+  g.addColorStop(0, shadeCss(L.bg, 0.35));
+  g.addColorStop(0.55, shadeCss(L.bg, -0.3));
+  g.addColorStop(1, shadeCss(L.bg, -0.78));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 100, 100);
+  // shoulders / garment
+  g = ctx.createLinearGradient(20, 70, 80, 100);
+  g.addColorStop(0, shadeCss(L.robe, 0.12));
+  g.addColorStop(1, shadeCss(L.robe, -0.35));
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(6, 102);
+  ctx.quadraticCurveTo(10, 74, 36, 70);
+  ctx.lineTo(64, 70);
+  ctx.quadraticCurveTo(90, 74, 94, 102);
+  ctx.closePath();
+  ctx.fill();
+  // collar trim
+  ctx.strokeStyle = L.trim;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(34, 71);
+  ctx.quadraticCurveTo(50, 90, 66, 71);
+  ctx.stroke();
+  ctx.fillStyle = L.trim;
+  for (let i = 0; i < 5; i++) {
+    const t = i / 4;
+    ctx.beginPath();
+    ctx.arc(37 + t * 26, 76 + Math.sin(t * Math.PI) * 9, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // neck
+  g = ctx.createLinearGradient(40, 0, 60, 0);
+  g.addColorStop(0, L.skin[1]);
+  g.addColorStop(1, L.skin[2]);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(41, 58);
+  ctx.lineTo(59, 58);
+  ctx.lineTo(61, 74);
+  ctx.quadraticCurveTo(50, 80, 39, 74);
+  ctx.closePath();
+  ctx.fill();
+  // hair behind head
+  if (L.female || L.head === 'nemes' || L.head === 'jade') {
+    ctx.fillStyle = L.hair;
+    ctx.beginPath();
+    ctx.moveTo(29, 36);
+    ctx.quadraticCurveTo(24, 70, 33, 78);
+    ctx.lineTo(67, 78);
+    ctx.quadraticCurveTo(76, 70, 71, 36);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // head
+  g = ctx.createRadialGradient(44, 38, 4, 50, 44, 28);
+  g.addColorStop(0, L.skin[0]);
+  g.addColorStop(0.6, L.skin[1]);
+  g.addColorStop(1, L.skin[2]);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(50, 22);
+  ctx.bezierCurveTo(67, 22, 69, 42, 63, 54);
+  ctx.quadraticCurveTo(57, 65, 50, 65);
+  ctx.quadraticCurveTo(43, 65, 37, 54);
+  ctx.bezierCurveTo(31, 42, 33, 22, 50, 22);
+  ctx.fill();
+  // ears
+  ctx.fillStyle = L.skin[1];
+  ctx.beginPath();
+  ctx.ellipse(32.5, 45, 2.6, 4.6, 0, 0, Math.PI * 2);
+  ctx.ellipse(67.5, 45, 2.6, 4.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // beard
+  if (L.beard !== 'none') {
+    ctx.fillStyle = L.head === 'helm' ? '#8d8579' : L.hair;
+    ctx.beginPath();
+    ctx.moveTo(35, 48);
+    ctx.quadraticCurveTo(36, 62, 42, 66);
+    const drop = L.beard === 'long' ? 82 : L.beard === 'curled' ? 76 : 70;
+    ctx.quadraticCurveTo(50, drop, 58, 66);
+    ctx.quadraticCurveTo(64, 62, 65, 48);
+    ctx.quadraticCurveTo(60, 56, 50, 57);
+    ctx.quadraticCurveTo(40, 56, 35, 48);
+    ctx.fill();
+    if (L.beard === 'curled') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 0.9;
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.arc(42 + i * 5, 68, 2.2, 0, Math.PI * 1.6);
+        ctx.stroke();
+      }
+    }
+  }
+  // face detail: brows, eyes, nose, mouth
+  const kohl = L.head === 'nemes' || L.female;
+  ctx.strokeStyle = L.hair;
+  ctx.lineWidth = 1.7;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(40, 38);
+  ctx.quadraticCurveTo(44, 36, 47.5, 38);
+  ctx.moveTo(52.5, 38);
+  ctx.quadraticCurveTo(56, 36, 60, 38);
+  ctx.stroke();
+  for (const ex of [43.8, 56.2]) {
+    ctx.fillStyle = '#f4efe6';
+    ctx.beginPath();
+    ctx.ellipse(ex, 42, 3.1, 1.9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2b1d14';
+    ctx.beginPath();
+    ctx.arc(ex, 42, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect(ex - 0.2, 41.2, 0.8, 0.8);
+    ctx.strokeStyle = kohl ? '#14100d' : 'rgba(40,25,15,0.55)';
+    ctx.lineWidth = kohl ? 1.3 : 0.9;
+    ctx.beginPath();
+    ctx.ellipse(ex, 42, 3.4, 2.1, 0, Math.PI, Math.PI * 2);
+    ctx.stroke();
+    if (kohl) {
+      ctx.beginPath();
+      ctx.moveTo(ex + (ex < 50 ? -3.2 : 3.2), 42);
+      ctx.lineTo(ex + (ex < 50 ? -6 : 6), 41);
+      ctx.stroke();
+    }
+  }
+  ctx.strokeStyle = 'rgba(70,40,20,0.5)';
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.moveTo(50, 42);
+  ctx.quadraticCurveTo(52.5, 49, 50.5, 51.5);
+  ctx.quadraticCurveTo(48.5, 52.6, 47.5, 51.4);
+  ctx.stroke();
+  ctx.strokeStyle = L.female ? '#9b3a3a' : 'rgba(90,40,30,0.8)';
+  ctx.lineWidth = L.female ? 2 : 1.4;
+  ctx.beginPath();
+  ctx.moveTo(45.5, 57.5);
+  ctx.quadraticCurveTo(50, 59.4, 54.5, 57.5);
+  ctx.stroke();
+  // headgear
+  const gold = (x0: number, y0: number, x1: number, y1: number) => {
+    const gg = ctx.createLinearGradient(x0, y0, x1, y1);
+    gg.addColorStop(0, '#fff0b0');
+    gg.addColorStop(0.5, '#e2b64a');
+    gg.addColorStop(1, '#8d6a1e');
+    return gg;
+  };
+  switch (L.head) {
+    case 'wrap':
+      ctx.fillStyle = '#e8dfc9';
+      ctx.beginPath();
+      ctx.moveTo(30, 36);
+      ctx.bezierCurveTo(30, 14, 70, 14, 70, 36);
+      ctx.quadraticCurveTo(50, 28, 30, 36);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(120,100,70,0.45)';
+      ctx.lineWidth = 0.8;
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.moveTo(32 + i * 1.5, 31 - i * 3.6);
+        ctx.quadraticCurveTo(50, 26 - i * 4, 68 - i * 1.5, 31 - i * 3.6);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#c9892a';
+      ctx.fillRect(30.5, 33, 39, 2.4);
+      break;
+    case 'leaf':
+      ctx.fillStyle = L.hair;
+      ctx.beginPath();
+      ctx.moveTo(31, 40);
+      ctx.bezierCurveTo(28, 12, 72, 12, 69, 40);
+      ctx.quadraticCurveTo(50, 28, 31, 40);
+      ctx.fill();
+      ctx.fillStyle = gold(30, 20, 70, 34);
+      for (let i = 0; i < 9; i++) {
+        const t = i / 8;
+        const px2 = 31 + t * 38;
+        const py2 = 31 - Math.sin(t * Math.PI) * 5;
+        ctx.save();
+        ctx.translate(px2, py2);
+        ctx.rotate((t - 0.5) * 1.2);
+        ctx.beginPath();
+        ctx.ellipse(0, -3.5, 1.8, 4.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.fillStyle = gold(34, 28, 66, 28);
+      ctx.fillRect(31, 33, 38, 2.3);
+      ctx.fillStyle = gold(0, 0, 8, 8);
+      ctx.beginPath();
+      ctx.arc(32.5, 52, 2.4, 0, Math.PI * 2);
+      ctx.arc(67.5, 52, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'nemes':
+      for (let i = 0; i < 9; i++) {
+        ctx.fillStyle = i % 2 ? '#d9a53a' : '#2f63b8';
+        ctx.beginPath();
+        ctx.moveTo(30 + i * 0.4, 36 + i * 4.6);
+        ctx.lineTo(30 + i * 0.4 + 6, 36 + i * 4.6);
+        ctx.lineTo(30 + i * 0.4 + 6, 41 + i * 4.6);
+        ctx.lineTo(30 + i * 0.4, 41 + i * 4.6);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(70 - i * 0.4, 36 + i * 4.6);
+        ctx.lineTo(70 - i * 0.4 - 6, 36 + i * 4.6);
+        ctx.lineTo(70 - i * 0.4 - 6, 41 + i * 4.6);
+        ctx.lineTo(70 - i * 0.4, 41 + i * 4.6);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#2f63b8';
+      ctx.beginPath();
+      ctx.moveTo(28, 40);
+      ctx.bezierCurveTo(26, 8, 74, 8, 72, 40);
+      ctx.lineTo(67, 38);
+      ctx.quadraticCurveTo(50, 22, 33, 38);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#d9a53a';
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.moveTo(30 + i * 2, 33 - i * 3);
+        ctx.quadraticCurveTo(50, 20 - i * 3, 70 - i * 2, 33 - i * 3);
+        ctx.stroke();
+      }
+      ctx.fillStyle = gold(46, 14, 54, 30);
+      ctx.beginPath();
+      ctx.moveTo(50, 17);
+      ctx.bezierCurveTo(46, 22, 52, 27, 50, 31);
+      ctx.bezierCurveTo(54, 27, 54, 21, 50, 17);
+      ctx.fill();
+      break;
+    case 'fillet':
+      ctx.fillStyle = L.hair;
+      ctx.beginPath();
+      ctx.moveTo(30, 40);
+      ctx.bezierCurveTo(26, 8, 74, 8, 70, 40);
+      ctx.quadraticCurveTo(50, 26, 30, 40);
+      ctx.fill();
+      ctx.fillStyle = gold(30, 30, 70, 34);
+      ctx.fillRect(30, 29, 40, 3);
+      ctx.fillStyle = '#46b36b';
+      ctx.beginPath();
+      ctx.arc(50, 30.5, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'laurel':
+      ctx.fillStyle = L.hair;
+      ctx.beginPath();
+      ctx.moveTo(30, 40);
+      ctx.bezierCurveTo(28, 14, 72, 14, 70, 40);
+      ctx.quadraticCurveTo(50, 26, 30, 40);
+      ctx.fill();
+      for (const sd of [-1, 1]) {
+        for (let i = 0; i < 7; i++) {
+          const t = i / 6;
+          const lx = 50 + sd * (8 + t * 17);
+          const ly = 27 + Math.pow(t, 1.4) * 14;
+          ctx.save();
+          ctx.translate(lx, ly);
+          ctx.rotate(sd * (0.9 - t * 0.9));
+          ctx.fillStyle = i % 2 ? '#6c9a3a' : '#8bb848';
+          ctx.beginPath();
+          ctx.ellipse(0, -2.4, 1.9, 4.6, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+      break;
+    case 'crown':
+      ctx.fillStyle = L.hair;
+      ctx.beginPath();
+      ctx.moveTo(30, 40);
+      ctx.bezierCurveTo(28, 18, 72, 18, 70, 40);
+      ctx.quadraticCurveTo(50, 30, 30, 40);
+      ctx.fill();
+      ctx.fillStyle = gold(32, 6, 68, 32);
+      ctx.beginPath();
+      ctx.moveTo(32, 32);
+      ctx.lineTo(31, 17);
+      ctx.lineTo(39, 24);
+      ctx.lineTo(44, 9);
+      ctx.lineTo(50, 21);
+      ctx.lineTo(56, 9);
+      ctx.lineTo(61, 24);
+      ctx.lineTo(69, 17);
+      ctx.lineTo(68, 32);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#b02a4a';
+      for (const jx of [38, 50, 62]) {
+        ctx.beginPath();
+        ctx.arc(jx, 28, 1.9, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    case 'jade':
+      ctx.fillStyle = '#26a37f';
+      ctx.beginPath();
+      ctx.moveTo(29, 38);
+      ctx.bezierCurveTo(26, 6, 74, 6, 71, 38);
+      ctx.lineTo(66, 34);
+      ctx.quadraticCurveTo(50, 22, 34, 34);
+      ctx.closePath();
+      ctx.fill();
+      for (let i = 0; i < 6; i++) {
+        const t = i / 5;
+        ctx.save();
+        ctx.translate(50, 14);
+        ctx.rotate((t - 0.5) * 1.8);
+        const fg = ctx.createLinearGradient(0, 0, 0, -22);
+        fg.addColorStop(0, '#1d8a5c');
+        fg.addColorStop(1, '#8ad87a');
+        ctx.fillStyle = fg;
+        ctx.beginPath();
+        ctx.ellipse(0, -10, 2.6, 11, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.fillStyle = gold(36, 20, 64, 34);
+      ctx.fillRect(31, 31, 38, 3);
+      ctx.fillStyle = '#7ee0b0';
+      ctx.beginPath();
+      ctx.arc(50, 25, 3.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#7ee0b0';
+      ctx.beginPath();
+      ctx.arc(32.5, 55, 2.6, 0, Math.PI * 2);
+      ctx.arc(67.5, 55, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'helm': {
+      ctx.fillStyle = L.hair;
+      ctx.beginPath();
+      ctx.moveTo(30, 40);
+      ctx.bezierCurveTo(28, 18, 72, 18, 70, 40);
+      ctx.quadraticCurveTo(50, 30, 30, 40);
+      ctx.fill();
+      const hg = ctx.createLinearGradient(30, 6, 70, 34);
+      hg.addColorStop(0, '#f0c97a');
+      hg.addColorStop(0.5, '#b8862e');
+      hg.addColorStop(1, '#6e4e16');
+      ctx.fillStyle = hg;
+      ctx.beginPath();
+      ctx.moveTo(29, 32);
+      ctx.bezierCurveTo(26, 4, 74, 4, 71, 32);
+      ctx.lineTo(66, 30);
+      ctx.quadraticCurveTo(50, 20, 34, 30);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#8b2a2a';
+      ctx.beginPath();
+      ctx.moveTo(44, 10);
+      ctx.quadraticCurveTo(50, -2, 56, 10);
+      ctx.quadraticCurveTo(58, 16, 50, 14);
+      ctx.quadraticCurveTo(42, 16, 44, 10);
+      ctx.fill();
+      break;
+    }
+  }
+  // soft lighting from the upper left
+  g = ctx.createLinearGradient(0, 0, 100, 100);
+  g.addColorStop(0, 'rgba(255,240,210,0.18)');
+  g.addColorStop(0.5, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.3)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 100, 100);
+  const url = c.toDataURL('image/png');
+  portraitCache.set(key, url);
+  return url;
+}

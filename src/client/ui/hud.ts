@@ -1,3 +1,4 @@
+import { portraitUrl } from '../art';
 import { CIV_BY_ID, ERA_NAMES, IMPROVEMENTS, POLICY_BY_ID, RESOURCES, TECH_BY_ID, TERRAIN, UNITS, policyCost } from '../../shared/data';
 import { RESOURCE_LIST, TERRAIN_LIST } from '../../shared/view';
 import type { WorkKind } from '../../shared/types';
@@ -11,8 +12,8 @@ const NS = 'http://www.w3.org/2000/svg';
 
 export function emblem(civId: string, size: number, label?: string): HTMLElement {
   const civ = CIV_BY_ID[civId];
-  const e = h('span', { class: 'emblem', style: { width: `${size}px`, height: `${size}px`, background: civ.color, fontSize: `${Math.round(size * 0.46)}px` } }, label ?? civ.name[0]);
-  return e;
+  void label;
+  return h('span', { class: 'emblem portrait', style: { width: `${size}px`, height: `${size}px`, borderColor: civ.color, borderWidth: size > 48 ? '3px' : '2px', backgroundImage: `url(${portraitUrl(civId, size > 48 ? 256 : 112)})` } });
 }
 
 /** A circular progress ring around a medallion face. */
