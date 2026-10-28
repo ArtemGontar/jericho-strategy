@@ -291,9 +291,9 @@ function slotRow(room: RoomInfo, s: RoomSlot, host: boolean, send: (m: Parameter
   const civ = s.civ ? CIV_BY_ID[s.civ] : null;
   const badge = civ ? emblem(civ.id, 30) : h('span', { class: 'emblem', style: { width: '30px', height: '30px', background: s.kind === 'open' || s.kind === 'closed' ? '#252e3b' : '#3a4556', color: '#8f9aab' } }, s.kind === 'open' ? '+' : s.kind === 'closed' ? '–' : '?');
   const nameEl = h('div', { class: 'name' },
-    h('b', null, s.kind === 'open' ? 'Open seat' : s.kind === 'closed' ? 'Closed' : s.name || 'Player'),
+    h('b', null, s.kind === 'open' ? 'Open seat' : s.kind === 'closed' ? 'Closed' : s.kind === 'ai' ? 'Computer' : s.name || 'Player'),
     s.kind === 'human' ? h('span', { class: 'muted', style: { marginLeft: '8px', fontSize: '12px' } }, `${s.host ? 'host · ' : ''}${me ? 'you' : s.connected ? 'online' : 'away'}`) : null,
-    s.kind === 'ai' ? h('span', { class: 'muted', style: { marginLeft: '8px', fontSize: '12px' } }, 'computer') : null);
+    null);
   const civSelect = h('select', { disabled: !(me || (host && s.kind === 'ai')), title: 'Civilisation' },
     h('option', { value: '' }, 'Random'),
     ...CIVS.map((c) => h('option', { value: c.id, selected: s.civ === c.id, disabled: room.slots.some((o) => o.slot !== s.slot && o.civ === c.id && (o.kind === 'human' || o.kind === 'ai')) }, c.name)));

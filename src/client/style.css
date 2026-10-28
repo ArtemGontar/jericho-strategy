@@ -370,3 +370,10 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; padding: 0 6px; f
   .diplo .detail { padding: 16px; }
 }
 @media (min-width: 821px) { .game.city-open .medallions { opacity: 0; pointer-events: none; } .game.city-open .topbar .pad-medals { width: 0; } .game.city-open .mapdock { left: 400px; } .game.city-open .tileinfo { left: 400px; } .game.city-open .unitbar { left: calc(50% + 195px); } }
+
+.erabanner { position: absolute; left: 0; right: 0; top: 28%; z-index: 15; display: grid; justify-items: center; gap: 6px; pointer-events: none; padding: 26px 0;
+  background: linear-gradient(90deg, transparent, rgba(6, 9, 14, 0.88) 22%, rgba(6, 9, 14, 0.88) 78%, transparent); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); animation: eraIn 4.2s ease both; }
+.erabanner small { font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold); }
+.erabanner b { font-family: var(--display); font-size: clamp(30px, 6vw, 56px); letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold-hi); font-weight: 600; }
+@keyframes eraIn { 0% { opacity: 0; transform: scaleY(0.6); } 12% { opacity: 1; transform: none; } 82% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .erabanner, .note, .medal.alert .disc .face { animation: none; } }

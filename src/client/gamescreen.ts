@@ -12,7 +12,8 @@ import { sfx, isMuted, setMuted } from './audio';
 import { askConfirm, btn, clear, h, put } from './ui/dom';
 import type { GameTransport } from './transport';
 import { renderCityPanel } from './ui/citypanel';
-import { renderLenses, renderMedallions, renderTileInfo, renderTopbar, renderTurnControl, renderUnitBar, pushNote } from './ui/hud';
+import { currentEra, renderLenses, renderMedallions, renderTileInfo, renderTopbar, renderTurnControl, renderUnitBar, pushNote } from './ui/hud';
+import { ERA_NAMES } from '../shared/data';
 import { showCities, showDiplomacy, showHelp, showLog, showMenu, showPolicies, showTechTree, showVictory } from './ui/screens';
 
 export interface GameScreenOptions {
@@ -48,6 +49,7 @@ export class GameScreen {
   noteHistory: Array<{ id: number; turn: number; text: string; kind: string; at?: Pos }> = [];
   private lastNoteId = -1;
   private lastTurn = 0;
+  private lastEra = -1;
   private firstView = true;
   private raf = 0;
   private dirty = true;
@@ -194,6 +196,10 @@ export class GameScreen {
     }
     this.lastNoteId = Math.max(this.lastNoteId, maxId);
 
+    // a new era dawns
+    const era = currentEra(v.techs);
+    if (this.lastEra >= 0 && era > this.lastEra) this.showEraBanner(era);
+    this.lastEra = era;
     // selection upkeep
     if (this.selUnitId !== null && !this.selUnit) this.selUnitId = null;
     if (this.openCityId !== null && !this.openCity) this.closeCity();
@@ -1004,6 +1010,13 @@ export class GameScreen {
         b.scrollLeft = scrollers[i][1];
       }
     });
+  }
+
+  private showEraBanner(era: number): void {
+    sfx('wonder');
+    const b = h('div', { class: 'erabanner' }, h('small', null, 'A new age begins'), h('b', null, `${ERA_NAMES[era]} Era`));
+    this.root.append(b);
+    setTimeout(() => b.remove(), 4200);
   }
 
   showCurtain(name: string, done: () => void): void {

@@ -2,7 +2,9 @@
 
 A Civilization-style turn-based strategy game that runs in your browser — play solo against computer rivals, share one screen in **hot-seat**, or **play online with friends** (up to 8 players, any mix of humans and AI).
 
-Found cities, work the land, research 22 technologies across four eras, race for wonders, make and break treaties, and conquer your neighbours — or out-research them to win by Enlightenment.
+Found cities, work the land, research 22 technologies across four eras, adopt policies, race for wonders, explore tribal villages, make and break treaties, and conquer your neighbours — or out-research them to win by Enlightenment.
+
+The interface follows the classic strategy-table look: a hanging research and culture medallion pair, a round *Next Turn* button that always shows what needs you next, unit flags on the map, a city drawer with pinnable tiles, a full tech tree with prerequisite lines, and a master/detail diplomacy screen. It is drawn with one small hand-made icon set (`src/client/icons.ts`) and a flat, hairline-separated visual language — no emoji, no nested cards.
 
 > The original Unity prototype is archived in [`legacy/`](legacy/README_unity_ru.md). This web version is a ground-up rewrite built around a small, deterministic, fully tested game engine.
 
@@ -38,8 +40,9 @@ Room state (the whole game) is saved on the server after every turn, so a restar
 3. **Pick research** (`T`). Technologies unlock units, buildings, wonders and tile improvements.
 4. **Explore and expand.** Cities must be 3 tiles apart. Workers build farms, mines and roads (or set them to **Auto**). Scouts can auto-explore (`A`).
 5. **Meet the neighbours.** By default civilisations start at *peace* (armies cannot enter each other's borders). You can only attack civilisations you are at war with: declare war from **Diplomacy** (`D`) once a treaty has held for 10 turns. The *Start at war* option makes everyone hostile on contact.
-6. **Fight.** Click an enemy to attack — hover first to preview the damage. Ranged units (archers, catapults, crossbowmen, cannons) shoot two tiles away without retaliation. Reduce a city to 0 HP and walk a melee unit in to capture it; capturing a lone worker or settler takes it prisoner.
-7. **Win** by being the last civilisation standing, by discovering **Enlightenment** first (science), or by holding the highest score when the turn limit ends.
+6. **Grow your people.** Culture fills the ring beside the research medallion; every time it completes you choose one of three **policies** (lasting bonuses). Click tiles in the city drawer to **pin** citizens where you want them. Walk onto **tribal villages** for rewards.
+7. **Fight.** Click an enemy to attack — hover first to preview the damage. Ranged units (archers, catapults, crossbowmen, cannons) shoot two tiles away without retaliation. Fighting earns experience and promotions; outdated units can be **upgraded** for gold inside your borders. Reduce a city to 0 HP and walk a melee unit in to capture it; capturing a lone worker or settler takes it prisoner.
+8. **Win** by being the last civilisation standing, by discovering **Enlightenment** first (science), or by holding the highest score when the turn limit ends.
 
 ### Controls
 
@@ -51,7 +54,7 @@ Room state (the whole game) is saved on the server after every turn, so a restar
 | `Enter` | Do the next thing (choose production → research → next unit → end turn) |
 | `N` · `Space` | Next unit · skip this unit |
 | `B` `F` `Z` `A` | Found city · fortify · sleep · auto-work / auto-explore |
-| `C` `T` `D` `L` | Capital/city panel · technology · diplomacy · city list |
+| `C` `T` `D` `L` | Capital/city panel · technology tree · diplomacy · city list |
 | `Y` `G` `M` `/` | Tile yields · grid · mute · chat (online) |
 | `Esc` | Close panel / deselect / menu |
 
@@ -67,7 +70,7 @@ src/shared/   Pure TypeScript game engine – no DOM, no Node APIs, deterministi
   view.ts       per-player fog-of-war snapshot sent to clients
   data.ts       every rule number: terrain, units, buildings, wonders, techs, civilisations
 src/server/   Node + ws: static files, rooms, lobby, authoritative game, per-player views, turn timer, persistence
-src/client/   Canvas hex renderer, animations, HUD and screens (vanilla TypeScript, no framework)
+src/client/   Canvas hex renderer, animations, icon set, HUD and screens (vanilla TypeScript, no framework)
 tests/        Vitest: engine rules, determinism, full AI games, multiplayer server integration
 scripts/      simulate.ts (AI-vs-AI games) · fuzz.ts (stability) · idle.ts (AI aggression) · e2e.ts (browser tests)
 legacy/       The archived Unity prototype and its design documents

@@ -196,6 +196,37 @@ export class MapRenderer {
       }
     }
 
+    // shorelines: a soft foam line on every land edge that touches water
+    for (let y = minRow; y <= maxRow; y++) {
+      for (let x = minCol; x <= maxCol; x++) {
+        const i = y * W + x;
+        if (v.state[i] === 0) continue;
+        const terr = TERRAIN_LIST[v.terrain[i]];
+        if (TERRAIN[terr].land) continue;
+        const wp = cam.worldOfTile(x, y);
+        const sp = cam.toScreen(wp.x, wp.y);
+        const nbs = y & 1 ? EDGE_NEIGHBOR_ODD : EDGE_NEIGHBOR_EVEN;
+        for (let e = 0; e < 6; e++) {
+          const nx = x + nbs[e][0];
+          const ny = y + nbs[e][1];
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const ni = ny * W + nx;
+          if (v.state[ni] === 0 || !TERRAIN[TERRAIN_LIST[v.terrain[ni]]].land) continue;
+          const [ax, ay] = corner(sp.x, sp.y, HEX * z * 0.985, e);
+          const [bx, by] = corner(sp.x, sp.y, HEX * z * 0.985, e + 1);
+          ctx.strokeStyle = 'rgba(214,238,248,0.55)';
+          ctx.lineWidth = Math.max(1.5, 3 * z);
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+          ctx.stroke();
+          ctx.strokeStyle = 'rgba(214,238,248,0.22)';
+          ctx.lineWidth = Math.max(3, 7 * z);
+          ctx.stroke();
+        }
+      }
+    }
+
     // 3. grid
     if (st.showGrid && z > 0.5) {
       ctx.strokeStyle = 'rgba(0,0,0,0.13)';
