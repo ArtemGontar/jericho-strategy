@@ -246,7 +246,10 @@ wss.on('connection', (ws) => {
   };
 
   ws.on('message', (raw) => {
-    if (--budget < 0) return;
+    if (--budget < 0) {
+      err('Slow down a little — too many actions at once.');
+      return;
+    }
     let msg: ClientMsg;
     try {
       msg = JSON.parse(raw.toString()) as ClientMsg;
@@ -264,6 +267,7 @@ wss.on('connection', (ws) => {
   function handle(msg: ClientMsg): void {
     if (msg.t === 'ping') return void ws.send(JSON.stringify({ t: 'pong' } satisfies ServerMsg));
     if (msg.t === 'create') {
+      if (rooms.size >= 300) return err('The server is full right now. Try again in a few minutes.');
       const r = new Room(newCode());
       rooms.set(r.code, r);
       const m: Member = { slot: 0, token: randomBytes(12).toString('hex'), ws: null };
