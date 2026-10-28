@@ -30,6 +30,8 @@ export interface Tile {
   explored: number;
   /** bitmask of players who can see this tile right now */
   visible: number;
+  /** tribal village waiting to be explored */
+  hut: boolean;
   /** in-progress worker project */
   work: { kind: WorkKind; progress: number } | null;
 }
@@ -50,6 +52,7 @@ export interface Unit {
   /** movement points left this turn (2 per full tile of flat ground) */
   mp: number;
   level: number;
+  xp: number;
   order: UnitOrder | null;
   /** standing automation: workers improve land, military units explore */
   auto: 'work' | 'explore' | null;
@@ -86,6 +89,8 @@ export interface City {
   radius: number;
   /** tile indices currently worked */
   worked: number[];
+  /** tiles the player pinned for citizens to work */
+  locked: number[];
   lastAttacked: number;
   /** has this city already bombarded this turn */
   shot: boolean;
@@ -108,6 +113,10 @@ export interface Player {
   research: number;
   techs: TechId[];
   culture: number;
+  /** adopted policy ids */
+  policies: string[];
+  /** policies on offer right now (empty when none is pending) */
+  policyChoices: string[];
   endedTurn: boolean;
   /** whether the account behind this slot is connected (online games) */
   connected: boolean;

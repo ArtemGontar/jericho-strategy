@@ -4,7 +4,7 @@ import type { ClientMsg, RoomInfo } from '../shared/protocol';
 import { GameScreen } from './gamescreen';
 import { LocalTransport, RemoteTransport, hasSavedGame, loadSavedGame } from './transport';
 import { clear, h } from './ui/dom';
-import { showHelp } from './ui/modals';
+import { showHelp } from './ui/screens';
 import { lobbyScreen, onlineEntryScreen, savedName, setupScreen, titleScreen, type SoloConfig } from './ui/menus';
 
 const app = document.getElementById('app')!;
@@ -72,7 +72,7 @@ function showTitle(): void {
     onHelp: () => {
       // lightweight help without a running game
       const fake = { view: { settings: { turnLimit: 200 } }, closeModal: () => back.remove() } as unknown as GameScreen;
-      const back = h('div', { class: 'modal-back', on: { click: (e) => { if (e.target === back) back.remove(); } } }, showHelp(fake));
+      const back = h('div', { class: 'overlay', style: { position: 'fixed' }, on: { click: (e) => { if (e.target === back) back.remove(); } } }, showHelp(fake));
       app.append(back);
     },
   }));

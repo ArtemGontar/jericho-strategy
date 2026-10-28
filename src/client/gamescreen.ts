@@ -1,18 +1,19 @@
 import { hexDistance, type Pos } from '../shared/hex';
 import type { GameEvent, Command } from '../shared/game';
-import { BUILDINGS, CIV_BY_ID, IMPROVEMENTS, TECH_BY_ID, TERRAIN, UNITS, RESOURCES } from '../shared/data';
-import { RESOURCE_LIST, TERRAIN_LIST, type GameView, type ViewCity, type ViewUnit } from '../shared/view';
+import { IMPROVEMENTS, TECH_BY_ID, TERRAIN, UNITS } from '../shared/data';
+import { TERRAIN_LIST, type GameView, type ViewCity, type ViewUnit } from '../shared/view';
 import { ViewMap } from '../shared/viewpath';
 import type { AttackPreview } from '../shared/combat';
 import type { WorkKind } from '../shared/types';
 import { Animator } from './anim';
-import { Camera, MapRenderer, civColor, tileYieldFromView, type RenderState } from './render';
+import { Camera, MapRenderer, civColor, type RenderState } from './render';
 import { HEX, HEX_W } from './sprites';
 import { sfx, isMuted, setMuted } from './audio';
-import { askConfirm, btn, clear, fmtSigned, h, put } from './ui/dom';
+import { askConfirm, btn, clear, h, put } from './ui/dom';
 import type { GameTransport } from './transport';
 import { renderCityPanel } from './ui/citypanel';
-import { showHelp, showMenu, showTechTree, showDiplomacy, showVictory, showCities, showLog } from './ui/modals';
+import { renderLenses, renderMedallions, renderTileInfo, renderTopbar, renderTurnControl, renderUnitBar, pushNote } from './ui/hud';
+import { showCities, showDiplomacy, showHelp, showLog, showMenu, showPolicies, showTechTree, showVictory } from './ui/screens';
 
 export interface GameScreenOptions {
   /** called when the user leaves to the main menu */
@@ -53,10 +54,13 @@ export class GameScreen {
   private modal: HTMLElement | null = null;
   private modalKind = '';
   private topbar: HTMLElement;
-  private bottomLeft: HTMLElement;
-  private endturn: HTMLElement;
-  private toasts: HTMLElement;
-  private sidepanel: HTMLElement;
+  private medallions: HTMLElement;
+  private unitbar: HTMLElement;
+  private turncontrol: HTMLElement;
+  private notes: HTMLElement;
+  private lenses: HTMLElement;
+  private tileinfo: HTMLElement;
+  private drawer: HTMLElement;
   private tooltip: HTMLElement;
   private connBanner: HTMLElement;
   private thinking: HTMLElement | null = null;
@@ -82,13 +86,19 @@ export class GameScreen {
     this.canvas = h('canvas', { class: 'map' });
     this.mini = h('canvas', { class: 'minimap' });
     this.topbar = h('div', { class: 'topbar' });
-    this.bottomLeft = h('div', { class: 'bottom-left' });
-    this.endturn = h('div', { class: 'bottom-right' });
-    this.toasts = h('div', { class: 'toasts' });
-    this.sidepanel = h('div', { class: 'sidepanel hidden' });
+    this.medallions = h('div', { class: 'medallions' });
+    this.unitbar = h('div', { class: 'unitbar hidden' });
+    this.turncontrol = h('div', { class: 'turncontrol' });
+    this.notes = h('div', { class: 'notes' });
+    this.lenses = h('div', { class: 'lenses' });
+    this.tileinfo = h('div', { class: 'tileinfo' });
+    this.drawer = h('div', { class: 'drawer hidden' });
     this.tooltip = h('div', { class: 'tooltip hidden' });
     this.connBanner = h('div', { class: 'conn hidden' }, 'Reconnecting…');
-    this.root.append(this.canvas, this.topbar, this.toasts, this.bottomLeft, this.endturn, this.sidepanel, this.tooltip, this.connBanner);
+    this.root.append(
+      this.canvas, this.topbar, this.medallions, this.notes, this.tileinfo,
+      h('div', { class: 'mapdock' }, h('div', { class: 'minimap-wrap' }, this.mini), this.lenses),
+      this.unitbar, this.turncontrol, this.drawer, this.tooltip, this.connBanner);
     parent.append(this.root);
     this.renderer = new MapRenderer(this.canvas, this.cam, this.anim);
 
@@ -145,11 +155,7 @@ export class GameScreen {
 
   toast(text: string, kind = 'info', at?: Pos): void {
     if (!text) return;
-    const t = h('div', { class: `toast ${kind}` }, text);
-    if (at) t.addEventListener('click', () => this.focus(at.x, at.y));
-    this.toasts.append(t);
-    while (this.toasts.children.length > 6) this.toasts.firstChild?.remove();
-    setTimeout(() => t.remove(), kind === 'war' || kind === 'wonder' ? 9000 : 6000);
+    pushNote(this, this.notes, text, kind, at);
   }
 
   focus(x: number, y: number, smooth = true): void {
@@ -220,9 +226,9 @@ export class GameScreen {
     if (v.over && !this.overShown) {
       this.overShown = true;
       sfx(v.winner === v.me ? 'victory' : 'defeat');
-      setTimeout(() => this.openModal('victory', showVictory(this)), 1400);
+      setTimeout(() => this.openModal('victory'), 1400);
     }
-    if (this.modalKind && this.modalKind !== 'victory' && this.modalKind !== 'curtain') this.rerenderModal();
+    if (this.modalKind && this.modalKind !== 'victory') this.rerenderModal();
     this.dirty = true;
   }
 
@@ -322,6 +328,7 @@ export class GameScreen {
       showYields: this.showYields || !!city,
       showGrid: this.showGrid,
       workedTiles: city?.worked ? new Set(city.worked) : null,
+      lockedTiles: city?.locked ? new Set(city.locked) : null,
       now,
     };
     this.renderer.draw(st);
@@ -597,6 +604,19 @@ export class GameScreen {
     }
     const W = this.view.settings.width;
     const key = t.y * W + t.x;
+    // with a city open, clicking one of its tiles pins or releases a citizen
+    const openCity = this.openCity;
+    if (openCity && mode !== 'right') {
+      const other = this.view.cities.find((c) => c.mine && c.id !== openCity.id && c.x === t.x && c.y === t.y);
+      if (other) {
+        this.openCityPanel(other.id);
+        return;
+      }
+      if (!(t.x === openCity.x && t.y === openCity.y)) {
+        void this.cmd({ t: 'tile', city: openCity.id, x: t.x, y: t.y });
+        return;
+      }
+    }
     const own = this.myUnits().filter((u) => u.x === t.x && u.y === t.y);
     const city = this.view.cities.find((c) => c.x === t.x && c.y === t.y);
     const sel = this.selUnit;
@@ -707,7 +727,7 @@ export class GameScreen {
         if (this.modal) this.closeModal();
         else if (this.openCityId !== null) this.closeCity();
         else if (this.selUnitId !== null) this.selectUnit(null);
-        else this.openModal('menu', showMenu(this));
+        else this.openModal('menu');
         break;
       case 'enter': this.primaryAction(); break;
       case ' ':
@@ -725,9 +745,9 @@ export class GameScreen {
       case 'a': if (u) this.autoUnit(u); break;
       case 'b': if (u && u.type === 'settler') this.foundCity(u); break;
       case 'delete': if (u) this.disband(u); break;
-      case 't': this.openModal('tech', showTechTree(this)); break;
-      case 'd': this.openModal('diplo', showDiplomacy(this)); break;
-      case 'l': this.openModal('cities', showCities(this)); break;
+      case 't': this.openModal('tech'); break;
+      case 'd': this.openDiplomacy(); break;
+      case 'l': this.openModal('cities'); break;
       case '/': e.preventDefault(); if (this.opts.sendChat) this.toggleChat(); break;
       case 'c': {
         const c = this.openCity ?? this.view.cities.find((cc) => cc.mine && cc.capital) ?? this.myCities()[0];
@@ -736,8 +756,8 @@ export class GameScreen {
       }
       case 'y': this.togglePref('yields'); break;
       case 'g': this.togglePref('grid'); break;
-      case 'm': setMuted(!isMuted()); this.toast(isMuted() ? 'Sound off' : 'Sound on'); break;
-      case 'h': case '?': this.openModal('help', showHelp(this)); break;
+      case 'm': setMuted(!isMuted()); this.toast(isMuted() ? 'Sound off' : 'Sound on'); this.refreshUI(); break;
+      case 'h': case '?': this.openModal('help'); break;
       case 'arrowleft': this.cam.x -= pan; this.cam.clamp(); this.dirty = true; break;
       case 'arrowright': this.cam.x += pan; this.cam.clamp(); this.dirty = true; break;
       case 'arrowup': this.cam.y -= pan; this.cam.clamp(); this.dirty = true; break;
@@ -811,28 +831,56 @@ export class GameScreen {
     this.afterUnitAction();
   }
 
-  // ------------------------------------------------------------------ turn flow
-  /** What the big button currently does. */
-  primaryState(): { label: string; sub?: string; kind: 'city' | 'research' | 'unit' | 'end' | 'wait'; action: () => void } {
+  // ------------------------------------------------------------------ UI composition
+  refreshUI(): void {
+    if (!this.view) return;
+    renderTopbar(this, this.topbar);
+    renderMedallions(this, this.medallions);
+    renderUnitBar(this, this.unitbar);
+    renderTurnControl(this, this.turncontrol);
+    renderLenses(this, this.lenses);
+    this.refreshTileInfo();
+    this.renderSide();
+  }
+
+  updateTimerLabel(): void {
+    const el = this.root.querySelector('#timerlabel');
+    if (!el) return;
+    if (!this.timerEnd) {
+      el.textContent = '--';
+      return;
+    }
+    const s = Math.max(0, Math.ceil((this.timerEnd - performance.now()) / 1000));
+    el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  private refreshTileInfo(): void {
+    if (!this.view) return;
+    renderTileInfo(this, this.tileinfo, this.hover);
+  }
+
+  /** What the big round button currently does. */
+  primaryState(): { label: string; sub?: string; kind: 'city' | 'research' | 'policy' | 'unit' | 'end' | 'wait'; action: () => void } {
     const v = this.view;
     const me = v.players[v.me];
     if (!me.alive && !v.over) return { label: 'Spectating', sub: 'You were eliminated', kind: 'wait', action: () => {} };
-    if (v.over) return { label: 'Game over', kind: 'wait', action: () => this.openModal('victory', showVictory(this)) };
+    if (v.over) return { label: 'Game over', kind: 'wait', action: () => this.openModal('victory') };
     if (me.endedTurn) {
       const waiting = v.players.filter((p) => p.alive && !p.ai && !p.endedTurn).map((p) => p.name);
       return {
-        label: this.transport.kind === 'local' ? 'Resolving…' : `Waiting for ${waiting.length ? waiting.join(', ') : 'others'}…`,
+        label: this.transport.kind === 'local' ? 'Resolving…' : `Waiting for ${waiting.length ? waiting.join(', ') : 'others'}`,
         sub: 'Click to take back your end of turn',
         kind: 'wait',
         action: () => void this.cmd({ t: 'unend' }),
       };
     }
     const idleCity = this.myCities().find((c) => this.cityNeedsProduction(c));
-    if (idleCity) return { label: `Choose production`, sub: idleCity.name, kind: 'city', action: () => { this.focus(idleCity.x, idleCity.y); this.openCityPanel(idleCity.id); } };
-    if (!v.researching && v.availableTechs.length) return { label: 'Choose research', kind: 'research', action: () => this.openModal('tech', showTechTree(this)) };
+    if (idleCity) return { label: 'Choose production', sub: idleCity.name, kind: 'city', action: () => { this.focus(idleCity.x, idleCity.y); this.openCityPanel(idleCity.id); } };
+    if (!v.researching && v.availableTechs.length) return { label: 'Choose research', kind: 'research', action: () => this.openModal('tech') };
+    if (v.policyChoices.length) return { label: 'Choose policy', kind: 'policy', action: () => this.openModal('policies') };
     const next = this.nextUnitNeedingOrders(this.selUnitId);
     if (next) return { label: 'Next unit', sub: `${this.myUnits().filter((u) => this.needsOrders(u)).length} waiting`, kind: 'unit', action: () => this.selectUnit(next.id, true) };
-    return { label: 'End turn', kind: 'end', action: () => void this.endTurn() };
+    return { label: 'Next turn', kind: 'end', action: () => void this.endTurn() };
   }
 
   primaryAction(): void {
@@ -843,8 +891,9 @@ export class GameScreen {
   async endTurn(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
+    this.refreshUI();
     const delay = setTimeout(() => {
-      this.thinking = h('div', { class: 'thinking' }, h('span', null, 'The other civilisations are taking their turns…'));
+      this.thinking = h('div', { class: 'thinking' }, h('span', null, 'The world takes its turn'));
       this.root.append(this.thinking);
     }, 350);
     try {
@@ -859,202 +908,20 @@ export class GameScreen {
     }
   }
 
-  // ------------------------------------------------------------------ UI composition
-  refreshUI(): void {
-    if (!this.view) return;
-    this.renderTopbar();
-    this.renderBottomLeft();
-    this.renderEndTurn();
-    this.renderSide();
-  }
-
-  private renderTopbar(): void {
-    const v = this.view;
-    const t = this.topbar;
-    clear(t);
-    const me = v.players[v.me];
-    const civ = CIV_BY_ID[me.civ];
-    const researching = v.researching ? TECH_BY_ID[v.researching] : null;
-    const perTurn = v.income.science;
-    const pct = researching && v.researchCost ? Math.min(100, (v.research / v.researchCost) * 100) : 0;
-    t.append(
-      btn('☰', () => this.openModal('menu', showMenu(this)), 'ghost', 'Menu (Esc)'),
-      h('div', { class: 'stat', title: civ.bonus }, h('span', { class: 'dot', style: { background: civ.color } }), h('div', null, civ.name, h('small', null, `Turn ${v.turn} / ${v.settings.turnLimit}`))),
-      h('div', { class: 'stat', title: 'Gold in the treasury (and per turn)' }, h('span', { class: 'ico' }, '🪙'), h('div', null, `${v.gold}`, h('small', { class: v.income.gold >= 0 ? 'pos' : 'neg' }, `${fmtSigned(v.income.gold)} / turn`))),
-      h('div', { class: 'stat click', title: 'Open the technology tree (T)', on: { click: () => this.openModal('tech', showTechTree(this)) } },
-        h('span', { class: 'ico' }, '🔬'),
-        h('div', null,
-          researching ? researching.name : h('span', { class: 'neg' }, 'Choose research!'),
-          h('small', null, researching ? `+${perTurn} / turn · ${perTurn > 0 ? Math.ceil((v.researchCost - v.research) / perTurn) : '∞'} turns` : `+${perTurn} science / turn`),
-          researching ? h('div', { class: 'bar' }, h('i', { style: { width: `${pct}%` } })) : null,
-        )),
-      h('div', { class: 'stat', title: 'Culture counts toward your score' }, h('span', { class: 'ico' }, '🎭'), h('div', null, `${v.culture}`, h('small', null, `+${v.income.culture} / turn`))),
-    );
-    if (v.settings.turnTimer > 0) t.append(h('div', { class: 'stat', id: 'timer', title: 'Time left in this turn' }, h('span', { class: 'ico' }, '⏱'), h('div', { id: 'timerlabel' }, '--')));
-    // scoreboard
-    const sb = h('div', { class: 'scoreboard' });
-    for (const p of v.players) {
-      const col = CIV_BY_ID[p.civ].color;
-      const rel = p.id === v.me ? '' : p.relation === 'war' ? '⚔' : p.relation === 'peace' ? '🕊' : '?';
-      sb.append(
-        h('div', { class: `sb-item ${p.alive ? '' : 'dead'}`, title: `${p.name} — ${CIV_BY_ID[p.civ].name}\nScore ${p.score} · ${p.cityCount} cities · ${p.techCount} techs`, on: { click: () => this.openModal('diplo', showDiplomacy(this)) } },
-          h('span', { class: 'dot', style: { background: col } }), p.name.length > 11 ? p.name.slice(0, 10) + '…' : p.name,
-          h('b', null, p.score), rel ? h('span', { class: 'rel' }, rel) : null,
-          !p.ai ? h('span', { class: p.endedTurn ? 'ready' : 'muted', title: p.endedTurn ? 'Ready' : 'Still playing' }, p.endedTurn ? '✔' : p.connected ? '…' : '⚠') : null,
-        ),
-      );
-    }
-    t.append(sb);
-    put(t,
-      this.opts.sendChat ? btn('💬', () => this.toggleChat(), 'ghost', 'Chat (/)') : null,
-      btn('🏙', () => this.openModal('cities', showCities(this)), 'ghost', 'Your cities (L)'),
-      btn('📜', () => this.openModal('log', showLog(this)), 'ghost', 'Message log'),
-      btn('🏛', () => this.openModal('diplo', showDiplomacy(this)), 'ghost', 'Diplomacy (D)'),
-      btn('?', () => this.openModal('help', showHelp(this)), 'ghost', 'Help (H)'),
-    );
-    this.updateTimerLabel();
-  }
-
-  private updateTimerLabel(): void {
-    const el = this.root.querySelector('#timerlabel');
-    if (!el) return;
-    if (!this.timerEnd) {
-      el.textContent = '--';
-      return;
-    }
-    const s = Math.max(0, Math.ceil((this.timerEnd - performance.now()) / 1000));
-    el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  }
-
-  private tileInfoEl: HTMLElement | null = null;
-  private renderBottomLeft(): void {
-    const bl = this.bottomLeft;
-    clear(bl);
-    const u = this.selUnit;
-    if (u) bl.append(this.unitPanel(u));
-    this.tileInfoEl = h('div', { class: 'panel tile-info' });
-    bl.append(this.tileInfoEl);
-    this.refreshTileInfo();
-    if (this.chatBox) bl.append(this.chatBox);
-  }
-
-  private refreshTileInfo(): void {
-    const el = this.tileInfoEl;
-    if (!el || !this.view) return;
-    clear(el);
-    const t = this.hover;
-    if (!t) {
-      el.classList.add('hidden');
-      return;
-    }
-    const W = this.view.settings.width;
-    const i = t.y * W + t.x;
-    if (this.view.state[i] === 0) {
-      el.classList.remove('hidden');
-      el.append(h('span', null, 'Unexplored'));
-      return;
-    }
-    el.classList.remove('hidden');
-    const terr = TERRAIN[TERRAIN_LIST[this.view.terrain[i]]];
-    const y = tileYieldFromView(this.view, i);
-    const owner = this.view.owner[i] - 1;
-    const res = this.view.resource[i] > 0 ? RESOURCES[RESOURCE_LIST[this.view.resource[i] - 1]] : null;
-    put(el,
-      h('b', null, terr.name),
-      h('span', { style: { color: 'var(--food)' } }, `🌿${y.food}`),
-      h('span', { style: { color: 'var(--prod)' } }, `⚙${y.prod}`),
-      h('span', { style: { color: 'var(--coin)' } }, `🪙${y.gold}`),
-      res ? h('span', null, `${res.icon} ${res.name}`) : null,
-      this.view.improvement[i] ? h('span', null, this.view.improvement[i] === 1 ? '🌱 Farm' : '⛏ Mine') : null,
-      this.view.road[i] ? h('span', null, '🛤 Road') : null,
-      terr.defense ? h('span', null, `🛡 +${terr.defense}%`) : null,
-      owner >= 0 ? h('span', null, h('span', { class: 'dot', style: { background: civColor(this.view, owner) } }), ' ', this.view.players[owner].name) : null,
-    );
-    const units = this.view.units.filter((q) => q.x === t.x && q.y === t.y && q.owner !== this.me);
-    for (const q of units) el.append(h('span', { class: 'pill' }, UNITS[q.type].icon, ' ', UNITS[q.type].name, ` (${this.view.players[q.owner].name}) ${q.hp}hp`));
-    const city = this.view.cities.find((c) => c.x === t.x && c.y === t.y && !c.mine);
-    if (city) el.append(h('span', { class: 'pill' }, `🏙 ${city.name} · pop ${city.pop} · ${city.hp}/${city.maxHp} HP`));
-  }
-
-  private unitPanel(u: ViewUnit): HTMLElement {
-    const def = UNITS[u.type];
-    const col = civColor(this.view, u.owner);
-    const full = def.moves * 2;
-    const actions = h('div', { class: 'actions' });
-    const add = (label: string, fn: () => void, title = '', disabled = '', cls = '') => {
-      const b = btn(label, fn, `small ${cls}`, disabled || title);
-      if (disabled) b.disabled = true;
-      actions.append(b);
-    };
-    if (u.type === 'settler') {
-      const err = this.canFound(u);
-      add('🏙 Found city (B)', () => void this.foundCity(u), 'Found a new city here', err ?? '', 'primary');
-    }
-    if (u.type === 'worker') {
-      (['farm', 'mine', 'road'] as WorkKind[]).forEach((k) => {
-        const err = this.canWork(u, k);
-        const d = IMPROVEMENTS[k];
-        add(`${d.icon} ${d.name}`, () => void this.cmd({ t: 'work', unit: u.id, what: k }).then(() => this.afterUnitAction()), `${d.name}: ${d.turns} turns`, err ?? '');
-      });
-      add('🤖 Auto (A)', () => void this.autoUnit(u), 'Let the worker improve land by itself');
-    }
-    if (!def.civilian) {
-      add('🛡 Fortify (F)', () => void this.cmd({ t: 'order', unit: u.id, order: 'fortify' }).then(() => this.afterUnitAction()), '+25% defence and healing');
-      add('🧭 Explore (A)', () => void this.autoUnit(u), 'Explore automatically');
-    }
-    add('💤 Sleep (Z)', () => void this.cmd({ t: 'order', unit: u.id, order: 'sleep' }).then(() => this.afterUnitAction()), 'Stop asking for orders');
-    add('⏭ Skip (Space)', () => void this.cmd({ t: 'order', unit: u.id, order: 'skip' }).then(() => this.afterUnitAction()), 'Skip this unit for the turn');
-    if (u.order || u.auto || u.fortified) add('✖ Cancel orders', () => void this.cmd({ t: 'order', unit: u.id, order: 'cancel' }).then(() => this.recomputeSelection()), 'Give new orders');
-    const inCity = this.view.cities.find((c) => c.mine && c.x === u.x && c.y === u.y);
-    if (inCity) add('🏙 City (C)', () => this.openCityPanel(inCity.id));
-    add('🗑', () => void this.disband(u), 'Disband (Del)', '', 'danger');
-    const stats = h('div', { class: 'unit-stats' },
-      h('span', null, 'Moves ', h('b', null, `${((u.mp ?? 0) / 2).toFixed(u.mp! % 2 ? 1 : 0)}/${full / 2}`)),
-      def.strength > 0 ? h('span', null, '⚔ ', h('b', null, `${def.strength}`)) : null,
-      def.ranged > 0 ? h('span', null, '🏹 ', h('b', null, `${def.ranged}`), ` range ${def.range}`) : null,
-      u.level > 0 ? h('span', null, '★ ', h('b', null, `veteran`)) : null,
-      u.order?.kind === 'goto' ? h('span', null, '→ travelling') : null,
-      u.order?.kind === 'build' && u.workProgress ? h('span', null, `⚒ ${u.workProgress.kind} ${Math.floor(u.workProgress.progress)}/${IMPROVEMENTS[u.workProgress.kind].turns}`) : null,
-      u.auto ? h('span', null, u.auto === 'work' ? '🤖 auto-working' : '🧭 exploring') : null,
-    );
-    return h('div', { class: 'panel unit-panel' },
-      h('div', { class: 'unit-head' },
-        h('div', { class: 'unit-ico', style: { borderColor: col } }, def.icon),
-        h('div', { style: { flex: '1' } }, h('h4', null, def.name), stats, def.civilian ? null : h('div', { class: 'hpbar' }, h('i', { style: { width: `${u.hp}%`, background: u.hp > 60 ? 'var(--good)' : u.hp > 30 ? '#e8c14a' : 'var(--bad)' } }))),
-      ),
-      actions,
-    );
-  }
-
-  private renderEndTurn(): void {
-    const e = this.endturn;
-    clear(e);
-    const st = this.primaryState();
-    const b = btn(st.label, () => this.primaryAction(), `big endturn ${st.kind === 'wait' ? 'waiting' : 'primary'}`);
-    if (this.busy) b.disabled = true;
-    e.append(this.mini, b);
-    if (st.sub) e.append(h('div', { class: 'endturn-sub' }, st.sub));
-    if (st.kind !== 'end' && st.kind !== 'wait') {
-      e.append(h('div', { class: 'endturn-sub' }, h('a', { on: { click: () => void this.endTurn() } }, 'End turn anyway')));
-    }
-    if (this.opts.hostActions && st.kind === 'wait') {
-      e.append(h('div', { class: 'endturn-sub' }, h('a', { on: { click: () => this.opts.hostActions!.forceEnd() } }, 'Skip waiting (host)')));
-    }
-  }
-
+  // ------------------------------------------------------------------ city drawer
   private renderSide(): void {
     const c = this.openCity;
     this.root.classList.toggle('city-open', !!c);
     if (!c) {
-      this.sidepanel.classList.add('hidden');
+      this.drawer.classList.add('hidden');
       return;
     }
-    const scroller = this.sidepanel.querySelector('.body') as HTMLElement | null;
+    const scroller = this.drawer.querySelector('.body') as HTMLElement | null;
     const top = scroller?.scrollTop ?? 0;
-    this.sidepanel.classList.remove('hidden');
-    clear(this.sidepanel);
-    renderCityPanel(this, this.sidepanel, c);
-    const nb = this.sidepanel.querySelector('.body') as HTMLElement | null;
+    this.drawer.classList.remove('hidden');
+    clear(this.drawer);
+    renderCityPanel(this, this.drawer, c);
+    const nb = this.drawer.querySelector('.body') as HTMLElement | null;
     if (nb) nb.scrollTop = top;
   }
 
@@ -1064,6 +931,7 @@ export class GameScreen {
     this.reach = null;
     this.path = null;
     this.attackTargets = new Set();
+    this.closeModal();
     const c = this.openCity;
     if (c) this.focus(c.x, c.y);
     this.refreshUI();
@@ -1085,11 +953,35 @@ export class GameScreen {
     this.openCityPanel(list[(i + dir + list.length) % list.length].id);
   }
 
-  // ------------------------------------------------------------------ modals
-  openModal(kind: string, content: HTMLElement): void {
+  // ------------------------------------------------------------------ overlays
+  private buildModal(kind: string): HTMLElement | null {
+    switch (kind) {
+      case 'tech': return showTechTree(this);
+      case 'diplo': return showDiplomacy(this);
+      case 'cities': return showCities(this);
+      case 'log': return showLog(this);
+      case 'menu': return showMenu(this);
+      case 'help': return showHelp(this);
+      case 'policies': return showPolicies(this);
+      case 'victory': return showVictory(this);
+      default: return null;
+    }
+  }
+
+  openModal(kind: string): void {
+    const content = this.buildModal(kind);
+    if (!content) return;
     this.closeModal();
     this.modalKind = kind;
-    this.modal = h('div', { class: 'modal-back', on: { click: (e) => { if (e.target === this.modal) this.closeModal(); } } }, content);
+    this.modal = h('div', { class: `overlay ${content.dataset.full ? 'full' : ''}`, on: { click: (e) => { if (e.target === this.modal) this.closeModal(); } } }, content);
+    this.root.append(this.modal);
+  }
+
+  openDiplomacy(focus?: number): void {
+    this.closeModal();
+    const content = showDiplomacy(this, focus);
+    this.modalKind = 'diplo';
+    this.modal = h('div', { class: 'overlay', on: { click: (e) => { if (e.target === this.modal) this.closeModal(); } } }, content);
     this.root.append(this.modal);
   }
 
@@ -1101,20 +993,24 @@ export class GameScreen {
 
   private rerenderModal(): void {
     if (!this.modal) return;
-    const kind = this.modalKind;
-    const content = kind === 'tech' ? showTechTree(this) : kind === 'diplo' ? showDiplomacy(this) : kind === 'cities' ? showCities(this) : kind === 'log' ? showLog(this) : kind === 'menu' ? showMenu(this) : kind === 'help' ? showHelp(this) : null;
+    const content = this.buildModal(this.modalKind);
     if (!content) return;
-    const scrollers = Array.from(this.modal.querySelectorAll<HTMLElement>('.body')).map((b) => b.scrollTop);
+    const scrollers = Array.from(this.modal.querySelectorAll<HTMLElement>('.body, .treewrap')).map((b) => [b.scrollTop, b.scrollLeft] as const);
     clear(this.modal);
     this.modal.append(content);
-    Array.from(this.modal.querySelectorAll<HTMLElement>('.body')).forEach((b, i) => { b.scrollTop = scrollers[i] ?? 0; });
+    Array.from(this.modal.querySelectorAll<HTMLElement>('.body, .treewrap')).forEach((b, i) => {
+      if (scrollers[i]) {
+        b.scrollTop = scrollers[i][0];
+        b.scrollLeft = scrollers[i][1];
+      }
+    });
   }
 
   showCurtain(name: string, done: () => void): void {
     this.closeModal();
     this.closeCity(false);
     const c = h('div', { class: 'curtain' },
-      h('div', null, h('h2', null, `Pass the device to ${name}`), h('p', { class: 'muted' }, 'Everything is hidden until you continue.'), btn(`I am ${name} — continue`, () => { c.remove(); done(); }, 'primary big')));
+      h('div', null, h('h2', null, `Pass the device to ${name}`), h('p', { class: 'muted' }, 'Everything is hidden until you continue.'), btn(`I am ${name}`, () => { c.remove(); done(); }, 'primary big')));
     this.root.append(c);
   }
 
@@ -1143,8 +1039,8 @@ export class GameScreen {
       }
       e.stopPropagation();
     });
-    this.chatBox = h('div', { class: 'panel' }, this.chatLog, input);
-    this.bottomLeft.append(this.chatBox);
+    this.chatBox = h('div', { class: 'chatdock' }, this.chatLog, input);
+    this.root.append(this.chatBox);
     this.renderChatLog();
     input.focus();
   }
@@ -1157,4 +1053,3 @@ export class GameScreen {
   }
 }
 
-void BUILDINGS;

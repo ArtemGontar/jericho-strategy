@@ -1,4 +1,4 @@
-import { BUILDINGS, CIV_BY_ID, ERA_NAMES, IMPROVEMENT_YIELD, TECHS, UNITS } from './data';
+import { BUILDINGS, CIV_BY_ID, ERA_NAMES, IMPROVEMENT_YIELD, TECHS, UNITS, XP_LEVELS } from './data';
 import {
   availableTechs, canBuildBuilding, canBuildUnit, cityYield, foodNeeded, itemCost, maxPop, techCost, type CityYield,
 } from './economy';
@@ -36,6 +36,9 @@ export interface ViewUnit {
   y: number;
   hp: number;
   level: number;
+  xp?: number;
+  nextXp?: number | null;
+  upgrade?: { to: UnitTypeId; cost: number; error: string | null } | null;
   mp?: number;
   order?: UnitOrder | null;
   auto?: 'work' | 'explore' | null;
@@ -76,6 +79,7 @@ export interface ViewCity {
   focus?: Focus;
   yield?: CityYield;
   worked?: number[];
+  locked?: number[];
   options?: BuildOption[];
   buyPrice?: number | null;
   maxPop?: number;
@@ -100,11 +104,16 @@ export interface GameView {
   availableTechs: string[];
   techCosts: Record<string, number>;
   culture: number;
+  policies: string[];
+  policyChoices: string[];
+  /** culture needed for the next policy */
+  policyCost: number;
   // map: parallel arrays, index = y * width + x
   terrain: number[];
   resource: number[];
   improvement: number[];
   road: number[];
+  hut: number[];
   owner: number[];
   /** 0 unexplored, 1 fogged, 2 visible */
   state: number[];
@@ -133,18 +142,20 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
   const resource = new Array<number>(n);
   const improvement = new Array<number>(n);
   const road = new Array<number>(n);
+  const hut = new Array<number>(n);
   const owner = new Array<number>(n);
   const state = new Array<number>(n);
   for (let i = 0; i < n; i++) {
     const t = game.tiles[i];
     if (!(t.explored & bit)) {
-      terrain[i] = 0; resource[i] = 0; improvement[i] = 0; road[i] = 0; owner[i] = 0; state[i] = 0;
+      terrain[i] = 0; resource[i] = 0; improvement[i] = 0; road[i] = 0; hut[i] = 0; owner[i] = 0; state[i] = 0;
       continue;
     }
     terrain[i] = TERRAIN_LIST.indexOf(t.terrain);
     resource[i] = t.resource ? RESOURCE_LIST.indexOf(t.resource) + 1 : 0;
     improvement[i] = t.improvement ? IMPROVEMENT_CODE[t.improvement] : 0;
     road[i] = t.road ? 1 : 0;
+    hut[i] = t.hut ? 1 : 0;
     owner[i] = t.owner + 1;
     state[i] = t.visible & bit ? 2 : 1;
   }
@@ -175,6 +186,9 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
       v.order = u.order;
       v.auto = u.auto;
       v.attacked = u.attacked;
+      v.xp = u.xp;
+      v.nextXp = u.level < XP_LEVELS.length ? XP_LEVELS[u.level] : null;
+      v.upgrade = game.upgradeInfo(u);
       v.skipped = u.skipped;
       const t = game.tile(u.x, u.y);
       if (t.work && u.order && u.order.kind === 'build') {
@@ -204,6 +218,7 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
       vc.focus = c.focus;
       vc.yield = cityYield(game, c);
       vc.worked = c.worked.slice();
+      vc.locked = c.locked.slice();
       vc.buyPrice = game.buyPrice(c);
       vc.maxPop = maxPop(c);
       vc.radius = c.radius;
@@ -245,7 +260,10 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
     availableTechs: availableTechs(p),
     techCosts,
     culture: Math.floor(p.culture),
-    terrain, resource, improvement, road, owner, state,
+    policies: p.policies.slice(),
+    policyChoices: p.policyChoices.slice(),
+    policyCost: game.nextPolicyCost(p),
+    terrain, resource, improvement, road, hut, owner, state,
     cities, units,
     proposals: s.proposals.filter((x) => x.from === me || x.to === me),
     notes,

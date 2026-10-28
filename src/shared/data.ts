@@ -221,3 +221,42 @@ export const CITY_BASE_HP = 160;
 export const UNIT_HP = 100;
 export const MIN_CITY_DISTANCE = 3;
 export const PEACE_MIN_TURNS = 10;
+
+// ---------------------------------------------------------------- policies, promotions, upgrades
+export interface PolicyDef {
+  id: string;
+  name: string;
+  icon: string;
+  desc: string;
+}
+export const POLICIES: PolicyDef[] = [
+  { id: 'agrarian', name: 'Agrarian Reform', icon: 'farm', desc: '+1 food in every city.' },
+  { id: 'craftsmen', name: 'Guild Craftsmen', icon: 'production', desc: '+1 production in every city.' },
+  { id: 'coinage', name: 'Royal Coinage', icon: 'gold', desc: '+10% gold.' },
+  { id: 'scholarship', name: 'Scholarship', icon: 'science', desc: '+10% science.' },
+  { id: 'patronage', name: 'Patronage of the Arts', icon: 'culture', desc: '+2 culture in every city.' },
+  { id: 'drill', name: 'Standing Army', icon: 'swords', desc: 'Military units cost 20% less to build.' },
+  { id: 'fortification', name: 'Fortification Doctrine', icon: 'walls', desc: 'Cities are 25% stronger and have +60 HP.' },
+  { id: 'exploration', name: 'Age of Exploration', icon: 'explore', desc: 'All units see one tile further.' },
+  { id: 'bureaucracy', name: 'Civil Service', icon: 'policy', desc: 'Each city pays 1 less building upkeep.' },
+  { id: 'conscription', name: 'Field Medicine', icon: 'health', desc: 'Units heal 10 more HP per turn.' },
+  { id: 'trade_routes', name: 'Caravan Routes', icon: 'trade', desc: '+4 gold in the capital and +1 gold in every other city.' },
+  { id: 'pioneers', name: 'Pioneer Spirit', icon: 'settler', desc: 'Settlers cost 30% less and workers build 25% faster.' },
+];
+export const POLICY_BY_ID: Record<string, PolicyDef> = Object.fromEntries(POLICIES.map((p) => [p.id, p]));
+export function policyCost(adopted: number, speedMult: number): number {
+  return Math.round(28 * Math.pow(adopted + 1, 1.5) * speedMult);
+}
+
+/** Experience needed for each promotion level (level 1, 2, 3). */
+export const XP_LEVELS = [14, 40, 80];
+
+export const UNIT_UPGRADES: Partial<Record<UnitTypeId, UnitTypeId>> = {
+  warrior: 'swordsman',
+  spearman: 'pikeman',
+  archer: 'crossbowman',
+  horseman: 'knight',
+  swordsman: 'musketman',
+  pikeman: 'musketman',
+  catapult: 'cannon',
+};

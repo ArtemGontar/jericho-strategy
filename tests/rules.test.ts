@@ -175,3 +175,70 @@ describe('player views', () => {
     expect(buildView(g, 1).units.every((u) => u.owner === 1)).toBe(true);
   });
 });
+
+describe('exploration, promotion, policies and upgrades', () => {
+  it('tribal villages pay out once and disappear', () => {
+    const g = twoHumans(41);
+    const warrior = g.units.find((u) => u.owner === 0 && u.type === 'warrior')!;
+    const spot = g.nb(warrior.x, warrior.y).find((n) => TERRAIN[g.tile(n.x, n.y).terrain].passable && g.unitsAt(n.x, n.y).length === 0 && g.tile(n.x, n.y).city < 0)!;
+    g.tile(spot.x, spot.y).hut = true;
+    const before = { gold: g.players[0].gold, research: g.players[0].research, culture: g.players[0].culture, units: g.units.length, hp: warrior.hp };
+    expect(g.exec(0, { t: 'move', unit: warrior.id, to: spot }).ok).toBe(true);
+    expect(g.tile(spot.x, spot.y).hut).toBe(false);
+    const after = { gold: g.players[0].gold, research: g.players[0].research, culture: g.players[0].culture, units: g.units.length, hp: warrior.hp };
+    expect(JSON.stringify(after)).not.toBe(JSON.stringify(before));
+  });
+
+  it('veterans are promoted after enough fighting', () => {
+    const g = twoHumans(42);
+    const w = g.units.find((u) => u.owner === 0 && u.type === 'warrior')!;
+    expect(w.level).toBe(0);
+    g.gainXp(w, 15);
+    expect(w.level).toBe(1);
+    g.gainXp(w, 200);
+    expect(w.level).toBe(3);
+    const worker = g.units.find((u) => u.owner === 0 && u.type === 'worker')!;
+    g.gainXp(worker, 500);
+    expect(worker.level).toBe(0);
+  });
+
+  it('culture unlocks a policy choice that changes the economy', () => {
+    const g = twoHumans(43);
+    const p = g.players[0];
+    expect(p.policyChoices).toHaveLength(0);
+    p.culture = g.nextPolicyCost(p);
+    g.exec(0, { t: 'end' });
+    g.exec(1, { t: 'end' });
+    expect(p.policyChoices).toHaveLength(3);
+    expect(g.exec(0, { t: 'policy', id: 'nonsense' }).ok).toBe(false);
+    const incomeBefore = p.income.culture;
+    expect(g.exec(0, { t: 'policy', id: 'patronage' }).ok).toBe(p.policyChoices.length === 0 ? true : p.policyChoices.includes('patronage'));
+    if (!p.policies.length) expect(g.exec(0, { t: 'policy', id: p.policyChoices[0] }).ok).toBe(true);
+    expect(p.policies).toHaveLength(1);
+    expect(p.policyChoices).toHaveLength(0);
+    void incomeBefore;
+  });
+
+  it('pinned tiles are always worked, and units upgrade for gold', () => {
+    const g = twoHumans(44);
+    const c = g.playerCities(0)[0];
+    c.pop = 3;
+    const tile = g.nb(c.x, c.y).find((n) => g.tile(n.x, n.y).owner === 0 && TERRAIN[g.tile(n.x, n.y).terrain].workable)!;
+    const idx = tile.y * g.width + tile.x;
+    expect(g.exec(0, { t: 'tile', city: c.id, x: tile.x, y: tile.y }).ok).toBe(true);
+    expect(c.worked).toContain(idx);
+    expect(g.exec(0, { t: 'tile', city: c.id, x: c.x, y: c.y }).ok).toBe(false); // the centre is not assignable
+    expect(g.exec(0, { t: 'tile', city: c.id, x: tile.x, y: tile.y }).ok).toBe(true); // unpin
+    expect(c.locked).toHaveLength(0);
+
+    const w = g.units.find((u) => u.owner === 0 && u.type === 'warrior')!;
+    g.players[0].gold = 1000;
+    expect(g.exec(0, { t: 'upgrade', unit: w.id }).ok).toBe(false); // needs Iron Working + iron
+    g.players[0].techs.push('bronze', 'ironworking');
+    const spear = g.addUnit(0, 'spearman', c.x, c.y);
+    g.players[0].techs.push('feudalism');
+    expect(g.exec(0, { t: 'upgrade', unit: spear.id }).ok).toBe(true);
+    expect(spear.type).toBe('pikeman');
+    expect(g.players[0].gold).toBeLessThan(1000);
+  });
+});

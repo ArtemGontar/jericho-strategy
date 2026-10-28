@@ -3,129 +3,153 @@ import type { BuildingId, Focus, UnitTypeId } from '../../shared/types';
 import type { BuildOption, ViewCity } from '../../shared/view';
 import type { GameScreen } from '../gamescreen';
 import { sfx } from '../audio';
-import { btn, clear, fmtSigned, h, turnsLeft } from './dom';
+import { icon } from '../icons';
+import { clear, fmtSigned, h, put, turnsLeft } from './dom';
 
-let tab: 'units' | 'buildings' | 'wonders' = 'buildings';
+let tab: 'buildings' | 'units' | 'wonders' = 'buildings';
 
 function itemInfo(kind: 'unit' | 'building', id: string): { name: string; icon: string; desc: string } {
   if (kind === 'unit') {
     const d = UNITS[id as UnitTypeId];
-    const stats = d.civilian ? '' : ` ⚔${d.strength}${d.ranged ? ` 🏹${d.ranged}` : ''} · ${d.moves} moves`;
-    return { name: d.name, icon: d.icon, desc: d.desc + stats };
+    const stats = d.civilian ? '' : ` Strength ${d.strength}${d.ranged ? `, ranged ${d.ranged}` : ''}, ${d.moves} moves.`;
+    return { name: d.name, icon: d.id, desc: d.desc + stats };
   }
   const b = BUILDINGS[id as BuildingId];
-  return { name: b.name, icon: b.icon, desc: b.desc };
+  return { name: b.name, icon: b.id, desc: b.desc };
 }
+
+const FOCUS: Array<[Focus, string]> = [['balanced', 'Balanced'], ['food', 'Food'], ['production', 'Prod'], ['gold', 'Gold']];
 
 export function renderCityPanel(gs: GameScreen, panel: HTMLElement, c: ViewCity): void {
   const y = c.yield!;
-  const growTurns = y.surplus > 0 ? turnsLeft((c.foodNeeded ?? 0) - (c.food ?? 0), y.surplus) : y.surplus < 0 ? '☠' : '∞';
+  const growTurns = y.surplus > 0 ? turnsLeft((c.foodNeeded ?? 0) - (c.food ?? 0), y.surplus) : y.surplus < 0 ? 'starving' : '∞';
   const atMax = (c.pop ?? 0) >= (c.maxPop ?? 8);
   const head = c.queue?.[0];
   const headCost = head?.cost ?? 0;
 
+  const nav = (name: string, title: string, fn: () => void) => {
+    const b = h('button', { class: 'round flat', type: 'button', title, 'aria-label': title }, icon(name, 18));
+    b.addEventListener('click', fn);
+    return b;
+  };
   const header = h('header', null,
-    btn('◀', () => gs.cycleCity(-1), 'small ghost', 'Previous city'),
-    h('h3', { style: { flex: '1' } }, (c.capital ? '★ ' : '') + c.name),
-    h('span', { class: 'pill' }, `Pop ${c.pop}`),
-    btn('▶', () => gs.cycleCity(1), 'small ghost', 'Next city'),
-    btn('✕', () => gs.closeCity(), 'small ghost', 'Close (Esc)'),
-  );
+    h('div', { class: 'titlerow' },
+      nav('chevron', 'Previous city', () => gs.cycleCity(-1)),
+      h('h2', null, (c.capital ? '★ ' : '') + c.name),
+      nav('chevron', 'Next city', () => gs.cycleCity(1)),
+      nav('close', 'Close (Esc)', () => gs.closeCity())),
+    h('div', { class: 'chips' },
+      h('span', null, icon('population', 15), `Population ${c.pop}`),
+      h('span', null, icon('shield', 15), `Strength ${c.strength}`),
+      h('span', null, icon('health', 15), `${c.hp}/${c.maxHp}`)));
+  // mirror the chevron on the "previous" button
+  (header.querySelector('.titlerow button svg') as SVGElement | null)?.setAttribute('style', 'transform: scaleX(-1)');
 
-  const stat = (label: string, value: string, sub: string, color: string) =>
-    h('div', null, h('span', { style: { color } }, value), h('small', null, label + (sub ? ` ${sub}` : '')));
-  const yields = h('div', { class: 'yields' },
-    stat('Food', `🌿${fmtSigned(y.surplus)}`, '', 'var(--food)'),
-    stat('Prod', `⚙${y.prod}`, '', 'var(--prod)'),
-    stat('Gold', `🪙${y.gold - y.upkeep >= 0 ? '+' : ''}${y.gold - y.upkeep}`, '', 'var(--coin)'),
-    stat('Science', `🔬${y.science}`, '', 'var(--sci)'),
-    stat('Culture', `🎭${y.culture}`, '', 'var(--cult)'),
-  );
+  const y1 = (label: string, value: string, cls: string, ic: string) =>
+    h('div', { class: cls }, icon(ic, 20), h('span', { class: 'num' }, value), h('small', null, label));
+  const yields = h('section', null,
+    h('div', { class: 'yieldrow' },
+      y1('Food', fmtSigned(y.surplus), 'food', 'food'),
+      y1('Prod', String(y.prod), 'prod', 'production'),
+      y1('Gold', fmtSigned(y.gold - y.upkeep), 'coin', 'gold'),
+      y1('Science', String(y.science), 'sci', 'science'),
+      y1('Culture', String(y.culture), 'cult', 'culture')),
+    h('div', { class: 'meter' },
+      h('div', { class: 'line' }, h('span', null, atMax ? 'Needs an Aqueduct to grow' : y.surplus < 0 ? 'Starving!' : `Grows in ${growTurns} turns`), h('span', { class: 'num' }, `${Math.floor(c.food ?? 0)} / ${c.foodNeeded}`)),
+      h('div', { class: 'bar' }, h('i', { style: { width: `${Math.min(100, ((c.food ?? 0) / (c.foodNeeded || 1)) * 100)}%`, background: 'var(--food)' } }))));
 
-  const growth = h('div', null,
-    h('div', { class: 'row' }, h('span', { class: 'muted' }, atMax ? 'Needs an Aqueduct to grow' : `Growth in ${growTurns} turns`), h('span', { class: 'spacer' }), h('span', { class: 'muted' }, `${Math.floor(c.food ?? 0)}/${c.foodNeeded}`)),
-    h('div', { class: 'bar food', style: { width: '100%' } }, h('i', { style: { width: `${Math.min(100, ((c.food ?? 0) / (c.foodNeeded || 1)) * 100)}%` } })),
-  );
-
-  const focusRow = h('div', { class: 'seg' });
-  (['balanced', 'food', 'production', 'gold'] as Focus[]).forEach((f) => {
-    const icons: Record<Focus, string> = { balanced: '⚖ Balanced', food: '🌿 Food', production: '⚙ Production', gold: '🪙 Gold' };
-    focusRow.append(btn(icons[f], () => void gs.cmd({ t: 'focus', city: c.id, focus: f }), `small ${c.focus === f ? 'active' : ''}`, 'How citizens choose which tiles to work'));
-  });
+  const seg = h('div', { class: 'seg' });
+  for (const [f, label] of FOCUS) {
+    const b = h('button', { class: c.focus === f ? 'on' : '', type: 'button' }, label);
+    b.addEventListener('click', () => void gs.cmd({ t: 'focus', city: c.id, focus: f }));
+    seg.append(b);
+  }
+  const citizens = h('section', null,
+    h('div', { class: 'eyebrow' }, 'Citizens work'),
+    seg,
+    h('div', { class: 'hint' }, `Click a highlighted tile on the map to pin a citizen to it (${c.locked?.length ?? 0}/${c.pop} pinned).`));
 
   // production
-  const prod = h('div', { style: { display: 'grid', gap: '6px' } });
+  const prod = h('section', null, h('div', { class: 'eyebrow' }, 'Production'));
   if (head) {
     const info = itemInfo(head.kind, head.id);
     const pct = Math.min(100, ((c.prod ?? 0) / headCost) * 100);
+    const remove = h('button', { class: 'round flat', type: 'button', title: 'Cancel' }, icon('close', 16));
+    remove.addEventListener('click', () => void gs.cmd({ t: 'queue', city: c.id, op: 'remove', index: 0 }));
     prod.append(
-      h('div', { class: 'qitem cur' },
-        h('span', { class: 'ic' }, info.icon),
-        h('div', null, h('b', null, info.name), h('div', { class: 'bar prod', style: { width: '100%' } }, h('i', { style: { width: `${pct}%` } }))),
-        h('span', { class: 'muted' }, `${Math.floor(c.prod ?? 0)}/${headCost} · ${turnsLeft(headCost - (c.prod ?? 0), y.prod)}t`),
-        btn('✕', () => void gs.cmd({ t: 'queue', city: c.id, op: 'remove', index: 0 }), 'small ghost', 'Cancel'),
-      ),
-    );
+      h('div', { class: 'item current' },
+        icon(info.icon, 26, 'big'),
+        h('div', null, h('div', { class: 'nm' }, info.name), h('div', { class: 'bar', style: { marginTop: '6px' } }, h('i', { style: { width: `${pct}%`, background: 'var(--prod)' } }))),
+        h('div', { class: 'cost num' }, `${Math.floor(c.prod ?? 0)}/${headCost}`, h('br'), `${turnsLeft(headCost - (c.prod ?? 0), y.prod)} turns`),
+        remove));
     if (c.buyPrice != null) {
       const canBuy = gs.view.gold >= c.buyPrice;
-      prod.append(btn(`Buy for ${c.buyPrice} 🪙`, async () => {
+      const b = h('button', { class: 'btn small', type: 'button', title: canBuy ? 'Complete this item next turn' : `You need ${c.buyPrice} gold` }, icon('gold', 15), `Buy for ${c.buyPrice}`);
+      b.disabled = !canBuy;
+      b.addEventListener('click', async () => {
         if (await gs.cmd({ t: 'buy', city: c.id })) sfx('build');
-      }, 'small', canBuy ? 'Complete this item next turn' : `You need ${c.buyPrice} gold`));
-      (prod.lastChild as HTMLButtonElement).disabled = !canBuy;
+      });
+      prod.append(h('div', null, b));
     }
-  } else prod.append(h('div', { class: 'muted' }, 'Nothing is being built — pick something below.'));
+  } else prod.append(h('div', { class: 'hint' }, 'Nothing is being built. Pick something below.'));
   (c.queue ?? []).slice(1).forEach((q, i) => {
     const info = itemInfo(q.kind, q.id);
-    prod.append(
-      h('div', { class: 'qitem' }, h('span', { class: 'ic' }, info.icon), h('span', null, info.name), h('span', { class: 'muted' }, `${q.cost}`),
-        h('span', null, btn('▲', () => void gs.cmd({ t: 'queue', city: c.id, op: 'up', index: i + 1 }), 'small ghost'), btn('✕', () => void gs.cmd({ t: 'queue', city: c.id, op: 'remove', index: i + 1 }), 'small ghost'))),
-    );
+    const up = h('button', { class: 'round flat', type: 'button', title: 'Move up' }, icon('up', 16));
+    up.addEventListener('click', () => void gs.cmd({ t: 'queue', city: c.id, op: 'up', index: i + 1 }));
+    const rm = h('button', { class: 'round flat', type: 'button', title: 'Remove' }, icon('close', 16));
+    rm.addEventListener('click', () => void gs.cmd({ t: 'queue', city: c.id, op: 'remove', index: i + 1 }));
+    prod.append(h('div', { class: 'item' }, icon(info.icon, 22, 'big'), h('div', { class: 'nm' }, info.name), h('div', { class: 'cost num' }, String(q.cost)), h('span', null, up, rm)));
   });
 
   // options
-  const tabs = h('div', { class: 'tabs' });
-  const opts = h('div', { style: { display: 'grid', gap: '2px' } });
   const all = c.options ?? [];
   const groups = {
-    units: all.filter((o) => o.kind === 'unit'),
     buildings: all.filter((o) => o.kind === 'building' && !BUILDINGS[o.id as BuildingId].wonder),
+    units: all.filter((o) => o.kind === 'unit'),
     wonders: all.filter((o) => o.kind === 'building' && BUILDINGS[o.id as BuildingId].wonder),
   };
   if (!groups[tab].length) tab = groups.buildings.length ? 'buildings' : groups.units.length ? 'units' : groups.wonders.length ? 'wonders' : tab;
+  const tabs = h('div', { class: 'tabrow' });
   (['buildings', 'units', 'wonders'] as const).forEach((k) => {
-    tabs.append(btn(`${k === 'units' ? '⚔ Units' : k === 'buildings' ? '🏛 Buildings' : '🌟 Wonders'} (${groups[k].length})`, () => { tab = k; gs.refreshUI(); }, `small ${tab === k ? 'active' : ''}`));
+    const b = h('button', { class: tab === k ? 'on' : '', type: 'button' }, `${k} · ${groups[k].length}`);
+    b.addEventListener('click', () => {
+      tab = k;
+      gs.refreshUI();
+    });
+    tabs.append(b);
   });
+  const list = h('div');
   const row = (o: BuildOption) => {
     const info = itemInfo(o.kind, o.id);
     const queued = c.queue?.some((q) => q.kind === o.kind && q.id === o.id);
-    const r = h('div', { class: 'opt', title: info.desc },
-      h('span', { class: 'ic' }, info.icon),
+    const add = h('button', { class: 'round flat', type: 'button', title: 'Add to queue' }, icon('plus', 16));
+    add.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      sfx('click');
+      await gs.cmd({ t: 'queue', city: c.id, op: 'add', kind: o.kind, id: o.id });
+    });
+    const r = h('div', { class: `item pick ${queued ? 'dim' : ''}`, title: info.desc },
+      icon(info.icon, 26, 'big'),
       h('div', null, h('div', { class: 'nm' }, info.name), h('div', { class: 'ds' }, info.desc)),
-      h('span', { class: 'muted', style: { textAlign: 'right', fontSize: '12px' } }, `${o.cost}⚙`, h('br'), `${o.turns}t`),
-      h('span', null,
-        btn('▶', async () => { sfx('click'); await gs.cmd({ t: 'queue', city: c.id, op: 'set', kind: o.kind, id: o.id }); }, 'small', 'Build this now'),
-        btn('+', async () => { sfx('click'); await gs.cmd({ t: 'queue', city: c.id, op: 'add', kind: o.kind, id: o.id }); }, 'small ghost', 'Add to the queue'),
-      ),
-    );
-    if (queued) r.style.opacity = '0.55';
-    r.addEventListener('dblclick', () => void gs.cmd({ t: 'queue', city: c.id, op: 'set', kind: o.kind, id: o.id }));
+      h('div', { class: 'cost num' }, `${o.cost}`, h('br'), `${o.turns}t`),
+      add);
+    r.addEventListener('click', async () => {
+      sfx('click');
+      await gs.cmd({ t: 'queue', city: c.id, op: 'set', kind: o.kind, id: o.id });
+    });
     return r;
   };
-  for (const o of groups[tab]) opts.append(row(o));
-  if (!groups[tab].length) opts.append(h('div', { class: 'muted' }, tab === 'wonders' ? 'No wonders available — research more technologies.' : 'Nothing available.'));
+  for (const o of groups[tab]) list.append(row(o));
+  if (!groups[tab].length) list.append(h('div', { class: 'hint', style: { padding: '10px 0' } }, tab === 'wonders' ? 'No wonders available yet. Research more technologies.' : 'Nothing available.'));
+  const options = h('section', null, tabs, list);
 
-  const have = h('div', { class: 'row' });
-  for (const b of c.buildings ?? []) have.append(h('span', { class: 'pill', title: BUILDINGS[b].desc }, BUILDINGS[b].icon, ' ', BUILDINGS[b].name));
-  if (!c.buildings?.length) have.append(h('span', { class: 'muted' }, 'No buildings yet.'));
+  const have = h('section', null, h('div', { class: 'eyebrow' }, 'Built'), h('div', { class: 'chips' }));
+  const chips = have.querySelector('.chips')!;
+  for (const b of c.buildings ?? []) chips.append(h('span', { title: BUILDINGS[b].desc }, icon(b, 16), BUILDINGS[b].name));
+  if (!c.buildings?.length) chips.append(h('span', { class: 'muted' }, 'No buildings yet.'));
+  have.append(h('div', { class: 'hint' }, `Territory radius ${c.radius} · building upkeep ${y.upkeep} gold per turn`));
 
-  const body = h('div', { class: 'body' },
-    yields, growth,
-    h('div', null, h('div', { class: 'sec-title' }, 'Citizens work…'), focusRow),
-    h('div', null, h('div', { class: 'sec-title' }, 'Production'), prod),
-    h('div', null, tabs, h('div', { style: { height: '6px' } }), opts),
-    h('div', null, h('div', { class: 'sec-title' }, 'Buildings'), have),
-    h('div', { class: 'muted', style: { fontSize: '12px' } }, `City strength ${c.strength} · HP ${c.hp}/${c.maxHp} · Territory radius ${c.radius} · Upkeep ${y.upkeep} 🪙`),
-  );
   clear(panel);
-  panel.append(header, body);
+  panel.append(header, h('div', { class: 'body' }, yields, citizens, prod, options, have));
 }
+void put;

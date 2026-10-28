@@ -4,7 +4,9 @@ import { RESOURCE_LIST, TERRAIN_LIST, type GameView, type ViewCity, type ViewUni
 import type { ViewMap } from '../shared/viewpath';
 import type { Animator } from './anim';
 import { HEX, HEX_H, HEX_W, SPRITE_RES, VARIANTS, hexPath, terrainSprite } from './sprites';
+import { drawIcon } from './icons';
 
+export const DISPLAY_FONT = "'Cinzel','Palatino Linotype','Book Antiqua',Georgia,serif";
 export const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif';
 
 export function civColor(view: GameView, owner: number): string {
@@ -70,6 +72,8 @@ export interface RenderState {
   showGrid: boolean;
   /** tiles currently worked by the open city */
   workedTiles: Set<number> | null;
+  /** tiles pinned by the player in the open city */
+  lockedTiles?: Set<number> | null;
   now: number;
 }
 
@@ -227,10 +231,9 @@ export class MapRenderer {
         if (imp === 1) this.drawFarm(ctx, s.x, s.y, z);
         else if (imp === 2) this.drawMine(ctx, s.x, s.y, z);
         const res = v.resource[i];
-        if (res > 0 && z > 0.45) {
-          const def = RESOURCES[RESOURCE_LIST[res - 1]];
-          this.emoji(ctx, def.icon, s.x + HEX * 0.42 * z, s.y + HEX * 0.46 * z, 15 * z, true);
-        }
+        if (res > 0 && z > 0.45) this.drawBadge(ctx, RESOURCE_LIST[res - 1], s.x + HEX * 0.5 * z, s.y + HEX * 0.42 * z, z, RESOURCES[RESOURCE_LIST[res - 1]].strategic);
+        if (v.hut[i] === 1 && z > 0.4) this.drawBadge(ctx, 'hut', s.x - HEX * 0.1 * z, s.y + HEX * 0.1 * z, z * 1.25, false, true);
+        if (st.lockedTiles?.has(i)) this.drawBadge(ctx, 'tile', s.x, s.y - HEX * 0.46 * z, z, false, true);
       }
     }
 
@@ -427,6 +430,19 @@ export class MapRenderer {
     } else ctx.fillText(e, x, y);
   }
 
+  /** Round resource / feature badge in the Civilization style: dark disc, thin ring, glyph. */
+  private drawBadge(ctx: CanvasRenderingContext2D, name: string, x: number, y: number, z: number, strategic: boolean, gold = false): void {
+    const r = 10.5 * Math.max(0.8, z);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(8,11,17,0.82)';
+    ctx.fill();
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = gold ? '#f2d98c' : strategic ? '#e5974a' : 'rgba(233,225,204,0.55)';
+    ctx.stroke();
+    drawIcon(ctx, name, x, y, r * 1.35, gold ? '#f2d98c' : strategic ? '#f0a860' : '#e9e1cc', '#e9e1cc', 1.8);
+  }
+
   private drawRoads(ctx: CanvasRenderingContext2D, v: GameView, x: number, y: number, sx: number, sy: number, z: number): void {
     const W = v.settings.width;
     const H = v.settings.height;
@@ -501,19 +517,19 @@ export class MapRenderer {
     if (fogged) ctx.globalAlpha = 0.8;
     // platform
     ctx.beginPath();
-    ctx.ellipse(s.x, s.y + HEX * 0.18 * z, HEX * 0.62 * z, HEX * 0.38 * z, 0, 0, Math.PI * 2);
-    ctx.fillStyle = hexA(col, 0.42);
+    ctx.ellipse(s.x, s.y + HEX * 0.2 * z, HEX * 0.66 * z, HEX * 0.4 * z, 0, 0, Math.PI * 2);
+    ctx.fillStyle = hexA(col, 0.38);
     ctx.fill();
     ctx.strokeStyle = hexA(col, 0.95);
     ctx.lineWidth = Math.max(1.5, 2.2 * z);
     ctx.stroke();
     // walls
     if (c.mine && c.buildings?.includes('walls')) {
-      ctx.strokeStyle = '#b9b3a6';
+      ctx.strokeStyle = '#c9c2b0';
       ctx.lineWidth = Math.max(2, 3.4 * z);
       ctx.setLineDash([5 * z, 2.5 * z]);
       ctx.beginPath();
-      ctx.ellipse(s.x, s.y + HEX * 0.18 * z, HEX * 0.7 * z, HEX * 0.45 * z, 0, 0, Math.PI * 2);
+      ctx.ellipse(s.x, s.y + HEX * 0.2 * z, HEX * 0.74 * z, HEX * 0.47 * z, 0, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -539,49 +555,73 @@ export class MapRenderer {
       ctx.fillStyle = 'rgba(40,30,20,0.55)';
       ctx.fillRect(x - 1.4 * z, y + h / 2 - 4.5 * z, 2.8 * z, 4.5 * z);
     }
-    if (c.wonders.length) {
-      this.emoji(ctx, BUILDINGS[c.wonders[0]].icon, s.x + 22 * z, s.y - 14 * z, 17 * z, true);
-    }
+    if (c.wonders.length) drawIcon(ctx, c.wonders[0], s.x + 25 * z, s.y - 12 * z, 17 * z, '#f2d98c', '#f2d98c', 1.9);
     ctx.restore();
-    // banner
-    const label = c.name;
-    const fs = Math.max(10, Math.min(15, 12 * z + 1));
-    ctx.font = `700 ${fs}px system-ui, sans-serif`;
+
+    // banner: pop shield, name, and what the city is building
+    const fs = Math.max(11, Math.min(15, 12.5 * z + 1));
+    ctx.font = `600 ${fs}px ${DISPLAY_FONT}`;
+    const label = (c.capital ? '\u2605 ' : '') + c.name;
     const tw = ctx.measureText(label).width;
-    const pop = String(c.pop);
-    const bw = tw + 30 + (c.capital ? 12 : 0);
-    const bh = fs + 8;
+    const head = c.mine ? c.queue?.[0] : null;
+    const bh = fs + 12;
+    const left = bh + 2;
+    const right = head ? bh : 8;
+    const bw = left + tw + right + 8;
     const bx = s.x - bw / 2;
-    const by = s.y - HEX * 0.98 * z - bh / 2 + 6 * z;
+    const by = s.y - HEX * 1.02 * z - bh / 2 + 8 * z;
     ctx.save();
     if (fogged) ctx.globalAlpha = 0.85;
-    roundRect(ctx, bx, by, bw, bh, 5);
-    ctx.fillStyle = 'rgba(14,20,34,0.88)';
+    // body
+    ctx.beginPath();
+    ctx.moveTo(bx + 6, by);
+    ctx.lineTo(bx + bw - 6, by);
+    ctx.lineTo(bx + bw, by + bh / 2);
+    ctx.lineTo(bx + bw - 6, by + bh);
+    ctx.lineTo(bx + 6, by + bh);
+    ctx.lineTo(bx, by + bh / 2);
+    ctx.closePath();
+    const g = ctx.createLinearGradient(0, by, 0, by + bh);
+    g.addColorStop(0, 'rgba(24,31,43,0.96)');
+    g.addColorStop(1, 'rgba(8,11,17,0.96)');
+    ctx.fillStyle = g;
     ctx.fill();
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.6;
     ctx.strokeStyle = hexA(col, 1);
     ctx.stroke();
-    roundRect(ctx, bx, by, 20, bh, 5);
+    // population shield
+    const pr = bh * 0.52;
+    ctx.beginPath();
+    ctx.arc(bx + pr + 1, by + bh / 2, pr, 0, Math.PI * 2);
     ctx.fillStyle = hexA(col, 1);
     ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.stroke();
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#10141f';
-    ctx.fillText(pop, bx + 10, by + bh / 2 + 0.5);
+    ctx.fillStyle = '#0c1017';
+    ctx.font = `700 ${fs}px ${DISPLAY_FONT}`;
+    ctx.fillText(String(c.pop), bx + pr + 1, by + bh / 2 + 0.5);
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#f3eedd';
-    ctx.fillText((c.capital ? '★ ' : '') + label, bx + 25, by + bh / 2 + 0.5);
-    // hp bar when damaged
+    ctx.fillStyle = '#efe7d0';
+    ctx.font = `600 ${fs}px ${DISPLAY_FONT}`;
+    ctx.fillText(label, bx + left + 2, by + bh / 2 + 0.5);
+    if (head) {
+      drawIcon(ctx, head.id, bx + bw - bh * 0.62, by + bh / 2, bh * 0.62, '#e5974a', '#e5974a', 1.8);
+    }
+    // damage bar
     if (c.hp < c.maxHp && c.visible) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(bx, by + bh + 2, bw, 4);
-      ctx.fillStyle = c.hp / c.maxHp > 0.5 ? '#6bd16b' : c.hp / c.maxHp > 0.25 ? '#e8c14a' : '#e5584a';
-      ctx.fillRect(bx, by + bh + 2, bw * Math.max(0, c.hp / c.maxHp), 4);
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(bx + 4, by + bh + 2, bw - 8, 4);
+      ctx.fillStyle = c.hp / c.maxHp > 0.5 ? '#82d48d' : c.hp / c.maxHp > 0.25 ? '#e8c14a' : '#ec6c5d';
+      ctx.fillRect(bx + 4, by + bh + 2, (bw - 8) * Math.max(0, c.hp / c.maxHp), 4);
     }
     ctx.restore();
     void st;
   }
 
+  /** Unit flag: a shield-shaped banner in the civilisation colour carrying the unit's glyph. */
   private drawUnit(ctx: CanvasRenderingContext2D, v: GameView, u: ViewUnit, tx: number, ty: number, z: number, st: RenderState, ghost = false): void {
     const def = UNITS[u.type];
     const wp = this.cam.worldOfTile(tx, ty);
@@ -589,71 +629,90 @@ export class MapRenderer {
     const col = civColor(v, u.owner);
     const civ = !!def.civilian;
     const onCity = v.cities.some((c) => c.x === Math.round(tx) && c.y === Math.round(ty));
-    // military stands upper-right inside cities, civilians lower-left
-    const ox = (civ ? -13 : onCity ? 15 : 0) * z;
-    const oy = (civ ? 12 : onCity ? 13 : -2) * z;
+    const ox = (civ ? -14 : onCity ? 16 : 0) * z;
+    const oy = (civ ? 10 : onCity ? 12 : -4) * z;
     const x = s.x + ox;
     const y = s.y + oy;
-    const r = 15 * Math.max(0.7, z);
     const mine = u.owner === v.me;
+    const selected = st.selectedUnit?.id === u.id;
+    const k = Math.max(0.75, z) * (selected ? 1.1 : 1);
+    const w = 28 * k;
+    const h = 34 * k;
     ctx.save();
+    // drop shadow
     ctx.beginPath();
-    ctx.arc(x, y + 1.5, r, 0, Math.PI * 2);
+    ctx.ellipse(x, y + h * 0.58, w * 0.5, h * 0.12, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fill();
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.4, 2, x, y, r);
-    g.addColorStop(0, '#39445d');
-    g.addColorStop(1, '#1a2133');
+    const flag = () => {
+      ctx.beginPath();
+      ctx.moveTo(x - w / 2, y - h / 2);
+      ctx.lineTo(x + w / 2, y - h / 2);
+      ctx.lineTo(x + w / 2, y + h * 0.14);
+      ctx.lineTo(x, y + h / 2);
+      ctx.lineTo(x - w / 2, y + h * 0.14);
+      ctx.closePath();
+    };
+    flag();
+    const g = ctx.createLinearGradient(x - w / 2, y - h / 2, x + w / 2, y + h / 2);
+    g.addColorStop(0, shade(col, 0.22));
+    g.addColorStop(0.55, col);
+    g.addColorStop(1, shade(col, -0.28));
     ctx.fillStyle = g;
     ctx.fill();
-    ctx.lineWidth = Math.max(2.4, 3.2 * z);
-    ctx.strokeStyle = col;
+    ctx.lineWidth = Math.max(1.6, 2 * k);
+    ctx.strokeStyle = selected ? '#f2d98c' : 'rgba(5,8,13,0.85)';
     ctx.stroke();
-    this.emoji(ctx, def.icon, x, y + 1, r * 1.2);
-    // hp
+    // inner rule
+    ctx.save();
+    flag();
+    ctx.clip();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.strokeRect(x - w / 2 + 3 * k, y - h / 2 + 3 * k, w - 6 * k, h);
+    ctx.restore();
+    const ink = lum(col) > 0.62 ? '#161b26' : '#ffffff';
+    drawIcon(ctx, def.id, x, y - h * 0.06, 19 * k, ink, ink, 1.9);
+    // hit points
     if (u.hp < 100 && !ghost) {
-      const bw = r * 1.7;
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillRect(x - bw / 2, y + r + 2, bw, 4);
-      ctx.fillStyle = u.hp > 60 ? '#6bd16b' : u.hp > 30 ? '#e8c14a' : '#e5584a';
-      ctx.fillRect(x - bw / 2, y + r + 2, (bw * u.hp) / 100, 4);
+      const bw = w * 0.9;
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(x - bw / 2, y + h * 0.58 + 1, bw, 4);
+      ctx.fillStyle = u.hp > 60 ? '#82d48d' : u.hp > 30 ? '#e8c14a' : '#ec6c5d';
+      ctx.fillRect(x - bw / 2, y + h * 0.58 + 1, (bw * u.hp) / 100, 4);
     }
-    // status badges
     if (!ghost && mine) {
-      ctx.font = `700 ${Math.round(10 * Math.max(0.8, z))}px system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      let badge = '';
-      if (u.auto === 'work') badge = 'A';
-      else if (u.auto === 'explore') badge = '◎';
-      else if (u.order?.kind === 'fortify' || u.fortified) badge = '⛨';
-      else if (u.order?.kind === 'sleep') badge = 'z';
-      else if (u.order?.kind === 'build') badge = '⚒';
-      else if (u.order?.kind === 'goto') badge = '→';
-      if (badge) {
+      // status chip
+      let chip: string | null = null;
+      if (u.auto === 'work') chip = 'auto';
+      else if (u.auto === 'explore') chip = 'explore';
+      else if (u.order?.kind === 'fortify' || u.fortified) chip = 'fortify';
+      else if (u.order?.kind === 'sleep') chip = 'sleep';
+      else if (u.order?.kind === 'build') chip = u.order.what;
+      else if (u.order?.kind === 'goto') chip = 'chevron';
+      if (chip) {
+        const r = 7.5 * Math.max(0.85, z);
+        const cx = x + w / 2 - 1;
+        const cy = y - h / 2 + 1;
         ctx.beginPath();
-        ctx.arc(x + r * 0.75, y - r * 0.75, 7 * Math.max(0.8, z), 0, Math.PI * 2);
-        ctx.fillStyle = '#10141f';
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#0c1017';
         ctx.fill();
-        ctx.strokeStyle = col;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.3;
+        ctx.strokeStyle = '#d4af5a';
         ctx.stroke();
-        ctx.fillStyle = '#fff';
-        ctx.fillText(badge, x + r * 0.75, y - r * 0.75 + 0.5);
+        drawIcon(ctx, chip, cx, cy, r * 1.35, '#f2d98c', '#f2d98c', 2.1);
       }
       if (u.level > 0) {
-        ctx.fillStyle = '#ffd84a';
-        ctx.fillText('★'.repeat(u.level), x - r * 0.7, y - r * 0.85);
+        for (let i = 0; i < u.level; i++) drawIcon(ctx, 'star', x - w / 2 + 5 * k + i * 6 * k, y - h / 2 - 3 * k, 8 * k, '#ffe08a', '#ffe08a', 1.2);
       }
-      if (!ghost && (u.mp ?? 0) > 0 && !u.order && !u.auto && !u.fortified && !u.skipped && st.selectedUnit?.id !== u.id) {
-        // "needs orders" glow
-        ctx.beginPath();
-        ctx.arc(x, y, r + 3, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255,255,255,${0.35 + 0.3 * Math.sin(st.now / 300)})`;
-        ctx.lineWidth = 1.5;
+      if ((u.mp ?? 0) > 0 && !u.order && !u.auto && !u.fortified && !u.skipped && !selected) {
+        ctx.save();
+        flag();
+        ctx.strokeStyle = `rgba(255,255,255,${0.4 + 0.35 * Math.sin(st.now / 280)})`;
+        ctx.lineWidth = 2.6;
         ctx.stroke();
+        ctx.restore();
       }
     }
     ctx.restore();
@@ -726,4 +785,17 @@ export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w
 export function hexA(hex: string, a: number): string {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+/** Lighten (amount > 0) or darken (amount < 0) a #rrggbb colour. */
+export function shade(hex: string, amount: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const f = (c: number) => Math.max(0, Math.min(255, Math.round(amount >= 0 ? c + (255 - c) * amount : c * (1 + amount))));
+  return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+
+/** Relative luminance (0..1) of a #rrggbb colour. */
+export function lum(hex: string): number {
+  const n = parseInt(hex.slice(1), 16);
+  return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
 }

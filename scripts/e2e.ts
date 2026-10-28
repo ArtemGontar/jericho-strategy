@@ -51,37 +51,37 @@ try {
   {
     const { page, errors } = await newPage('solo');
     await page.goto(base);
-    await page.click('button:has-text("New game vs computer")');
-    await page.click('button:has-text("Start game")');
+    await page.click('button:has-text("New game")');
+    await page.click('button:has-text("Begin")');
     await page.waitForSelector('canvas.map');
     await page.waitForFunction(() => (window as any).__jericho?.screen?.view);
     await page.keyboard.press('b');
     await page.waitForTimeout(400);
     let s = await screenState(page);
     check('founded a capital with the B key', s.cities === 1);
-    const label = () => page.locator('.endturn').first().innerText().then((t) => t.split('\n')[0]);
+    const label = () => page.locator('.turnlabel').first().innerText().then((t) => t.split('\n')[0].trim());
     for (let step = 0; step < 300; step++) {
       const turn = (await screenState(page)).turn;
       if (turn >= 15) break;
       const l = await label();
-      if (l.startsWith('Choose production')) {
-        if (await page.locator('.sidepanel.hidden').count()) await page.locator('.endturn').first().click();
-        const names = await page.locator('.opt .nm').allInnerTexts();
+      if (l.toLowerCase().startsWith('choose production')) {
+        if (await page.locator('.drawer.hidden').count()) await page.locator('.nextturn').first().click();
+        const names = await page.locator('.item.pick .nm').allInnerTexts();
         const pick = ['Settler', 'Worker', 'Warrior', 'Library'].map((n) => names.indexOf(n)).find((i) => i >= 0) ?? 0;
-        await page.locator('.opt').nth(pick).locator('button:has-text("▶")').click();
-      } else if (l.startsWith('Choose research')) {
-        await page.locator('.endturn').first().click();
-        await page.locator('.tech.avail').first().click();
-      } else if (l.startsWith('Next unit')) {
-        await page.locator('.endturn').first().click();
+        await page.locator('.item.pick').nth(pick).click();
+      } else if (l.toLowerCase().startsWith('choose research')) {
+        await page.locator('.nextturn').first().click();
+        await page.locator('.node.avail').first().click();
+      } else if (l.toLowerCase().startsWith('next unit')) {
+        await page.locator('.nextturn').first().click();
         const type = await page.evaluate(() => (window as any).__jericho.screen.selUnit?.type);
         if (type === 'settler') {
           const can = await page.evaluate(() => { const sc = (window as any).__jericho.screen; return sc.canFound(sc.selUnit) === null; });
           await page.keyboard.press(can ? 'b' : 'z');
         } else if (type === 'worker' || type === 'scout') await page.keyboard.press('a');
         else await page.keyboard.press('f');
-      } else if (l.startsWith('End turn')) {
-        await page.locator('.endturn').first().click();
+      } else if (l.toLowerCase().startsWith('next turn')) {
+        await page.locator('.nextturn').first().click();
         await page.waitForTimeout(150);
       } else await page.waitForTimeout(100);
     }
@@ -91,8 +91,8 @@ try {
     check('has built something', s.units >= 3);
     // autosave + continue
     await page.reload();
-    await page.waitForSelector('button:has-text("Continue game")');
-    await page.click('button:has-text("Continue game")');
+    await page.waitForSelector('button:has-text("Continue")');
+    await page.click('button:has-text("Continue")');
     await page.waitForFunction(() => (window as any).__jericho?.screen?.view);
     const after = await screenState(page);
     check('autosave resumes the game', after.turn >= 14, `turn ${after.turn}`);
@@ -107,14 +107,14 @@ try {
     await page.click('button:has-text("Hot-seat")');
     await page.fill('input[placeholder="Your name"]', 'Ann');
     await page.fill('input[placeholder="Player 2 name"]', 'Ben');
-    await page.click('button:has-text("Start game")');
+    await page.click('button:has-text("Begin")');
     await page.waitForFunction(() => (window as any).__jericho?.screen?.view);
     check('first human is Ann', (await page.evaluate(() => (window as any).__jericho.screen.view.players[0].name)) === 'Ann');
     await page.keyboard.press('b');
     await page.waitForTimeout(300);
     await page.evaluate(() => { void (window as any).__jericho.screen.endTurn(); });
     await page.waitForSelector('.curtain');
-    check('pass-the-device curtain appears', (await page.locator('.curtain h2').innerText()).includes('Ben'));
+    check('pass-the-device curtain appears', (await page.locator('.curtain h2').innerText()).toLowerCase().includes('ben'));
     await page.click('.curtain button');
     await page.waitForTimeout(300);
     check('second human now plays', (await screenState(page)).me === 1);
@@ -143,11 +143,11 @@ try {
     await B.page.goto(`${base}/?room=${code}`);
     await B.page.fill('input[placeholder="Your name"]', 'Bob');
     await B.page.click('button:has-text("Join")');
-    await B.page.waitForSelector('.lobby');
-    await A.page.waitForFunction(() => document.body.innerText.includes('Bob'));
+    await B.page.waitForSelector('.code');
+    await A.page.waitForFunction(() => document.body.innerText.toLowerCase().includes('bob'));
     check('host sees the friend in the lobby', true);
-    await B.page.fill('input[placeholder^="Chat"]', 'ready!');
-    await B.page.press('input[placeholder^="Chat"]', 'Enter');
+    await B.page.fill('input[placeholder^="Say something"]', 'ready!');
+    await B.page.press('input[placeholder^="Say something"]', 'Enter');
     await A.page.waitForFunction(() => document.querySelector('.chat-log')?.textContent?.includes('ready!'));
     check('lobby chat works', true);
     await A.page.click('button:has-text("Start game")');
@@ -159,7 +159,8 @@ try {
     check('both founded capitals', (await screenState(A.page)).cities === 1 && (await screenState(B.page)).cities === 1);
     await A.page.evaluate(() => { void (window as any).__jericho.screen.endTurn(); });
     await A.page.waitForTimeout(300);
-    check('host waits for the friend', (await A.page.locator('.endturn').first().innerText()).includes('Waiting for Bob'));
+    const waitLabel = (await A.page.locator('.turnlabel').first().innerText()).replace(/\s+/g, ' ');
+    check('host waits for the friend', waitLabel.toLowerCase().includes('waiting for bob'), waitLabel);
     // Bob drops and reconnects
     await B.page.reload();
     // the invite URL still carries ?room=CODE, so a refresh drops Bob straight back into the game
@@ -176,13 +177,13 @@ try {
   {
     const { page, errors } = await newPage('phone', { viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
     await page.goto(base);
-    await page.tap('button:has-text("New game vs computer")');
-    await page.tap('button:has-text("Start game")');
+    await page.tap('button:has-text("New game")');
+    await page.tap('button:has-text("Begin")');
     await page.waitForFunction(() => (window as any).__jericho?.screen?.view);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     check('no horizontal overflow on a phone', !overflow);
-    await page.tap('button:has-text("Found city")');
-    await page.waitForSelector('.sidepanel:not(.hidden)');
+    await page.tap('button[aria-label^="Found city"]');
+    await page.waitForSelector('.drawer:not(.hidden)');
     check('city panel opens as a bottom sheet', true);
     check('no browser errors (phone)', errors.length === 0, errors.slice(0, 2).join(' | '));
   }

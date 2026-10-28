@@ -720,6 +720,11 @@ export function aiTakeTurn(game: Game, pid: number): void {
     if (u.auto !== 'explore') u.auto = 'explore';
     if (!u.order && u.auto === 'explore') aiAutoExplore(game, u);
   }
+  // spend spare gold on modernising the army
+  for (const u of military(game, pid)) {
+    const info = game.upgradeInfo(u);
+    if (info && !info.error && p.gold > info.cost + 90) exec(game, pid, { t: 'upgrade', unit: u.id });
+  }
   runMilitary(game, p, military(game, pid).filter((u) => !UNITS[u.type].scout));
   for (const c of game.cities.filter((x) => x.owner === pid)) {
     aiPlanCity(game, p, c);

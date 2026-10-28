@@ -42,7 +42,7 @@ export interface GeneratedMap {
 function blankTile(x: number, y: number, terrain: TerrainId): Tile {
   return {
     x, y, terrain, resource: null, improvement: null, road: false, owner: -1, city: -1,
-    explored: 0, visible: 0, work: null,
+    explored: 0, visible: 0, hut: false, work: null,
   };
 }
 
@@ -251,6 +251,18 @@ function tryGenerate(w: number, h: number, players: number, seed: number): Gener
     if (count((t) => t.terrain === 'mountain') > 1) {
       for (const t of near) if (t.terrain === 'mountain') t.terrain = 'hills';
     }
+  }
+  // tribal villages: scattered over the land, never near a start
+  const hutCount = Math.round((w * h) / 70);
+  const land = tiles.filter((t) => ['grass', 'plains', 'desert', 'forest', 'hills', 'tundra'].includes(t.terrain) && !t.resource);
+  let placed = 0;
+  for (let tries = 0; tries < 600 && placed < hutCount; tries++) {
+    const t = land[Math.floor(rng.next() * land.length)];
+    if (!t || t.hut) continue;
+    if (starts.some((s0) => hexDistance(s0.x, s0.y, t.x, t.y) < 6)) continue;
+    if (tiles.some((o) => o.hut && hexDistance(o.x, o.y, t.x, t.y) < 5)) continue;
+    t.hut = true;
+    placed++;
   }
   return { tiles, starts: starts.map((s) => ({ x: s.x, y: s.y })) };
 }

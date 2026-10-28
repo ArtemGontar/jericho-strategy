@@ -26,6 +26,7 @@ export function cityStrength(game: Game, city: City): number {
     best = Math.max(best, defenceStrength(game, u, false));
   }
   s += best * 0.35;
+  if (owner.policies.includes('fortification')) s *= 1.25;
   return s * hpFactor(city.hp, game.cityMaxHp(city));
 }
 
@@ -220,7 +221,10 @@ export function resolveAttack(game: Game, att: Unit, x: number, y: number): CmdR
     killedDef = def.hp <= 0;
     killedAtt = att.hp <= 0;
     game.players[defOwner].lastDefeat = game.turn;
-    if (!killedDef) game.note([defOwner], `Your ${UNITS[def.type].name} was attacked!`, 'war', { x, y });
+    if (!killedDef) {
+      game.note([defOwner], `Your ${UNITS[def.type].name} was attacked!`, 'war', { x, y });
+      game.gainXp(def, 3);
+    }
     if (killedDef) {
       game.events.push({ kind: 'death', type: def.type, owner: def.owner, at: { x, y }, mask: game.tile(x, y).visible });
       game.note([defOwner], `Your ${UNITS[def.type].name} was killed!`, 'bad', { x, y });
@@ -232,6 +236,7 @@ export function resolveAttack(game: Game, att: Unit, x: number, y: number): CmdR
     game.removeUnit(att);
   }
   finishAttack(game, att, from, to, ranged, dmgDef, dmgAtt, defOwner, defType, killedDef, killedAtt, mask());
+  if (!killedAtt) game.gainXp(att, killedDef ? 9 : 4);
   // melee winners advance into an emptied tile
   if (!killedAtt && killedDef && !ranged && !city) {
     const rest = game.unitsAt(x, y);

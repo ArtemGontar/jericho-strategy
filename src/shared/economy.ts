@@ -85,12 +85,17 @@ export function assignWorkedTiles(game: Game, playerId: number): void {
       if (game.hostileUnitOn(playerId, t.x, t.y)) continue;
       candidates.push({ idx, y: tileYield(t) });
     }
+    // pinned tiles first
+    const pinned = candidates.filter((c) => city.locked.includes(c.idx)).slice(0, city.pop);
+    city.locked = city.locked.filter((k) => candidates.some((c) => c.idx === k));
+    const free = candidates.filter((c) => !pinned.includes(c));
+    const room = Math.max(0, city.pop - pinned.length);
     const pick = (wf: number) => {
       const w = FOCUS_WEIGHTS[city.focus];
-      const scored = candidates
+      const scored = free
         .map((c) => ({ c, s: c.y.food * w.food * wf + c.y.prod * w.prod + c.y.gold * w.gold + (c.y.food + c.y.prod + c.y.gold) * 0.05 }))
         .sort((a, b) => b.s - a.s || a.c.idx - b.c.idx);
-      return scored.slice(0, city.pop).map((s) => s.c);
+      return [...pinned, ...scored.slice(0, room).map((s) => s.c)];
     };
     let chosen = pick(1);
     const center = cityCenterYield(game, city);
@@ -128,6 +133,12 @@ export function cityYield(game: Game, city: City): CityYield {
     culture += d.culture ?? 0;
     upkeep += d.upkeep;
   }
+  const pol = game.players[city.owner].policies;
+  if (pol.includes('agrarian')) food += 1;
+  if (pol.includes('craftsmen')) prod += 1;
+  if (pol.includes('patronage')) culture += 2;
+  if (pol.includes('bureaucracy')) upkeep = Math.max(0, upkeep - 1);
+  if (pol.includes('trade_routes')) gold += city.capital ? 4 : 1;
   if (civ.id === 'maya') culture += 2;
   if (civ.id === 'greece') {
     gold += 2;
@@ -164,6 +175,9 @@ export function itemCost(game: Game, playerId: number, kind: 'unit' | 'building'
   if (kind === 'unit') {
     base = UNITS[id as keyof typeof UNITS].cost;
     if (civ.id === 'rome' && !UNITS[id as keyof typeof UNITS].civilian) base *= 0.87;
+    const pol = game.players[playerId].policies;
+    if (pol.includes('drill') && !UNITS[id as keyof typeof UNITS].civilian) base *= 0.8;
+    if (pol.includes('pioneers') && id === 'settler') base *= 0.7;
   } else {
     const b = BUILDINGS[id as BuildingId];
     base = b.cost;
@@ -192,6 +206,8 @@ export function refreshPlayer(game: Game, playerId: number): void {
   const civ = civOf(game, playerId);
   if (civ.id === 'sumer') science = Math.round(science * 1.1);
   if (civ.id === 'indus') gold = Math.round(gold * 1.1);
+  if (p.policies.includes('scholarship')) science = Math.round(science * 1.1);
+  if (p.policies.includes('coinage')) gold = Math.round(gold * 1.1);
   const net = gold - upkeep - unitUpkeep(game, playerId);
   p.income = { gold: net, science, culture };
 }

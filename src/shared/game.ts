@@ -3,7 +3,7 @@ import { Rng } from './rng';
 import { generateMap } from './mapgen';
 import {
   BUILDINGS, CITY_BASE_HP, CIVS, CIV_BY_ID, FINAL_TECH, IMPROVEMENTS, MAP_SIZES, MAX_PLAYERS, MIN_CITY_DISTANCE,
-  PEACE_MIN_TURNS, TECHS, TERRAIN, UNITS, UNIT_HP,
+  PEACE_MIN_TURNS, POLICIES, POLICY_BY_ID, TECHS, TERRAIN, UNITS, UNIT_HP, UNIT_UPGRADES, XP_LEVELS, policyCost,
 } from './data';
 import {
   assignWorkedTiles, availableTechs, canBuildBuilding, canBuildUnit, cityYield, foodNeeded, hasBuilding, itemCost,
@@ -32,6 +32,9 @@ export type Command =
   | { t: 'accept'; proposal: number; accept: boolean }
   | { t: 'war'; to: number }
   | { t: 'gift'; to: number; amount: number }
+  | { t: 'policy'; id: string }
+  | { t: 'tile'; city: number; x: number; y: number }
+  | { t: 'upgrade'; unit: number }
   | { t: 'end' }
   | { t: 'unend' };
 
@@ -78,6 +81,7 @@ export class Game {
   constructor(state: GameState) {
     this.s = state;
     this.rng = new Rng(state.rng);
+    this.normalise();
     this.reindex();
   }
 
@@ -125,6 +129,8 @@ export class Game {
         research: 0,
         techs: [],
         culture: 0,
+        policies: [],
+        policyChoices: [],
         endedTurn: slot.ai,
         connected: !slot.ai,
         income: { gold: 0, science: 0, culture: 0 },
@@ -183,6 +189,17 @@ export class Game {
 
   serialize(): string {
     return JSON.stringify(this.toJSON());
+  }
+
+  /** Fill in fields that older saves (or rooms persisted by an older server) do not have. */
+  private normalise(): void {
+    for (const t of this.s.tiles) if (t.hut === undefined) t.hut = false;
+    for (const u of this.s.units) if (u.xp === undefined) u.xp = 0;
+    for (const c of this.s.cities) if (!c.locked) c.locked = [];
+    for (const p of this.s.players) {
+      if (!p.policies) p.policies = [];
+      if (!p.policyChoices) p.policyChoices = [];
+    }
   }
 
   private reindex(): void {
@@ -258,7 +275,7 @@ export class Game {
   addUnit(owner: number, type: UnitTypeId, x: number, y: number, level = 0): Unit {
     const def = UNITS[type];
     const u: Unit = {
-      id: this.s.nextId++, owner, type, x, y, hp: UNIT_HP, mp: def.moves * 2, level, order: null, auto: null,
+      id: this.s.nextId++, owner, type, x, y, hp: UNIT_HP, mp: def.moves * 2, level, xp: 0, order: null, auto: null,
       active: false, attacked: false, fortified: false, skipped: false,
     };
     this.s.units.push(u);
@@ -305,7 +322,7 @@ export class Game {
     const h = this.height;
     for (const t of this.s.tiles) t.visible = 0;
     for (const u of this.s.units) {
-      const r = UNITS[u.type].vision;
+      const r = UNITS[u.type].vision + (this.s.players[u.owner].policies.includes('exploration') ? 1 : 0);
       const bit = 1 << u.owner;
       for (const p of tilesWithin(u.x, u.y, r, w, h)) {
         const t = this.s.tiles[p.y * w + p.x];
@@ -371,7 +388,7 @@ export class Game {
     const city: City = {
       id: this.s.nextId++, owner, name: this.nextCityName(owner), x, y, pop: 1, food: 0, prod: 0, prodKind: null,
       queue: [], buildings: [], hp: CITY_BASE_HP, focus: 'balanced', capital, founded: this.s.turn, radius: 2,
-      worked: [], lastAttacked: -99, shot: false,
+      worked: [], locked: [], lastAttacked: -99, shot: false,
     };
     this.s.cities.push(city);
     this.cityById.set(city.id, city);
@@ -384,7 +401,7 @@ export class Game {
   }
 
   cityMaxHp(city: City): number {
-    return CITY_BASE_HP + (hasBuilding(city, 'walls') ? 100 : 0);
+    return CITY_BASE_HP + (hasBuilding(city, 'walls') ? 100 : 0) + (this.s.players[city.owner].policies.includes('fortification') ? 60 : 0);
   }
 
   // ------------------------------------------------------------------ command dispatch
@@ -408,6 +425,9 @@ export class Game {
       case 'accept': res = this.cmdAccept(p, cmd.proposal, cmd.accept); break;
       case 'war': res = this.cmdWar(p, cmd.to); break;
       case 'gift': res = this.cmdGift(p, cmd.to, cmd.amount); break;
+      case 'policy': res = this.cmdPolicy(p, cmd.id); break;
+      case 'tile': res = this.cmdTile(p, cmd.city, cmd.x, cmd.y); break;
+      case 'upgrade': res = this.cmdUpgrade(p, cmd.unit); break;
       case 'end': res = this.cmdEnd(p); return res;
       case 'unend': p.endedTurn = false; return { ok: true };
       default: return { ok: false, error: 'Unknown command.' };
@@ -527,6 +547,7 @@ export class Game {
     u.fortified = false;
     // capturing lone civilians happens when a military unit walks in (handled by combat), so nothing here
     this.updateVisibility();
+    if (this.tile(x, y).hut) this.exploreHut(u);
     return true;
   }
 
@@ -558,7 +579,8 @@ export class Game {
   }
 
   workRate(playerId: number): number {
-    return CIV_BY_ID[this.players[playerId].civ].id === 'persia' ? 1.5 : 1;
+    const p = this.players[playerId];
+    return (CIV_BY_ID[p.civ].id === 'persia' ? 1.5 : 1) * (p.policies.includes('pioneers') ? 1.25 : 1);
   }
 
   canWork(p: Player, u: Unit, what: WorkKind): string | null {
@@ -804,6 +826,131 @@ export class Game {
     return { ok: true };
   }
 
+  // ------------------------------------------------------------------ tribal villages, promotions, policies, upgrades
+  private exploreHut(u: Unit): void {
+    const t = this.tile(u.x, u.y);
+    t.hut = false;
+    const p = this.s.players[u.owner];
+    const at = { x: u.x, y: u.y };
+    const roll = this.rng.next();
+    const mask = [u.owner];
+    if (roll < 0.3) {
+      const gold = this.rng.int(30, 71);
+      p.gold += gold;
+      this.note(mask, `The villagers gift you ${gold} gold.`, 'good', at);
+    } else if (roll < 0.5) {
+      const bonus = p.researching ? Math.round(techCost(this, p, p.researching) * 0.45) : 30;
+      p.research += bonus;
+      this.note(mask, `A village elder shares ancient knowledge (+${bonus} science).`, 'tech', at);
+    } else if (roll < 0.7) {
+      const type: UnitTypeId = UNITS[u.type].civilian ? 'warrior' : 'worker';
+      const spot = this.nb(u.x, u.y).find((n) => TERRAIN[this.tile(n.x, n.y).terrain].passable && this.unitsAt(n.x, n.y).length === 0 && !this.tile(n.x, n.y).city);
+      if (spot) {
+        this.addUnit(u.owner, type, spot.x, spot.y);
+        this.note(mask, `Villagers join you: a free ${UNITS[type].name}!`, 'good', at);
+      } else {
+        p.gold += 40;
+        this.note(mask, 'The villagers gift you 40 gold.', 'good', at);
+      }
+    } else if (roll < 0.85) {
+      const bit = 1 << u.owner;
+      for (const q of tilesWithin(u.x, u.y, 6, this.width, this.height)) this.tile(q.x, q.y).explored |= bit;
+      this.note(mask, 'A hermit draws you a map of the surrounding lands.', 'info', at);
+    } else if (roll < 0.95) {
+      p.culture += 25;
+      this.note(mask, 'The village shares its songs and customs (+25 culture).', 'good', at);
+    } else {
+      u.hp = Math.max(15, u.hp - 30);
+      this.note(mask, 'The villagers were hostile and drove your unit off!', 'bad', at);
+    }
+  }
+
+  gainXp(u: Unit, amount: number): void {
+    if (UNITS[u.type].civilian) return;
+    u.xp += amount;
+    while (u.level < XP_LEVELS.length && u.xp >= XP_LEVELS[u.level]) {
+      u.level++;
+      u.hp = Math.min(UNIT_HP, u.hp + 25);
+      this.note([u.owner], `Your ${UNITS[u.type].name} was promoted (level ${u.level})!`, 'good', { x: u.x, y: u.y });
+    }
+  }
+
+  nextPolicyCost(p: Player): number {
+    return policyCost(p.policies.length, this.speedMult);
+  }
+
+  private offerPolicy(p: Player): void {
+    if (p.policyChoices.length || p.policies.length >= POLICIES.length) return;
+    if (p.culture < this.nextPolicyCost(p)) return;
+    const open = POLICIES.filter((x) => !p.policies.includes(x.id)).map((x) => x.id);
+    this.rng.shuffle(open);
+    p.policyChoices = open.slice(0, 3);
+    if (p.ai) {
+      const pref = p.personality === 'warlord' ? ['drill', 'fortification', 'conscription', 'craftsmen'] : p.personality === 'builder' ? ['agrarian', 'scholarship', 'coinage', 'patronage'] : ['craftsmen', 'scholarship', 'agrarian', 'coinage'];
+      const pick = p.policyChoices.find((id) => pref.includes(id)) ?? p.policyChoices[0];
+      this.adoptPolicy(p, pick);
+    } else this.note([p.id], 'Your culture has inspired a new policy — choose one!', 'tech');
+  }
+
+  private adoptPolicy(p: Player, id: string): void {
+    p.policies.push(id);
+    p.policyChoices = [];
+    if (!p.ai) this.note([p.id], `Adopted ${POLICY_BY_ID[id].name}: ${POLICY_BY_ID[id].desc}`, 'good');
+  }
+
+  private cmdPolicy(p: Player, id: string): CmdResult {
+    if (!p.policyChoices.includes(id)) return { ok: false, error: 'That policy is not on offer.' };
+    this.adoptPolicy(p, id);
+    return { ok: true };
+  }
+
+  private cmdTile(p: Player, cityId: number, x: number, y: number): CmdResult {
+    const c = this.ownCity(p, cityId);
+    if (typeof c === 'string') return { ok: false, error: c };
+    if (!this.inBounds(x, y)) return { ok: false, error: 'Out of bounds.' };
+    const t = this.tile(x, y);
+    const idx = y * this.width + x;
+    if (this.dist(c.x, c.y, x, y) > c.radius || t.owner !== p.id || !TERRAIN[t.terrain].workable || t.city >= 0) return { ok: false, error: 'This city cannot work that tile.' };
+    const i = c.locked.indexOf(idx);
+    if (i >= 0) c.locked.splice(i, 1);
+    else {
+      if (c.locked.length >= c.pop) return { ok: false, error: `${c.name} only has ${c.pop} citizen${c.pop > 1 ? 's' : ''}.` };
+      // another of our cities may be using it: steal it
+      for (const o of this.s.cities) if (o.owner === p.id && o.id !== c.id) o.locked = o.locked.filter((k) => k !== idx);
+      c.locked.push(idx);
+    }
+    return { ok: true };
+  }
+
+  upgradeInfo(u: Unit): { to: UnitTypeId; cost: number; error: string | null } | null {
+    const to = UNIT_UPGRADES[u.type];
+    if (!to) return null;
+    const p = this.s.players[u.owner];
+    const def = UNITS[to];
+    const from = UNITS[u.type];
+    const cost = Math.max(25, Math.round((def.cost - from.cost * 0.5) * 1.6));
+    let error: string | null = null;
+    if (def.tech && !p.techs.includes(def.tech)) error = `Requires ${TECHS.find((t) => t.id === def.tech)!.name}.`;
+    else if (def.needs && !this.hasResource(u.owner, def.needs)) error = `Requires ${def.needs}.`;
+    else if (this.tile(u.x, u.y).owner !== u.owner) error = 'Must be inside your borders.';
+    else if (p.gold < cost) error = `Costs ${cost} gold.`;
+    return { to, cost, error };
+  }
+
+  private cmdUpgrade(p: Player, id: number): CmdResult {
+    const u = this.ownUnit(p, id);
+    if (typeof u === 'string') return { ok: false, error: u };
+    const info = this.upgradeInfo(u);
+    if (!info) return { ok: false, error: 'This unit cannot be upgraded.' };
+    if (info.error) return { ok: false, error: info.error };
+    p.gold -= info.cost;
+    u.type = info.to;
+    u.mp = 0;
+    u.order = null;
+    this.note([p.id], `Your unit was upgraded to ${UNITS[info.to].name}.`, 'good', { x: u.x, y: u.y });
+    return { ok: true };
+  }
+
   private cmdGift(p: Player, to: number, amount: number): CmdResult {
     const o = this.s.players[to];
     if (!o || !o.alive || to === p.id) return { ok: false, error: 'Invalid player.' };
@@ -939,6 +1086,7 @@ export class Game {
       }
     }
     p.culture += p.income.culture;
+    this.offerPolicy(p);
     // cities
     for (const c of this.s.cities.filter((x) => x.owner === p.id)) this.cityTurn(c, p, aiMult);
   }
@@ -1064,6 +1212,7 @@ export class Game {
           if (hasBuilding(this.city(t.city)!, 'barracks')) heal = 100;
         } else if (t.owner === u.owner) heal = 15;
         if (u.fortified) heal += 5;
+        if (this.players[u.owner].policies.includes('conscription')) heal += 10;
         u.hp = Math.min(UNIT_HP, u.hp + heal);
       }
       // workers
