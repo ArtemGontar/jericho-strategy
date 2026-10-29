@@ -16,7 +16,9 @@
     "fuzz": "tsx scripts/fuzz.ts",
     "chaos": "tsx scripts/chaos.ts",
     "idle": "tsx scripts/idle.ts",
-    "bench": "tsx scripts/bench.ts"
+    "bench": "node --expose-gc --import tsx scripts/bench.ts",
+    "bench:server": "node --expose-gc --import tsx scripts/serverbench.ts",
+    "fingerprint": "tsx scripts/fingerprint.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
