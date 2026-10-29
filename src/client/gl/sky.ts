@@ -79,7 +79,7 @@ export class Sky {
     this.built = true;
   }
 
-  update(t: number, dt: number, extX: number, zoom: number, extZ: number): void {
+  update(t: number, dt: number, extX: number, zoom: number, extZ: number, seen: (x: number, z: number) => number): void {
     if (!this.built || Math.abs(extX - this.extX) > 0.1) this.build(extX, extZ);
     // clouds thin out as the player zooms in so they never hide the action
     const fade = Math.max(0, Math.min(1, (1.35 - zoom) / 0.6));
@@ -87,8 +87,11 @@ export class Sky {
       c.x += c.speed * dt;
       if (c.x > this.extX + 14) c.x = -14;
       c.mesh.position.x = c.x;
-      (c.mesh.material as MeshBasicMaterial).opacity = 0.5 * fade;
-      c.mesh.visible = fade > 0.02;
+      // clouds belong over the world the player has uncovered, not over the black unknown
+      const over = Math.min(1, seen(c.x, c.z) * 3);
+      const mat = c.mesh.material as MeshBasicMaterial;
+      mat.opacity += (0.42 * fade * over - mat.opacity) * Math.min(1, dt * 2);
+      c.mesh.visible = mat.opacity > 0.01;
     }
     for (const b of this.birds) {
       b.x += b.speed * dt;
@@ -101,7 +104,7 @@ export class Sky {
       b.wingR.rotation.z = -flap;
       b.g.position.set(b.x, b.y + Math.sin(t * 0.9 + b.phase) * 0.08, b.z + Math.sin(t * 0.3 + b.phase) * 0.4);
       b.g.rotation.y = 0;
-      b.g.visible = zoom < 2.0;
+      b.g.visible = zoom < 2.0 && seen(b.x, b.z) > 0.2;
     }
   }
 }

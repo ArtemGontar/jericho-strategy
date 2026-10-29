@@ -243,7 +243,7 @@ export class GLRenderer implements MapDrawer {
     this.fx.update(st.now, this.cam.zoom, this.gl.getPixelRatio());
     this.setDaylight(v.turn);
     this.terrain.setTime(t);
-    this.sky.update(t, Math.min(0.1, (st.now - (this.lastNow || st.now)) / 1000), this.terrain.extX, this.cam.zoom, this.terrain.extZ);
+    this.sky.update(t, Math.min(0.1, (st.now - (this.lastNow || st.now)) / 1000), this.terrain.extX, this.cam.zoom, this.terrain.extZ, (x, z) => this.terrain.fogAt(x, z));
     this.syncCamera();
     this.gl.render(this.scene, this.camera);
     const ctx = this.canvas.getContext('2d')!;

@@ -89,7 +89,7 @@ export class GameScreen {
       this.showGrid = prefs.grid === true;
     } catch { /* ignore */ }
     this.root = h('div', { class: 'game' });
-    this.canvas = h('canvas', { class: 'map' });
+    this.canvas = h('canvas', { class: 'map', role: 'application', 'aria-label': 'Game map. Use the arrow keys to pan, plus and minus to zoom, N for the next unit, Enter to continue.', tabindex: 0 });
     this.mini = h('canvas', { class: 'minimap' });
     this.topbar = h('div', { class: 'topbar' });
     this.medallions = h('div', { class: 'medallions' });
@@ -246,7 +246,7 @@ export class GameScreen {
   }
 
   private initCamera(): void {
-    this.cam.zoom = Math.max(this.cam.minZoom(), Math.min(1.0, this.cam.w / 1100));
+    this.cam.zoom = Math.max(this.cam.minZoom(), 0.75, Math.min(1.0, this.cam.w / 1100));
     const focus = this.myUnits().find((u) => u.type === 'settler') ?? this.myCities()[0] ?? this.myUnits()[0];
     if (focus) this.focus(focus.x, focus.y, false);
   }

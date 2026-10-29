@@ -48,6 +48,19 @@ interface Lunge {
   dur: number;
 }
 
+export type AnimSpeed = 'normal' | 'fast' | 'instant';
+const RATE: Record<AnimSpeed, number> = { normal: 1, fast: 0.45, instant: 0.08 };
+export function animSpeed(): AnimSpeed {
+  try {
+    const v = localStorage.getItem('jericho.anim');
+    if (v === 'fast' || v === 'instant') return v;
+  } catch { /* ignore */ }
+  return 'normal';
+}
+export function setAnimSpeed(v: AnimSpeed): void {
+  try { localStorage.setItem('jericho.anim', v); } catch { /* ignore */ }
+}
+
 /** Time-based presentation layer; the game state is already final when these play. */
 export class Animator {
   moves = new Map<number, MoveAnim>();
@@ -85,7 +98,7 @@ export class Animator {
     const budget = 4000;
     let count = 0;
     for (const e of events) if (e.kind === 'move' || e.kind === 'attack') count++;
-    const speed = count > 12 ? Math.max(0.25, Math.min(1, budget / (count * 420))) : 1;
+    const speed = (count > 12 ? Math.max(0.25, Math.min(1, budget / (count * 420))) : 1) * RATE[animSpeed()];
     for (const e of events) {
       if (e.kind === 'move') {
         const steps = e.path.length;
@@ -97,7 +110,7 @@ export class Animator {
         else this.cursor = Math.max(this.cursor, t0 + steps * stepMs);
       } else if (e.kind === 'attack') {
         const t0 = this.cursor;
-        const dur = (e.ranged ? 380 : 320) * Math.max(0.5, speed);
+        const dur = (e.ranged ? 380 : 320) * Math.max(0.5 * RATE[animSpeed()], speed);
         if (e.attacker > 0) this.lunges.push({ unit: e.attacker, from: e.from, to: e.to, t0, dur });
         if (e.ranged) this.projectiles.push({ from: e.from, to: e.to, t0, dur: dur * 0.9, kind: e.type === 'catapult' ? 'rock' : e.type === 'cannon' ? 'bolt' : 'arrow' });
         const hitAt = t0 + (e.ranged ? dur * 0.85 : dur * 0.5);

@@ -17,6 +17,8 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs?: Attrs |
     }
   }
   append(el, children);
+  // icon-only buttons carry their meaning in the title: expose it to screen readers too
+  if (tag === 'button' && (el as HTMLButtonElement).title && !el.textContent?.trim() && !el.hasAttribute('aria-label')) el.setAttribute('aria-label', (el as HTMLButtonElement).title);
   return el;
 }
 

@@ -517,10 +517,15 @@ export class Game {
       if (this.dist(u.x, u.y, step.x, step.y) !== 1) { u.order = null; break; }
       const isDest = step.x === target.x && step.y === target.y;
       if (!this.stepUnit(u, step.x, step.y, isDest)) {
-        // a friendly unit we cannot stop next to (this step would use up our movement): route around it
-        if (!isDest && u.mp > 0 && avoid.size < 4) {
-          avoid.add(step.y * this.width + step.x);
-          continue;
+        if (!isDest && u.mp > 0) {
+          // a friendly unit holds the next tile and this step would use up our movement, so we could not stop there.
+          // Part-way through a turn: wait, a fresh turn's movement lets us pass through it. From the start of a
+          // turn (even full movement is not enough): go around it.
+          if (u.mp < UNITS[u.type].moves * 2) break;
+          if (avoid.size < 4) {
+            avoid.add(step.y * this.width + step.x);
+            continue;
+          }
         }
         u.order = null;
         break;

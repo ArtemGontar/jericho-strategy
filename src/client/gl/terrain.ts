@@ -832,6 +832,14 @@ export class Terrain {
     this.decalExt.set(this.extX, this.extZ);
   }
 
+  /** 0 unexplored .. 1 in sight, sampled from the fog texture's CPU copy. */
+  fogAt(X: number, Z: number): number {
+    const i = Math.floor((X - this.x0) * FOG_RES);
+    const j = Math.floor((Z - this.z0) * FOG_RES);
+    if (i < 0 || j < 0 || i >= this.fogW || j >= this.fogH) return 0;
+    return this.fogData[j * this.fogW + i] / 255;
+  }
+
   setTime(t: number): void {
     this.uniforms.uTime.value = t;
   }
