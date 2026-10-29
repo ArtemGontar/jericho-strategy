@@ -1,5 +1,5 @@
 import { hexToPixel, pixelToHex, type Pos } from '../shared/hex';
-import { BUILDINGS, CIV_BY_ID, IMPROVEMENT_YIELD, RESOURCES, TERRAIN, UNITS } from '../shared/data';
+import { CIV_BY_ID, IMPROVEMENT_YIELD, RESOURCES, TERRAIN, UNITS } from '../shared/data';
 import { RESOURCE_LIST, TERRAIN_LIST, type GameView, type ViewCity, type ViewUnit } from '../shared/view';
 import type { ViewMap } from '../shared/viewpath';
 import type { Animator } from './anim';
@@ -8,7 +8,6 @@ import { cloudShadow, citySprite, decorSprite, dimmed, farmSprite, groundSprite,
 import { drawIcon } from './icons';
 
 export const DISPLAY_FONT = "'Cinzel','Palatino Linotype','Book Antiqua',Georgia,serif";
-export const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif';
 
 export function civColor(view: GameView, owner: number): string {
   const p = view.players[owner];
@@ -638,19 +637,6 @@ export class MapRenderer implements MapDrawer {
       ctx.fillText(f.text, s.x, s.y);
       ctx.globalAlpha = 1;
     }
-  }
-
-  private emoji(ctx: CanvasRenderingContext2D, e: string, x: number, y: number, size: number, shadow = false): void {
-    ctx.font = `${Math.max(6, Math.round(size))}px ${EMOJI_FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    if (shadow) {
-      ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.6)';
-      ctx.shadowBlur = 3;
-      ctx.fillText(e, x, y);
-      ctx.restore();
-    } else ctx.fillText(e, x, y);
   }
 
   /** Round resource / feature badge in the Civilization style: dark disc, thin ring, glyph. */
