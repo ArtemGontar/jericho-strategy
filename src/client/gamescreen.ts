@@ -1196,7 +1196,7 @@ export class GameScreen {
   private showEraBanner(era: number): void {
     sfx('wonder');
     this.moments.era();
-    const b = h('div', { class: 'erabanner' }, h('small', null, 'A new age begins'), h('b', null, `${ERA_NAMES[era]} Era`));
+    const b = h('div', { class: 'erabanner scene-era' }, h('small', null, 'A new age begins'), h('b', null, `${ERA_NAMES[era]} Era`));
     this.root.append(b);
     setTimeout(() => b.remove(), 4200);
   }

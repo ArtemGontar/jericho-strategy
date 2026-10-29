@@ -1,12 +1,7 @@
 import { CIVS, CIV_BY_ID, MAP_SIZES } from '../../shared/data';
-import { Game } from '../../shared/game';
-import { buildView } from '../../shared/view';
-import { ViewMap } from '../../shared/viewpath';
 import type { AiLevel } from '../../shared/types';
 import type { RoomInfo, RoomSettings, RoomSlot } from '../../shared/protocol';
-import { Animator } from '../anim';
-import { Camera, MapRenderer } from '../render';
-import { glSupported } from '../gl/prefs';
+import { crestUrl, leaderUrl } from '../artwork';
 import { icon } from '../icons';
 import { isMuted, setMuted } from '../audio';
 import { btn, clear, h, put } from './dom';
@@ -37,119 +32,12 @@ export function saveName(n: string): void {
   try { localStorage.setItem('jericho.name', n); } catch { /* ignore */ }
 }
 
-/** Paint a generated world behind the menus. */
-let backdropCache: HTMLCanvasElement | null = null;
-let backdropPending: Promise<HTMLCanvasElement | null> | null = null;
+export type Scene = 'menu' | 'campaign' | 'settings' | 'archive';
 
-/** One 3D render of a finished world, kept as a picture and reused behind every menu. */
-function snapshotBackdrop(view: ReturnType<typeof buildView>, w: number, h: number): Promise<HTMLCanvasElement | null> {
-  if (backdropCache) return Promise.resolve(backdropCache);
-  backdropPending ??= renderBackdrop(view, w, h).finally(() => { backdropPending = null; });
-  return backdropPending;
-}
-
-async function renderBackdrop(view: ReturnType<typeof buildView>, w: number, h: number): Promise<HTMLCanvasElement | null> {
-  try {
-    const { GLRenderer } = await import('../gl/glrenderer');
-    const dpr = Math.min(1.5, window.devicePixelRatio || 1);
-    const glCanvas = document.createElement('canvas');
-    const overlay = document.createElement('canvas');
-    const cam = new Camera();
-    const gr = new GLRenderer(glCanvas, overlay, cam, new Animator());
-    gr.resizeTo(w, h, dpr);
-    cam.setWorld(view.settings.width, view.settings.height);
-    cam.zoom = Math.max(w / (cam.worldW + 60), h / ((cam.worldH + 60) * cam.tilt)) * 1.05;
-    cam.x = cam.worldW / 2;
-    cam.y = cam.worldH / 2;
-    const st = {
-      view, vm: new ViewMap(view), selectedUnit: null, selectedCity: null, hover: null, reach: null, path: null, pathTurns: 0,
-      attackTargets: new Set<number>(), showYields: false, showGrid: false, workedTiles: null, now: 4000,
-    };
-    gr.draw(st);
-    gr.draw({ ...st, now: 4016 });
-    const out = document.createElement('canvas');
-    out.width = Math.floor(w * dpr);
-    out.height = Math.floor(h * dpr);
-    const ctx = out.getContext('2d')!;
-    ctx.drawImage(glCanvas, 0, 0, out.width, out.height);
-    // the overlay (city banners, markers) is left out: labels under a menu are only clutter
-    gr.dispose();
-    backdropCache = out;
-    return out;
-  } catch (e) {
-    console.warn('3D backdrop failed, using the flat one', e);
-    return null;
-  }
-}
-
-/** Copy the backdrop into a menu canvas, toned down once here so the page never filters a full-screen layer per frame. */
-function stamp(canvas: HTMLCanvasElement, src: HTMLCanvasElement): void {
-  canvas.width = src.width;
-  canvas.height = src.height;
-  const ctx = canvas.getContext('2d')!;
-  ctx.filter = 'saturate(0.9)';
-  ctx.drawImage(src, 0, 0);
-  ctx.filter = 'none';
-  ctx.fillStyle = 'rgba(7, 10, 16, 0.38)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-}
-
-function paintFlatBackdrop(canvas: HTMLCanvasElement, view: ReturnType<typeof buildView>): void {
-  try {
-    const cam = new Camera();
-    cam.setWorld(view.settings.width, view.settings.height);
-    const r = new MapRenderer(canvas, cam, new Animator());
-    r.resize();
-    cam.zoom = Math.max(cam.w / (cam.worldW + 60), cam.h / (cam.worldH + 60)) * 1.02;
-    cam.x = cam.worldW / 2;
-    cam.y = cam.worldH / 2;
-    r.draw({
-      view, vm: new ViewMap(view), selectedUnit: null, selectedCity: null, hover: null, reach: null, path: null, pathTurns: 0,
-      attackTargets: new Set(), showYields: false, showGrid: false, workedTiles: null, now: 0,
-    });
-  } catch (e) {
-    console.warn('backdrop failed', e);
-  }
-}
-
-export function paintBackdrop(canvas: HTMLCanvasElement): void {
-  try {
-    if (backdropCache) {
-      stamp(canvas, backdropCache);
-      return;
-    }
-    const game = Game.create({ seed: Math.floor(Math.random() * 1e6), size: 'medium', players: [{ name: 'a', ai: true }, { name: 'b', ai: true }, { name: 'c', ai: true }] });
-    for (let i = 0; i < 18; i++) game.processTurn();
-    for (const t of game.tiles) t.explored = 0xff;
-    for (const t of game.tiles) t.visible = 0xff;
-    const view = buildView(game, 0);
-    view.units = [];
-    view.hut = view.hut.map(() => 0);
-    const w = Math.max(640, window.innerWidth);
-    const h = Math.max(400, window.innerHeight);
-    if (glSupported()) {
-      // the 3D picture needs the renderer to download first; until then the menu sits on the plain dark background
-      snapshotBackdrop(view, w, h).then((snap) => {
-        if (!snap) return paintFlatBackdrop(canvas, view);
-        stamp(canvas, snap);
-      });
-      return;
-    }
-    paintFlatBackdrop(canvas, view);
-  } catch (e) {
-    console.warn('backdrop failed', e);
-  }
-}
-
-export function screen(withBackdrop = true): { el: HTMLElement; content: HTMLElement } {
+/** A full-screen menu over one of the painted scenes (the picture itself is set in the stylesheet). */
+export function screen(scene: Scene = 'menu'): { el: HTMLElement; content: HTMLElement } {
   const content = h('div', { class: 'content' });
-  const el = h('div', { class: 'screen' });
-  if (withBackdrop) {
-    const c = h('canvas', { class: 'bg' });
-    el.append(c);
-    setTimeout(() => paintBackdrop(c), 30);
-  }
-  el.append(content, soundToggle());
+  const el = h('div', { class: 'screen' }, h('div', { class: `bg scene-${scene}`, 'aria-hidden': 'true' }), content, soundToggle());
   return { el, content };
 }
 
@@ -233,6 +121,7 @@ export function titleScreen(hd: TitleHandlers): HTMLElement {
   });
   const ornament = () => h('div', { class: 'ornament', 'aria-hidden': 'true' }, h('i'), h('b'), h('i'));
   put(content, h('div', { class: 'title-wrap' },
+    h('img', { class: 'crest-art', src: crestUrl, alt: '', draggable: false }),
     h('h1', { class: 'logo' }, 'JERICHO'),
     ornament(),
     h('p', { class: 'tagline' }, 'Found cities. Discover the ages. Outwit your friends.'),
@@ -255,8 +144,10 @@ function civCarousel(onPick: (civ: string | null) => void): HTMLElement {
     track.append(card);
     options.push({ id, card });
   };
-  add(null, h('span', { class: 'emblem', style: { width: '88px', height: '88px', background: '#3a4556', color: '#e9e1cc', fontSize: '40px' } }, '?'), 'Random', 'Let fate decide', 'Any civilisation, drawn at the start', '#8f9aab');
-  for (const c of CIVS) add(c.id, emblem(c.id, 88), c.name, c.leader, c.bonus, c.color);
+  const stage = (...face: HTMLElement[]) => h('span', { class: 'civ-stage' }, ...face);
+  add(null, stage(h('span', { class: 'emblem', style: { width: '96px', height: '96px', background: '#3a4556', color: '#e9e1cc', fontSize: '42px' } }, '?')), 'Random', 'Let fate decide', 'Any civilisation, drawn at the start', '#8f9aab');
+  // a painted leader stands on the card; civilisations without one keep their drawn portrait
+  for (const c of CIVS) add(c.id, stage(leaderUrl(c.id) ? h('img', { class: 'civ-leader', src: leaderUrl(c.id), alt: '', draggable: false }) : emblem(c.id, 104)), c.name, c.leader, c.bonus, c.color);
 
   const centre = (i: number, smooth: boolean) => {
     const c = options[i].card;
@@ -295,7 +186,7 @@ function civCarousel(onPick: (civ: string | null) => void): HTMLElement {
 }
 
 export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) => void, onBack: () => void): HTMLElement {
-  const { el, content } = screen();
+  const { el, content } = screen('campaign');
   let civ: string | null = null;
   const nameIn = h('input', { value: savedName(), placeholder: 'Your name', maxLength: 20 });
   const opp = h('input', { type: 'range', min: '1', max: mode === 'solo' ? '7' : '6', value: mode === 'solo' ? '3' : '1' });
@@ -365,7 +256,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
 
 // ------------------------------------------------------------------ online entry
 export function onlineEntryScreen(initialCode: string, onCreate: (name: string) => void, onJoin: (code: string, name: string) => void, onBack: () => void, error: string | null): HTMLElement {
-  const { el, content } = screen();
+  const { el, content } = screen('settings');
   const nameIn = h('input', { value: savedName(), placeholder: 'Your name', maxLength: 20 });
   const codeIn = h('input', { value: initialCode, placeholder: 'ABCDE', maxLength: 6, style: { textTransform: 'uppercase', letterSpacing: '0.4em', fontSize: '24px', textAlign: 'center', width: '150px', fontFamily: 'var(--display)' } });
   const name = () => {
@@ -389,7 +280,7 @@ export function onlineEntryScreen(initialCode: string, onCreate: (name: string) 
 
 // ------------------------------------------------------------------ lobby
 export function lobbyScreen(rt: RemoteTransport, onLeave: () => void): { el: HTMLElement; update: (room: RoomInfo) => void; chat: (from: string, text: string) => void } {
-  const { el, content } = screen();
+  const { el, content } = screen('archive');
   const wrap = h('div', { class: 'sheet' });
   content.append(wrap);
   const chatLines: Array<{ from: string; text: string }> = [];

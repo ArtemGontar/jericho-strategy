@@ -5,6 +5,7 @@ import type { WorkKind } from '../../shared/types';
 import type { GameScreen } from '../gamescreen';
 import { civColor, tileYieldFromView } from '../render';
 import { isMuted, setMuted } from '../audio';
+import { artIcon, leaderUrl } from '../artwork';
 import { icon } from '../icons';
 import { clear, fmtSigned, h, put, tickNumber } from './dom';
 
@@ -13,6 +14,9 @@ const NS = 'http://www.w3.org/2000/svg';
 export function emblem(civId: string, size: number, label?: string): HTMLElement {
   const civ = CIV_BY_ID[civId];
   void label;
+  const leader = leaderUrl(civId);
+  // a painted leader sits on a glow of the civilisation's colour; the others keep the drawn bust
+  if (leader) return h('span', { class: 'emblem portrait leader', style: `width:${size}px;height:${size}px;border-color:${civ.color};border-width:${size > 48 ? 3 : 2}px;--civ:${civ.color};background-image:url(${leader})` });
   return h('span', { class: 'emblem portrait', style: { width: `${size}px`, height: `${size}px`, borderColor: civ.color, borderWidth: size > 48 ? '3px' : '2px', backgroundImage: `url(${portraitUrl(civId, size > 48 ? 256 : 112)})` } });
 }
 
@@ -276,7 +280,7 @@ export function renderUnitBar(gs: GameScreen, el: HTMLElement): void {
   })) : null;
   put(el,
     h('div', { class: 'head' },
-      h('div', { class: 'flag' }, flag, icon(def.id, 24)),
+      h('div', { class: 'flag' }, flag, artIcon(def.id, 28)),
       h('div', { style: { flex: '1', minWidth: '0' } }, h('h3', null, def.name), stats),
       hint,
       !def.civilian ? h('div', { class: 'hpnum', title: 'Health' }, icon('health', 15), h('b', { class: 'num' }, String(u.hp))) : null),

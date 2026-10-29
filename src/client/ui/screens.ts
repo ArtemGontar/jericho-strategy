@@ -5,16 +5,17 @@ import type { GameScreen } from '../gamescreen';
 import { LEVELS, getLevel, isMuted, setLevel, setMuted, sfx } from '../audio';
 import { animSpeed, setAnimSpeed, type AnimSpeed } from '../anim';
 import { GRAPHICS_LABEL, graphicsPref, setGraphicsPref, type Graphics } from '../gl/prefs';
+import { artIcon } from '../artwork';
 import { icon } from '../icons';
 import { askConfirm, btn, clear, h, put, turnsLeft } from './dom';
 import { currentEra, emblem } from './hud';
 
 const NS = 'http://www.w3.org/2000/svg';
 
-export function sheet(title: string, body: HTMLElement | Array<HTMLElement | null>, onClose: () => void, opts: { narrow?: boolean; full?: boolean; right?: Array<HTMLElement | null> } = {}): HTMLElement {
+export function sheet(title: string, body: HTMLElement | Array<HTMLElement | null>, onClose: () => void, opts: { narrow?: boolean; full?: boolean; scene?: string; right?: Array<HTMLElement | null> } = {}): HTMLElement {
   const close = h('button', { class: 'round flat', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close' }, icon('close', 20));
   close.addEventListener('click', onClose);
-  const s = h('div', { class: `sheet ${opts.narrow ? 'narrow' : ''}` },
+  const s = h('div', { class: `sheet ${opts.narrow ? 'narrow' : ''} ${opts.scene ? `art scene-${opts.scene}` : ''}` },
     h('header', null, h('h2', null, title), ...(opts.right ?? []), close),
     h('hr', { class: 'rule' }),
     h('div', { class: 'body' }, body));
@@ -127,7 +128,7 @@ export function showTechTree(gs: GameScreen): HTMLElement {
     const missing = t.pre.filter((p) => !v.techs.includes(p)).map((p) => TECH_BY_ID[p].name);
     const sub = st === 'known' ? 'Discovered' : st === 'cur' ? `${turnsLeft(v.researchCost - v.research, v.income.science)} turns left` : st === 'avail' ? `${cost} · ${turnsLeft(cost, v.income.science)} turns` : `Needs ${missing.join(', ')}`;
     const node = h('div', { class: `node ${st}`, style: `left:${x}px;top:${y}px;--era:${ERA_COLOR[t.era]}`, title: `Unlocks: ${t.desc}` },
-      h('span', { class: 'badge' }, icon(TECH_ICON[t.id] ?? 'science', 22), st === 'known' ? h('i', { class: 'tick' }, icon('check', 9)) : null),
+      h('span', { class: 'badge' }, artIcon(TECH_ICON[t.id] ?? 'science', 22), st === 'known' ? h('i', { class: 'tick' }, icon('check', 9)) : null),
       h('div', null, h('b', null, t.name), h('span', null, st === 'locked' ? sub : `${t.desc} · ${sub}`)));
     if (st === 'cur' && v.researchCost) node.append(h('i', { class: 'prog', style: { width: `${Math.min(100, (v.research / v.researchCost) * 100)}%` } }));
     if (st === 'avail') {
@@ -146,7 +147,7 @@ export function showTechTree(gs: GameScreen): HTMLElement {
   }
   const wrap = h('div', { class: 'treewrap' }, tree);
   const researching = v.researching ? TECH_BY_ID[v.researching] : null;
-  const s = h('div', { class: 'sheet', style: { display: 'flex', flexDirection: 'column', height: '100%' } },
+  const s = h('div', { class: 'sheet art scene-research', style: { display: 'flex', flexDirection: 'column', height: '100%' } },
     h('header', null,
       h('h2', null, 'Technology'),
       h('span', { class: 'muted' }, researching ? `Researching ${researching.name}` : 'Choose a technology to research'),
@@ -203,7 +204,7 @@ export function showPolicies(gs: GameScreen): HTMLElement {
   }
   if (!v.policies.length) adopted.append(h('div', { class: 'hint' }, 'No policies adopted yet.'));
   body.push(h('div', { class: 'eyebrow' }, 'Adopted'), adopted);
-  return sheet('Policies', body, () => gs.closeModal(), { narrow: !v.policyChoices.length });
+  return sheet('Policies', body, () => gs.closeModal(), { narrow: !v.policyChoices.length, scene: 'archive' });
 }
 
 // ------------------------------------------------------------------ diplomacy
@@ -274,7 +275,7 @@ export function showDiplomacy(gs: GameScreen, focusId?: number): HTMLElement {
     detail.append(h('div', { class: 'hint' }, sel.relation === 'unmet' ? 'Send a unit near their borders to meet them.' : 'Peace keeps armies out of each other’s borders and must hold for 10 turns before you can break it.'));
   } else detail.append(h('p', { class: 'muted' }, 'There is nobody else in this game.'));
 
-  return sheet('Diplomacy', h('div', { class: 'diplo' }, list, detail), () => gs.closeModal());
+  return sheet('Diplomacy', h('div', { class: 'diplo' }, list, detail), () => gs.closeModal(), { scene: 'diplomacy' });
 }
 
 // ------------------------------------------------------------------ menu
@@ -329,7 +330,7 @@ export function showMenu(gs: GameScreen): HTMLElement {
   body.push(h('div', { class: 'menu-list' }, item('Leave game', async () => {
     if (await askConfirm(gs.transport.kind === 'local' ? 'Leave to the main menu? Your game is saved automatically each turn.' : 'Leave the game? You can rejoin with the room code.', 'Leave')) gs.opts.onExit();
   })));
-  return sheet('Menu', body, () => gs.closeModal(), { narrow: true });
+  return sheet('Menu', body, () => gs.closeModal(), { narrow: true, scene: 'settings' });
 }
 
 // ------------------------------------------------------------------ help
@@ -360,7 +361,7 @@ export function showHelp(gs: GameScreen): HTMLElement {
         h('li', null, 'On touch, tap a destination, then tap it again.'))));
   void BUILDINGS;
   void UNITS;
-  return sheet('How to play', grid, () => gs.closeModal());
+  return sheet('How to play', grid, () => gs.closeModal(), { scene: 'tutorial' });
 }
 
 // ------------------------------------------------------------------ end of game
@@ -372,7 +373,7 @@ export function showVictory(gs: GameScreen): HTMLElement {
   const rows = v.players.slice().sort((a, b) => b.score - a.score).map((p, i) =>
     h('tr', { class: p.id === v.winner ? 'top' : '' }, h('td', { class: 'num' }, String(i + 1)), h('td', null, emblem(p.civ, 22), ' ', p.name), h('td', { class: 'num' }, String(p.score)), h('td', { class: 'num' }, `${p.cityCount} ${p.cityCount === 1 ? 'city' : 'cities'}`), h('td', { class: 'num' }, `${p.techCount} ${p.techCount === 1 ? 'tech' : 'techs'}`)));
   const crest = winner ? emblem(winner.civ, 112) : icon('skull', 64);
-  const s = h('div', { class: `sheet finale ${won ? 'won' : 'lost'}` },
+  const s = h('div', { class: `sheet finale art ${won ? 'won scene-victory' : 'lost scene-defeat'}` },
     won ? h('div', { class: 'rays', 'aria-hidden': 'true' }) : null,
     h('div', { class: 'finale-in' },
       h('div', { class: 'eyebrow' }, won ? 'Victory' : winner ? 'Defeat' : 'The age ends'),
@@ -404,7 +405,7 @@ export function showCities(gs: GameScreen): HTMLElement {
   const body = rows.length
     ? h('table', { class: 'table' }, h('thead', null, h('tr', null, ...['City', 'Pop', 'Food', 'Prod', 'Sci', 'Building'].map((t) => h('th', null, t)))), h('tbody', null, ...rows))
     : h('p', { class: 'muted' }, 'You have no cities yet. Found one with your Settler (B).');
-  return sheet('Your cities', body, () => gs.closeModal(), { narrow: false });
+  return sheet('Your cities', body, () => gs.closeModal(), { narrow: false, scene: 'city' });
 }
 
 export function showLog(gs: GameScreen): HTMLElement {
@@ -414,7 +415,7 @@ export function showLog(gs: GameScreen): HTMLElement {
     if (n.at) row.addEventListener('click', () => { gs.closeModal(); gs.focus(n.at!.x, n.at!.y); });
     return row;
   });
-  return sheet('Message log', h('div', null, ...(items.length ? items : [h('p', { class: 'muted' }, 'Nothing yet.')])), () => gs.closeModal(), { narrow: true });
+  return sheet('Message log', h('div', null, ...(items.length ? items : [h('p', { class: 'muted' }, 'Nothing yet.')])), () => gs.closeModal(), { narrow: true, scene: 'events' });
 }
 
 void clear;

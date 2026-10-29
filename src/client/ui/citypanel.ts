@@ -3,6 +3,7 @@ import type { BuildingId, Focus, UnitTypeId } from '../../shared/types';
 import type { BuildOption, ViewCity } from '../../shared/view';
 import type { GameScreen } from '../gamescreen';
 import { sfx } from '../audio';
+import { artIcon } from '../artwork';
 import { icon } from '../icons';
 import { civColor } from '../render';
 import { clear, fmtSigned, h, put, turnsLeft } from './dom';
@@ -33,7 +34,7 @@ function ringIcon(pct: number, name: string): HTMLElement {
     return c;
   };
   svg.append(mk('rgba(255,255,255,0.1)', 4), mk('var(--prod)', 4, { 'stroke-dasharray': `${Math.max(0.001, Math.min(100, pct) / 100) * circ} ${circ}`, transform: 'rotate(-90 26 26)', 'stroke-linecap': 'round' }));
-  return h('div', { class: 'pdisc' }, svg, h('span', { class: 'pface' }, icon(name, 24, 'big')));
+  return h('div', { class: 'pdisc' }, svg, h('span', { class: 'pface' }, artIcon(name, 24, 'big')));
 }
 
 const FOCUS: Array<[Focus, string]> = [['balanced', 'Balanced'], ['food', 'Food'], ['production', 'Prod'], ['gold', 'Gold']];
@@ -50,7 +51,7 @@ export function renderCityPanel(gs: GameScreen, panel: HTMLElement, c: ViewCity)
     b.addEventListener('click', fn);
     return b;
   };
-  const header = h('header', { style: `--civ: ${civColor(gs.view, gs.view.me)}` },
+  const header = h('header', { class: 'scene-city', style: `--civ: ${civColor(gs.view, gs.view.me)}` },
     h('span', { class: 'watermark', 'aria-hidden': 'true' }, icon('city', 168)),
     h('div', { class: 'titlerow' },
       nav('chevron', 'Previous city', () => gs.cycleCity(-1)),
@@ -117,7 +118,7 @@ export function renderCityPanel(gs: GameScreen, panel: HTMLElement, c: ViewCity)
     up.addEventListener('click', () => void gs.cmd({ t: 'queue', city: c.id, op: 'up', index: i + 1 }));
     const rm = h('button', { class: 'round flat', type: 'button', title: 'Remove' }, icon('close', 16));
     rm.addEventListener('click', () => void gs.cmd({ t: 'queue', city: c.id, op: 'remove', index: i + 1 }));
-    prod.append(h('div', { class: 'item' }, icon(info.icon, 22, 'big'), h('div', { class: 'nm' }, info.name), h('div', { class: 'cost num' }, String(q.cost)), h('span', null, up, rm)));
+    prod.append(h('div', { class: 'item' }, artIcon(info.icon, 22, 'big'), h('div', { class: 'nm' }, info.name), h('div', { class: 'cost num' }, String(q.cost)), h('span', null, up, rm)));
   });
 
   // options
@@ -148,7 +149,7 @@ export function renderCityPanel(gs: GameScreen, panel: HTMLElement, c: ViewCity)
       await gs.cmd({ t: 'queue', city: c.id, op: 'add', kind: o.kind, id: o.id });
     });
     const r = h('div', { class: `item pick ${queued ? 'dim' : ''}`, title: info.desc },
-      icon(info.icon, 26, 'big'),
+      artIcon(info.icon, 26, 'big'),
       h('div', null, h('div', { class: 'nm' }, info.name), h('div', { class: 'ds' }, info.desc)),
       h('div', { class: 'cost num' }, `${o.cost}`, h('br'), `${o.turns}t`),
       add);
