@@ -1,0 +1,4 @@
+{$API_HOST} {
+	# WebSocket upgrades pass through reverse_proxy unchanged
+	reverse_proxy game:8080
+}

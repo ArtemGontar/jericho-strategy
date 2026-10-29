@@ -20,6 +20,8 @@ export interface ServerOptions {
   ephemeral?: boolean;
   /** abuse limits per client address; the defaults suit a public server */
   limits?: Partial<Limits>;
+  /** browser origins allowed to open a socket (default: the ALLOWED_ORIGINS env var, comma separated; empty = any) */
+  allowedOrigins?: string[];
 }
 
 export interface Limits {
@@ -543,9 +545,12 @@ export function startServer(opts: ServerOptions = {}): Promise<{ port: number; c
   LIMITS = { ...DEFAULT_LIMITS, ...opts.limits };
   abuse.clear();
   rooms = new Map();
+  const allowedOrigins = opts.allowedOrigins ?? (process.env.ALLOWED_ORIGINS ?? '').split(',').map((o) => o.trim().replace(/\/$/, '')).filter(Boolean);
   const server = createServer(serveStatic);
   const wss = new WebSocketServer({
     server, path: '/ws', maxPayload: 16 * 1024,
+    // a socket from a browser page on another site is refused when an allow-list is set (non-browser clients send no Origin)
+    verifyClient: ({ origin }: { origin?: string }) => allowedOrigins.length === 0 || !origin || allowedOrigins.includes(origin),
     // views are large, repetitive JSON: compress them, without keeping a zlib window per connection
     perMessageDeflate: { threshold: 1024, serverNoContextTakeover: true, clientNoContextTakeover: true, zlibDeflateOptions: { level: 3 }, concurrencyLimit: 8 },
   });

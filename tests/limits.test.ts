@@ -64,3 +64,18 @@ describe('abuse limits', () => {
     for (const o of open3) o.ws.close();
   });
 });
+
+describe('allowed origins', () => {
+  it('refuses a browser page from another site and accepts the listed one', async () => {
+    const s = await startServer({ port: 0, ephemeral: true, dist: '/nonexistent', allowedOrigins: ['https://play.example.com'] });
+    const tryOpen = (origin?: string) => new Promise<boolean>((resolve) => {
+      const ws = new WebSocket(`ws://localhost:${s.port}/ws`, origin ? { headers: { Origin: origin } } : {});
+      ws.on('open', () => { ws.close(); resolve(true); });
+      ws.on('error', () => resolve(false));
+    });
+    expect(await tryOpen('https://evil.example.net')).toBe(false);
+    expect(await tryOpen('https://play.example.com')).toBe(true);
+    expect(await tryOpen()).toBe(true);
+    await s.close();
+  });
+});

@@ -157,6 +157,9 @@ export class RemoteTransport implements GameTransport {
     const params = new URLSearchParams(loc.search);
     const override = params.get('server');
     if (override) return override;
+    // a build for a separately hosted frontend (e.g. Vercel) bakes in the backend address: wss://api.example.com/ws
+    const baked = import.meta.env.VITE_SERVER_URL as string | undefined;
+    if (baked) return baked;
     const proto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${proto}//${loc.host}/ws`;
   }
