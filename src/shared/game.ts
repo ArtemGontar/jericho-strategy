@@ -66,6 +66,7 @@ export interface NewGameOptions {
   allowDomination?: boolean;
   startAtWar?: boolean;
   aggression?: 'calm' | 'normal' | 'fierce';
+  mapStyle?: 'continent' | 'islands';
 }
 
 export const STATE_VERSION = 1;
@@ -107,8 +108,9 @@ export class Game {
       allowDomination: opts.allowDomination ?? true,
       startAtWar: opts.startAtWar ?? false,
       aggression: opts.aggression ?? 'normal',
+      mapStyle: opts.mapStyle ?? 'continent',
     };
-    const map = generateMap(size.width, size.height, n, seed);
+    const map = generateMap(size.width, size.height, n, seed, opts.mapStyle ?? 'continent');
     const rng = new Rng(seed ^ 0xa5a5a5a5);
     // assign civs: respect requests, fill the rest randomly without duplicates
     const taken = new Set<string>();
@@ -197,6 +199,7 @@ export class Game {
   /** Fill in fields that older saves (or rooms persisted by an older server) do not have. */
   private normalise(): void {
     if (!this.s.settings.aggression) this.s.settings.aggression = 'normal';
+    if (!this.s.settings.mapStyle) this.s.settings.mapStyle = 'continent';
     for (const t of this.s.tiles) if (t.hut === undefined) t.hut = false;
     for (const u of this.s.units) if (u.xp === undefined) u.xp = 0;
     for (const c of this.s.cities) if (!c.locked) c.locked = [];
@@ -247,6 +250,34 @@ export class Game {
   hostileUnitOn(playerId: number, x: number, y: number): boolean {
     for (const u of this.unitsAt(x, y)) if (u.owner !== playerId && this.atWar(playerId, u.owner) && !UNITS[u.type].civilian) return true;
     return false;
+  }
+
+  private landIds: Int32Array | null = null;
+  /** Which walkable landmass a tile belongs to (-1 for water and mountains); computed once, terrain never changes. */
+  landmass(x: number, y: number): number {
+    if (!this.landIds) {
+      const w = this.width;
+      const ids = new Int32Array(w * this.height).fill(-1);
+      let next = 0;
+      for (let i = 0; i < ids.length; i++) {
+        if (ids[i] !== -1 || !TERRAIN[this.s.tiles[i].terrain].passable) continue;
+        const stack = [i];
+        ids[i] = next;
+        while (stack.length) {
+          const cur = stack.pop()!;
+          for (const n of this.nb(cur % w, Math.floor(cur / w))) {
+            const ni = n.y * w + n.x;
+            if (ids[ni] === -1 && TERRAIN[this.s.tiles[ni].terrain].passable) {
+              ids[ni] = next;
+              stack.push(ni);
+            }
+          }
+        }
+        next++;
+      }
+      this.landIds = ids;
+    }
+    return this.landIds[y * this.width + x];
   }
 
   isCoastal(x: number, y: number): boolean {
@@ -1340,10 +1371,7 @@ export class Game {
   checkVictory(): void {
     if (this.s.over) return;
     const alive = this.s.players.filter((p) => p.alive);
-    if (this.s.settings.allowScience) {
-      const sci = alive.find((p) => p.techs.includes(FINAL_TECH));
-      if (sci) return this.finish(sci.id, 'science');
-    }
+    if (this.s.settings.allowScience && this.tickEnlightenment(alive)) return;
     if (alive.length <= 1) {
       return this.finish(alive[0]?.id ?? null, 'last-standing');
     }
@@ -1364,6 +1392,43 @@ export class Game {
       const best = alive.slice().sort((a, b) => b.score - a.score)[0];
       return this.finish(best.id, 'score');
     }
+  }
+
+  /**
+   * Learning the final technology does not win at once: the discoverer must hold their capital for a while, which gives
+   * everyone else a chance to stop them. Returns true when the countdown ended the game.
+   */
+  private tickEnlightenment(alive: Player[]): boolean {
+    const barred = (this.s.barred ??= []);
+    let e = this.s.enlightenment ?? null;
+    if (e) {
+      const p = this.s.players[e.owner];
+      const cap = this.cities.find((c) => c.id === e!.capital);
+      if (!p.alive || !cap || cap.owner !== e.owner) {
+        barred.push(e.owner);
+        this.s.enlightenment = null;
+        this.note([], `${p.name}'s capital has fallen: the Enlightenment is lost to them.`, 'war');
+        e = null;
+      } else if (this.s.turn - e.since >= e.duration) {
+        this.finish(e.owner, 'science');
+        return true;
+      } else {
+        const left = e.duration - (this.s.turn - e.since);
+        if (left <= 3 || left % 4 === 0) this.note([], `${p.name}'s Enlightenment: ${left} turn${left === 1 ? '' : 's'} left. Take their capital to stop it!`, 'wonder');
+      }
+    }
+    if (!e) {
+      const cand = alive.find((p) => p.techs.includes(FINAL_TECH) && !barred.includes(p.id));
+      if (cand) {
+        const cap = this.cities.find((c) => c.owner === cand.id && c.capital) ?? this.cities.find((c) => c.owner === cand.id);
+        if (cap) {
+          const duration = this.s.settings.speed === 'quick' ? 8 : 12;
+          this.s.enlightenment = { owner: cand.id, since: this.s.turn, capital: cap.id, duration };
+          this.note([], `${cand.name} has reached the Enlightenment! They win in ${duration} turns unless their capital, ${cap.name}, falls.`, 'wonder');
+        }
+      }
+    }
+    return false;
   }
 
   private finish(winner: number | null, victory: GameState['victory']): void {

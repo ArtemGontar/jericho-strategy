@@ -164,3 +164,22 @@ describe('determinism & persistence', () => {
     for (const u of g.units) expect(UNITS[u.type]).toBeDefined();
   });
 });
+
+describe('island maps', () => {
+  it('give every player a home island of their own and keep islands for ships to find', () => {
+    for (const [size, n] of [['small', 2], ['medium', 3], ['large', 5]] as const) {
+      for (const seed of [3, 17, 91]) {
+        const g = Game.create({ seed, size, mapStyle: 'islands', players: Array.from({ length: n }, (_, i) => ({ name: `P${i}`, ai: true })) });
+        const homes = new Set(g.units.filter((u) => u.type === 'settler').map((u) => g.landmass(u.x, u.y)));
+        expect(homes.size, `${size} ${n}p seed ${seed}`).toBe(n);
+      }
+    }
+  });
+
+  it('continent maps keep small islands too', () => {
+    const g = Game.create({ seed: 5, size: 'large', players: Array.from({ length: 4 }, (_, i) => ({ name: `P${i}`, ai: true })) });
+    const ids = new Set<number>();
+    for (const t of g.tiles) if (TERRAIN[t.terrain].passable) ids.add(g.landmass(t.x, t.y));
+    expect(ids.size).toBeGreaterThan(1);
+  });
+});

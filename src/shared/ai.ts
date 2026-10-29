@@ -429,15 +429,18 @@ interface WarPlan {
 }
 
 function planWar(game: Game, p: Player): WarPlan {
-  const enemyCities = knownEnemyCities(game, p.id);
-  if (!enemyCities.length) return { target: null, rally: null };
   const mine = game.cities.filter((c) => c.owner === p.id);
+  // only cities we could march to: no invasions across the sea
+  const enemyCities = knownEnemyCities(game, p.id).filter((e) => mine.some((m) => game.landmass(m.x, m.y) === game.landmass(e.x, e.y)));
+  if (!enemyCities.length) return { target: null, rally: null };
   let best: City | null = null;
   let bs = Infinity;
   for (const e of enemyCities) {
     const near = hexNear(game, e, mine);
     const d = near ? game.dist(e.x, e.y, near.x, near.y) : 30;
-    const s = d + e.hp / 40 - (e.capital ? 0 : 0);
+    // the capital of a civilisation counting down to victory is the one target that matters
+    const clock = game.s.enlightenment;
+    const s = d + e.hp / 40 - (clock && e.id === clock.capital ? 40 : 0);
     if (s < bs) {
       bs = s;
       best = e;
@@ -707,7 +710,10 @@ function minCityDistance(game: Game, a: number, b: number): number {
   let d = 99;
   for (const c of game.cities) {
     if (c.owner !== a) continue;
-    for (const e of game.cities) if (e.owner === b) d = Math.min(d, game.dist(c.x, c.y, e.x, e.y));
+    for (const e of game.cities) {
+      // the computers do not mount invasions by sea: only civilisations joined by land are within reach
+      if (e.owner === b && game.landmass(c.x, c.y) === game.landmass(e.x, e.y)) d = Math.min(d, game.dist(c.x, c.y, e.x, e.y));
+    }
   }
   return d;
 }
@@ -715,6 +721,7 @@ function minCityDistance(game: Game, a: number, b: number): number {
 /** Is `o` about to win by research? Everyone else has a reason to stop them. */
 function runawayLeader(game: Game, o: Player): boolean {
   if (!game.s.settings.allowScience) return false;
+  if (game.s.enlightenment?.owner === o.id) return true;
   const others = game.players.filter((x) => x.alive && x.id !== o.id);
   if (!others.length) return false;
   const best = Math.max(...others.map((x) => x.techs.length));
@@ -760,6 +767,9 @@ function runDiplomacy(game: Game, p: Player): void {
         : losing && since >= minWar && game.rng.chance(0.3);
       const alreadyAsked = game.s.proposals.some((x) => x.from === p.id && x.to === o.id);
       if (wantsPeace && !alreadyAsked) exec(game, p.id, { t: 'peace', to: o.id });
+    } else if (rel === 'peace' && game.s.enlightenment?.owner === o.id && since >= PEACE_MIN_TURNS) {
+      // the world turns on whoever is about to win by research, whatever else it was doing
+      if (game.rng.chance(0.55)) exec(game, p.id, { t: 'war', to: o.id });
     } else if (rel === 'peace' && since >= PEACE_MIN_TURNS && wars.length === 0 && game.turn > graceTurns(p, o, game)) {
       if (game.rng.chance(warDesire(game, p, o))) exec(game, p.id, { t: 'war', to: o.id });
     }

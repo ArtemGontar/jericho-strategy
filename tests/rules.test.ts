@@ -132,18 +132,45 @@ describe('diplomacy', () => {
 });
 
 describe('victory & elimination', () => {
-  it('discovering the final technology wins a science victory', () => {
+  it('the final technology starts a countdown, and holding the capital through it wins', () => {
     const g = twoHumans();
     g.players[0].techs.push(...['astronomy', 'banking', 'gunpowder']);
     g.players[0].researching = FINAL_TECH;
     g.players[0].research = 1e6;
     g.exec(0, { t: 'end' });
     g.exec(1, { t: 'end' });
+    // discovered, but not yet won
+    expect(g.s.over).toBe(false);
+    expect(g.s.enlightenment?.owner).toBe(0);
+    expect(buildView(g, 1).enlightenment?.turnsLeft).toBeGreaterThan(0);
+    const left = g.s.enlightenment!.duration;
+    for (let i = 0; i < left + 1 && !g.s.over; i++) {
+      g.exec(0, { t: 'end' });
+      g.exec(1, { t: 'end' });
+    }
     expect(g.s.over).toBe(true);
     expect(g.s.winner).toBe(0);
     expect(g.s.victory).toBe('science');
     expect(g.exec(1, { t: 'end' }).ok).toBe(false); // the game is over
     expect(g.exec(1, { t: 'disband', unit: g.units[0].id }).ok).toBe(false);
+  });
+
+  it('losing the capital during the countdown cancels the science victory', () => {
+    const g = twoHumans();
+    g.players[0].techs.push(...['astronomy', 'banking', 'gunpowder']);
+    g.players[0].researching = FINAL_TECH;
+    g.players[0].research = 1e6;
+    g.exec(0, { t: 'end' });
+    g.exec(1, { t: 'end' });
+    const capital = g.cities.find((c) => c.id === g.s.enlightenment!.capital)!;
+    capital.owner = 1; // the rival takes it
+    for (let i = 0; i < 4; i++) {
+      g.exec(0, { t: 'end' });
+      g.exec(1, { t: 'end' });
+    }
+    expect(g.s.enlightenment ?? null).toBe(null);
+    expect(g.s.barred).toContain(0);
+    expect(g.s.victory).not.toBe('science');
   });
 
   it('turn limit awards the highest score', () => {

@@ -71,6 +71,8 @@ export function renderTopbar(gs: GameScreen, el: HTMLElement): void {
     h('div', { class: 'stat', title: 'Culture per turn' }, icon('culture', 20, 'cult'), h('span', { class: 'num' }, `+${v.income.culture}`)),
     v.settings.turnTimer > 0 ? h('span', { class: 'sep' }) : null,
     v.settings.turnTimer > 0 ? h('div', { class: 'stat', title: 'Time left in this turn' }, icon('turn', 20), h('span', { class: 'num', id: 'timerlabel' }, '--')) : null,
+    v.enlightenment ? h('span', { class: 'sep' }) : null,
+    v.enlightenment ? countdown(gs) : null,
     h('div', { class: 'grow' }),
     rankings,
     h('div', { class: 'era', title: civ.bonus }, `Turn ${v.turn} / ${v.settings.turnLimit}`, h('b', null, `${ERA_NAMES[currentEra(v.techs)]} Era`)),
@@ -82,6 +84,25 @@ export function renderTopbar(gs: GameScreen, el: HTMLElement): void {
     roundFlat('menu', 'Menu (Esc)', () => gs.openModal('menu')),
   );
   gs.updateTimerLabel();
+}
+
+/** The Enlightenment race: who is about to win, and how long is left to take their capital. */
+function countdown(gs: GameScreen): HTMLElement {
+  const v = gs.view;
+  const e = v.enlightenment!;
+  const who = v.players[e.owner];
+  const mine = e.owner === v.me;
+  const cap = v.cities.find((c) => c.id === e.capital);
+  const b = h('button', {
+    class: `countdown ${mine ? 'mine' : 'foe'}`,
+    type: 'button',
+    title: mine ? `You win in ${e.turnsLeft} turns if you keep ${cap?.name ?? 'your capital'}.` : `${who.name} wins in ${e.turnsLeft} turns unless their capital${cap ? `, ${cap.name},` : ''} falls. Click to look.`,
+  }, icon('science', 16), h('span', null, mine ? 'Hold your capital' : `${CIV_BY_ID[who.civ].name} wins`), h('b', { class: 'num' }, String(e.turnsLeft)));
+  b.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (cap) gs.focus(cap.x, cap.y);
+  });
+  return b;
 }
 
 function roundFlat(name: string, title: string, fn: () => void, extra = ''): HTMLButtonElement {

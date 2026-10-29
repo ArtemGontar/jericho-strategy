@@ -23,7 +23,7 @@ for (let g = 0; g < games; g++) {
   const label = `seed ${seed} ${n}p ${size} ${level}`;
   let game: Game;
   try {
-    game = Game.create({ seed, size, players: Array.from({ length: n }, (_, i) => ({ name: `AI${i}`, ai: true, aiLevel: level })), turnLimit: maxTurns });
+    game = Game.create({ seed, size, players: Array.from({ length: n }, (_, i) => ({ name: `AI${i}`, ai: true, aiLevel: level })), turnLimit: maxTurns, mapStyle: process.env.AUDIT_ISLANDS ? 'islands' : 'continent' });
   } catch (e) {
     problems.push(`${label}: map generation failed: ${(e as Error).message}`);
     continue;

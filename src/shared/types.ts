@@ -163,6 +163,8 @@ export interface GameSettings {
   startAtWar: boolean;
   /** how readily the computers start wars: calm, normal or fierce */
   aggression: Aggression;
+  /** one big continent, or a separate island for every player */
+  mapStyle: 'continent' | 'islands';
 }
 
 export type Aggression = 'calm' | 'normal' | 'fierce';
@@ -184,6 +186,10 @@ export interface GameState {
   proposals: Proposal[];
   wonders: Partial<Record<BuildingId, number>>;
   notes: Note[];
+  /** the Enlightenment countdown: set when a civilisation learns the final technology */
+  enlightenment?: { owner: number; since: number; capital: number; duration: number } | null;
+  /** civilisations whose academy fell during a countdown and can no longer win by science */
+  barred?: number[];
   winner: number | null;
   victory: 'domination' | 'science' | 'score' | 'last-standing' | null;
   over: boolean;

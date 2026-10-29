@@ -2,7 +2,7 @@
 
 A Civilization-style turn-based strategy game that runs in your browser — play solo against computer rivals, share one screen in **hot-seat**, or **play online with friends** (up to 8 players, any mix of humans and AI).
 
-Found cities, work the land, research 22 technologies across four eras, adopt policies, race for wonders, explore tribal villages, make and break treaties, and conquer your neighbours — or out-research them to win by Enlightenment.
+Found cities, work the land, research 24 technologies across four eras, adopt policies, race for wonders, explore tribal villages, make and break treaties, and conquer your neighbours — sail to distant islands, or out-research them to win by Enlightenment — then hold your capital while the whole world tries to take it.
 
 The map is a real 3D scene drawn with WebGL (three.js) from a tilted camera: terrain with relief, rock and snow, a water shader with surf, shadows, wind in the trees, clouds and birds, towns that grow house by house, and articulated figures for every unit that walk, aim, strike, fortify and fall. The sun moves across the sky as turns pass. Menus sit on a 3D render of a finished world, and the game has a quiet generative soundtrack with wind, surf and birdsong.
 
@@ -21,7 +21,7 @@ Open <http://localhost:8080>. From the title screen:
 
 | Mode | What it is |
 | --- | --- |
-| **New game vs computer** | 1–7 AI rivals, three difficulties, map sizes, quick/standard speed. Autosaves every turn (**Continue game**). |
+| **New game vs computer** | 1–7 AI rivals, three difficulties, how warlike they are (Calm / Normal / Fierce), map sizes, continent or islands, quick/standard speed. Autosaves every turn (**Continue game**). |
 | **Play online with friends** | Create a room, send the 4-letter code or invite link. Simultaneous turns, optional turn timer, lobby chat, reconnect after a refresh, host can hand a vanished player to the AI, and **Play again** after the game. |
 | **Hot-seat** | 2–4 humans on one device with a "pass the device" curtain between turns, plus optional AI. |
 
@@ -44,7 +44,8 @@ Room state (the whole game) is saved on the server after every turn, so a restar
 5. **Meet the neighbours.** By default civilisations start at *peace* (armies cannot enter each other's borders). You can only attack civilisations you are at war with: declare war from **Diplomacy** (`D`) once a treaty has held for 10 turns. The *Start at war* option makes everyone hostile on contact.
 6. **Grow your people.** Culture fills the ring beside the research medallion; every time it completes you choose one of three **policies** (lasting bonuses). Click tiles in the city drawer to **pin** citizens where you want them. Walk onto **tribal villages** for rewards.
 7. **Fight.** Click an enemy to attack — hover first to preview the damage. Ranged units (archers, catapults, crossbowmen, cannons) shoot two tiles away without retaliation. Fighting earns experience and promotions; outdated units can be **upgraded** for gold inside your borders. Reduce a city to 0 HP and walk a melee unit in to capture it; capturing a lone worker or settler takes it prisoner.
-8. **Win** by being the last civilisation standing, by discovering **Enlightenment** first (science), or by holding the highest score when the turn limit ends.
+8. **Cross the sea.** Learn *Sailing* and build a Trireme (or, later, a Caravel or Frigate) in a coastal city. Walk a unit onto an adjacent friendly ship to board it, sail, then step ashore on the far coast — settle islands, scout, or raid. Choose *Islands* in the setup to give every player a home island of their own. Ships can only attack other ships, except the Frigate, which bombards coasts.
+9. **Win** by being the last civilisation standing, by discovering **Enlightenment** first and holding your capital for 12 turns while everyone else gets a chance to take it (science), or by holding the highest score when the turn limit ends.
 
 ### Graphics
 

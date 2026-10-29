@@ -46,16 +46,20 @@ function blankTile(x: number, y: number, terrain: TerrainId): Tile {
   };
 }
 
+export type MapStyle = 'continent' | 'islands';
+
 /** Try several seed variants until a map with enough room for everyone comes out. */
-export function generateMap(width: number, height: number, players: number, seed: number): GeneratedMap {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const result = tryGenerate(width, height, players, seed + attempt * 7919);
+export function generateMap(width: number, height: number, players: number, seed: number, style: MapStyle = 'continent'): GeneratedMap {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const result = tryGenerate(width, height, players, seed + attempt * 7919, style);
     if (result) return result;
   }
+  if (style === 'islands') return generateMap(width, height, players, seed, 'continent');
   throw new Error('Could not generate a suitable map');
 }
 
-function tryGenerate(w: number, h: number, players: number, seed: number): GeneratedMap | null {
+function tryGenerate(w: number, h: number, players: number, seed: number, style: MapStyle): GeneratedMap | null {
+  const islands = style === 'islands';
   const rng = new Rng(seed);
   const hNoise = makeNoise(rng);
   const hillNoise = makeNoise(rng);
@@ -76,11 +80,11 @@ function tryGenerate(w: number, h: number, players: number, seed: number): Gener
       const dy = (y - cy) / (h * 0.5);
       const d = Math.sqrt(dx * dx * 0.9 + dy * dy * 1.15);
       const mask = 1 - Math.min(1, Math.pow(d, 1.6));
-      heights[y * w + x] = base * 0.62 + mask * 0.62;
+      heights[y * w + x] = islands ? base * 0.9 + mask * 0.16 : base * 0.62 + mask * 0.62;
     }
   }
   const sorted = Array.from(heights).sort((a, b) => a - b);
-  const landFraction = 0.46;
+  const landFraction = islands ? 0.36 : 0.46;
   const seaLevel = sorted[Math.floor(total * (1 - landFraction))];
   const landSorted = sorted.filter((v) => v > seaLevel);
   const rank = (v: number) => {
@@ -149,16 +153,50 @@ function tryGenerate(w: number, h: number, players: number, seed: number): Gener
   let main = 0;
   for (let i = 1; i < sizes.length; i++) if (sizes[i] > sizes[main]) main = i;
   const mainSize = sizes[main];
-  if (mainSize < players * 55) return null;
+  // islands: every player needs a home island of their own; continents: one big landmass with room for all
+  const homeSize = Math.max(26, Math.floor((w * h) / (players * 14)));
+  const bigIslands = sizes.map((s, i) => ({ s, i })).filter((o) => o.s >= homeSize).sort((a, b) => b.s - a.s);
+  if (islands ? bigIslands.length < players : mainSize < players * 55) return null;
+  // small islands stay (ships can reach them); specks of one or two tiles do not
+  const minKeep = 4;
   for (let i = 0; i < total; i++) {
     const t = tiles[i];
     if (!TERRAIN[t.terrain].land) continue;
     if (t.terrain === 'mountain') {
-      // keep mountains only if they touch the main landmass
+      // keep mountains only if they touch land that is kept
       let touches = false;
-      for (const n of neighborsOf(t.x, t.y, w, h)) if (comp[idx(n.x, n.y)] === main) touches = true;
+      for (const n of neighborsOf(t.x, t.y, w, h)) {
+        const c = comp[idx(n.x, n.y)];
+        if (c >= 0 && sizes[c] >= minKeep) touches = true;
+      }
       if (!touches) t.terrain = 'ocean';
-    } else if (comp[i] !== main) t.terrain = 'ocean';
+    } else if (sizes[comp[i]] < minKeep) t.terrain = 'ocean';
+  }
+  // a scatter of small islands across the sea gives ships somewhere to go (islands maps already have plenty)
+  if (!islands) {
+    const wanted = Math.round((w * h) / 150);
+    const distLand = (x: number, y: number, r: number) => tilesWithin(x, y, r, w, h).some((q) => TERRAIN[tiles[idx(q.x, q.y)].terrain].land);
+    const palette: TerrainId[] = ['grass', 'grass', 'plains', 'plains', 'forest', 'hills'];
+    let made = 0;
+    for (let tries = 0; tries < 400 && made < wanted; tries++) {
+      const sx = 2 + Math.floor(rng.next() * (w - 4));
+      const sy = 2 + Math.floor(rng.next() * (h - 4));
+      if (tiles[idx(sx, sy)].terrain !== 'ocean' || distLand(sx, sy, 3)) continue;
+      const target = 5 + Math.floor(rng.next() * 8);
+      const blob: Tile[] = [tiles[idx(sx, sy)]];
+      const seen = new Set<number>([idx(sx, sy)]);
+      for (let k = 0; k < blob.length && blob.length < target; k++) {
+        for (const n of neighborsOf(blob[k].x, blob[k].y, w, h)) {
+          const ni = idx(n.x, n.y);
+          if (seen.has(ni) || blob.length >= target || !rng.chance(0.62)) continue;
+          seen.add(ni);
+          if (tiles[ni].terrain === 'ocean' && !distLand(n.x, n.y, 2)) blob.push(tiles[ni]);
+        }
+      }
+      if (blob.length < 4) continue;
+      for (const t of blob) t.terrain = palette[Math.floor(rng.next() * palette.length)];
+      made++;
+    }
   }
   // coasts: ocean next to land
   for (const t of tiles) {
@@ -201,13 +239,37 @@ function tryGenerate(w: number, h: number, players: number, seed: number): Gener
     }
     return land >= 12 && food >= 17 && prod >= 6 ? food + prod * 1.2 + land * 0.5 : -1;
   };
+  const homeIslands = new Set(bigIslands.slice(0, islands ? players : 0).map((o) => o.i));
   const candidates: Tile[] = tiles.filter(
-    (t) => comp[idx(t.x, t.y)] === main && ['grass', 'plains', 'hills', 'forest', 'desert'].includes(t.terrain) && quality(t) > 0,
+    (t) => (islands ? homeIslands.has(comp[idx(t.x, t.y)]) : comp[idx(t.x, t.y)] === main) && ['grass', 'plains', 'hills', 'forest', 'desert'].includes(t.terrain) && quality(t) > 0,
   );
   if (candidates.length < players) return null;
   const starts: Tile[] = [];
-  const first = candidates[Math.floor(rng.next() * candidates.length)];
-  starts.push(first);
+  if (islands) {
+    // one start per home island, on its best-looking tile
+    for (const isle of homeIslands) {
+      let best: Tile | null = null;
+      let bq = -1;
+      for (const c of candidates) {
+        if (comp[idx(c.x, c.y)] !== isle) continue;
+        const q = quality(c) + rng.next();
+        if (q > bq) {
+          bq = q;
+          best = c;
+        }
+      }
+      if (!best) return null;
+      starts.push(best);
+    }
+    // seats are dealt in random order so no one is always on the biggest island
+    for (let i = starts.length - 1; i > 0; i--) {
+      const j = Math.floor(rng.next() * (i + 1));
+      [starts[i], starts[j]] = [starts[j], starts[i]];
+    }
+  } else {
+    const first = candidates[Math.floor(rng.next() * candidates.length)];
+    starts.push(first);
+  }
   while (starts.length < players) {
     let best: Tile | null = null;
     let bestScore = -1;
@@ -226,7 +288,7 @@ function tryGenerate(w: number, h: number, players: number, seed: number): Gener
   let minDist = 999;
   for (let i = 0; i < starts.length; i++)
     for (let j = i + 1; j < starts.length; j++) minDist = Math.min(minDist, hexDistance(starts[i].x, starts[i].y, starts[j].x, starts[j].y));
-  if (players > 1 && minDist < Math.max(7, Math.floor(Math.min(w, h) / (players > 3 ? 4 : 3)))) return null;
+  if (!islands && players > 1 && minDist < Math.max(7, Math.floor(Math.min(w, h) / (players > 3 ? 4 : 3)))) return null;
 
   // --- fairness pass: every start gets food, production, and a few tiles of room
   for (const s of starts) {

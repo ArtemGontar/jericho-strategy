@@ -129,6 +129,8 @@ export interface GameView {
   wonders: Partial<Record<BuildingId, number>>;
   /** milliseconds left on the turn timer when this view was sent (online), or 0 */
   timerEnds: number;
+  /** the Enlightenment countdown, when one is running */
+  enlightenment?: { owner: number; capital: number; turnsLeft: number } | null;
 }
 
 const IMPROVEMENT_CODE: Record<string, number> = { farm: 1, mine: 2 };
@@ -276,6 +278,7 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
     notes,
     wonders: { ...s.wonders },
     timerEnds,
+    enlightenment: s.enlightenment ? { owner: s.enlightenment.owner, capital: s.enlightenment.capital, turnsLeft: s.enlightenment.duration - (s.turn - s.enlightenment.since) } : null,
   };
 }
 

@@ -23,6 +23,7 @@ export interface SoloConfig {
   startAtWar: boolean;
   scienceVictory: boolean;
   aggression: 'calm' | 'normal' | 'fierce';
+  mapStyle: 'continent' | 'islands';
   /** extra local humans (hot-seat), names */
   friends: string[];
 }
@@ -195,6 +196,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
   const level = segmented<AiLevel>([['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']], 'normal');
   const speed = segmented<'standard' | 'quick'>([['standard', 'Standard · 200'], ['quick', 'Quick · 120']], 'standard');
   const stance = segmented<'peace' | 'war'>([['peace', 'Peace'], ['war', 'War']], 'peace');
+  const land = segmented<'continent' | 'islands'>([['continent', 'Continent'], ['islands', 'Islands']], 'continent');
   const aggr = segmented<'calm' | 'normal' | 'fierce'>([['calm', 'Calm'], ['normal', 'Normal'], ['fierce', 'Fierce']], 'normal');
   const victories = segmented<'all' | 'noscience'>([['all', 'All'], ['noscience', 'No science']], 'all');
   const size = h('select', null, h('option', { value: 'auto' }, 'Automatic'), ...Object.entries(MAP_SIZES).map(([k, v]) => h('option', { value: k }, v.label)));
@@ -228,7 +230,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
     onStart({
       name, civ, opponents: Number(opp.value), aiLevel: level.get(), size: size.value as SoloConfig['size'], speed: speed.get(),
       seed: seed.value.trim() ? Number(seed.value) || null : null, turnLimit: speed.get() === 'quick' ? 120 : 200,
-      startAtWar: stance.get() === 'war', scienceVictory: victories.get() === 'all', aggression: aggr.get(), friends,
+      startAtWar: stance.get() === 'war', scienceVictory: victories.get() === 'all', aggression: aggr.get(), mapStyle: land.get(), friends,
     });
   };
 
@@ -247,6 +249,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
           field('Difficulty', level.el),
           h('div', { class: 'eyebrow', style: { padding: '18px 0 2px' } }, 'World'),
           field('Map', size),
+          field('Land', land.el),
           field('Speed', speed.el),
           field('Diplomacy', stance.el),
           field('Computers', aggr.el),
@@ -331,6 +334,7 @@ export function lobbyScreen(rt: RemoteTransport, onLeave: () => void): { el: HTM
               h('div', { class: 'muted', style: { fontSize: '11px', marginTop: '8px', wordBreak: 'break-all' } }, link)),
             h('div', { class: 'eyebrow', style: { padding: '6px 0 2px' } }, 'Settings'),
             sel('Map', 'size', Object.entries(MAP_SIZES).map(([k, v]) => [k, v.label])),
+            sel('Land', 'mapStyle', [['continent', 'One continent'], ['islands', 'Islands (ships needed)']]),
             sel('Speed', 'speed', [['standard', 'Standard'], ['quick', 'Quick']]),
             sel('Turn limit', 'turnLimit', [['100', '100'], ['120', '120'], ['150', '150'], ['200', '200'], ['300', '300']]),
             sel('Diplomacy', 'startAtWar', [['false', 'Start at peace'], ['true', 'Start at war']]),

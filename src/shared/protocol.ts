@@ -25,6 +25,7 @@ export interface RoomSettings {
   startAtWar: boolean;
   scienceVictory: boolean;
   aggression: 'calm' | 'normal' | 'fierce';
+  mapStyle: 'continent' | 'islands';
 }
 
 export interface RoomInfo {
@@ -60,4 +61,4 @@ export type ServerMsg =
   | { t: 'error'; message: string }
   | { t: 'pong' };
 
-export const DEFAULT_ROOM_SETTINGS: RoomSettings = { size: 'medium', speed: 'standard', turnLimit: 200, turnTimer: 0, seed: null, startAtWar: false, scienceVictory: true, aggression: 'normal' };
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = { size: 'medium', speed: 'standard', turnLimit: 200, turnTimer: 0, seed: null, startAtWar: false, scienceVictory: true, aggression: 'normal', mapStyle: 'continent' };
