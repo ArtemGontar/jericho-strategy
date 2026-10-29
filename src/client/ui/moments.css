@@ -1,0 +1,28 @@
+/* cinematic moments: letterbox bars, title card, tech card. Only transform and opacity animate. */
+.cine { position: absolute; inset: 0; z-index: 14; pointer-events: none; overflow: hidden; }
+.cine .bar { position: absolute; left: 0; right: 0; height: 9vh; background: #04060a; animation: cineBar var(--ms, 3000ms) ease-in-out both; }
+.cine .bar.top { top: 0; --from: -100%; }
+.cine .bar.bot { bottom: 0; --from: 100%; }
+@keyframes cineBar { 0% { transform: translateY(var(--from)); } 10%, 88% { transform: none; } 100% { transform: translateY(var(--from)); } }
+.cine .wash { position: absolute; inset: 0; opacity: 0; animation: cineWash var(--ms, 3000ms) ease-in-out both; }
+.cine.red .wash { background: radial-gradient(ellipse at center, transparent 42%, rgba(120, 12, 8, 0.55) 100%); }
+.cine.dark .wash { background: radial-gradient(ellipse at center, transparent 40%, rgba(2, 4, 10, 0.7) 100%); }
+.cine.gold .wash { background: radial-gradient(ellipse at center, transparent 55%, rgba(120, 88, 20, 0.35) 100%); }
+@keyframes cineWash { 0% { opacity: 0; } 18%, 80% { opacity: 1; } 100% { opacity: 0; } }
+.cine .card { position: absolute; left: 0; right: 0; bottom: 14vh; padding: 26px 0 22px; text-align: center; background: linear-gradient(transparent, rgba(4, 6, 10, 0.62) 38%, rgba(4, 6, 10, 0.62) 62%, transparent); opacity: 0; animation: cineCard var(--ms, 3000ms) ease-out both; }
+.cine .card small { display: block; font-size: 12px; letter-spacing: 0.42em; text-transform: uppercase; color: var(--gold-hi); margin-bottom: 8px; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9); }
+.cine .card b { display: block; font-family: var(--display); font-weight: 600; font-size: clamp(26px, 5vw, 52px); letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold-hi); text-shadow: 0 2px 18px rgba(0, 0, 0, 0.7); }
+.cine.red .card b { color: #ff9a86; }
+.cine .card i { display: block; width: min(320px, 60vw); height: 1px; margin: 12px auto 0; background: linear-gradient(90deg, transparent, var(--gold), transparent); animation: cineRule var(--ms, 3000ms) ease-out both; }
+@keyframes cineCard { 0% { opacity: 0; transform: translateY(14px); } 16%, 78% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-6px); } }
+@keyframes cineRule { 0% { transform: scaleX(0); } 24%, 100% { transform: scaleX(1); } }
+.cine.still .bar, .cine.still .wash { display: none; }
+.cine.short .bar { display: none; }
+
+/* a finished technology: a small card that sweeps in at the top and leaves, never covering the map centre */
+.techcard { position: absolute; top: 74px; left: 50%; z-index: 13; pointer-events: none; padding: 9px 26px 11px; text-align: center; border-top: 1px solid var(--gold); border-bottom: 1px solid var(--line); background: linear-gradient(90deg, transparent, rgba(8, 11, 17, 0.86) 22%, rgba(8, 11, 17, 0.86) 78%, transparent); opacity: 0; transform: translateX(-50%); animation: techSweep 3.2s ease-out both; }
+.techcard small { display: block; font-size: 11px; letter-spacing: 0.34em; text-transform: uppercase; color: #8fd2ff; }
+.techcard b { font-family: var(--display); font-weight: 600; font-size: 20px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text); }
+@keyframes techSweep { 0% { opacity: 0; transform: translate(-50%, -12px) scaleX(0.7); } 12%, 80% { opacity: 1; transform: translate(-50%, 0) scaleX(1); } 100% { opacity: 0; transform: translate(-50%, -6px) scaleX(1); } }
+@media (max-width: 760px) { .techcard { top: 92px; } .cine .bar { height: 6vh; } }
+@media (prefers-reduced-motion: reduce) { .techcard { animation-duration: 2.2s; } }

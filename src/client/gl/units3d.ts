@@ -3,7 +3,7 @@ import {
 } from 'three';
 import { UNITS } from '../../shared/data';
 import type { ViewUnit } from '../../shared/view';
-import type { Animator } from '../anim';
+import { recoil, type Animator } from '../anim';
 import type { RenderState } from '../render';
 import { civColor } from '../render';
 import type { Particles } from './fx';
@@ -172,6 +172,12 @@ export class UnitLayer {
         ty = ap.y;
       }
       let [X, Z] = tileXZf(tx, ty);
+      // knock-back when struck
+      const rc = recoil(this.anim, u.x, u.y, now);
+      if (rc && !ap) {
+        X += rc.x * 0.8;
+        Z += rc.y * 0.8;
+      }
       const moving = !!ap && !lunge;
       if (ap || lunge) this.motion = true;
       // ease toward the unit's slot on the tile; while travelling it walks the tile centres
@@ -283,10 +289,13 @@ export class UnitLayer {
         this.fx.sparks(gx, 0.2, gz, 8, [0.9, 0.5, 0.3]);
         this.fx.dust(gx, 0.05, gz);
       }
-      const k = Math.max(0, Math.min(1, (now - Math.max(s.ghostAt, g.fadeStart)) / 600));
-      s.holder.position.set(s.x, Math.max(0, this.terrain.heightAt(s.x, s.z)) - k * 0.2, s.z);
-      s.holder.rotation.z = k * 1.35;
-      s.holder.scale.setScalar(Math.max(0.01, 1 - Math.max(0, k - 0.6) * 2.4));
+      const naval = !!UNITS[g.type as ViewUnit['type']]?.naval;
+      const k = Math.max(0, Math.min(1, (now - Math.max(s.ghostAt, g.fadeStart)) / (naval ? 1100 : 600)));
+      // a ship settles by the stern and slips under; anything else tips over
+      s.holder.position.set(s.x, Math.max(0, this.terrain.heightAt(s.x, s.z)) - k * (naval ? 0.55 : 0.2), s.z);
+      s.holder.rotation.z = k * (naval ? 0.5 : 1.35);
+      if (naval) s.holder.rotation.x = k * 0.35;
+      s.holder.scale.setScalar(naval ? Math.max(0.01, 1 - Math.max(0, k - 0.8) * 5) : Math.max(0.01, 1 - Math.max(0, k - 0.6) * 2.4));
       animateRig(s.rig, { t, seed: s.seed, phase: 0, walk: 0, attack: -1, fort: 0, sleep: 0, work: false });
     }
     for (const [key, s] of this.ghosts) {

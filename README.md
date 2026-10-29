@@ -77,7 +77,7 @@ src/shared/   Pure TypeScript game engine – no DOM, no Node APIs, deterministi
   view.ts       per-player fog-of-war snapshot sent to clients
   data.ts       every rule number: terrain, units, buildings, wonders, techs, civilisations
 src/server/   Node + ws: static files, rooms, lobby, authoritative game, per-player views, turn timer, persistence
-src/client/   HUD and screens (vanilla TypeScript, no framework), icon set, audio, animation timeline
+src/client/   HUD and screens (vanilla TypeScript, no framework), icon set, audio, animation timeline, cinematic moments (`cinematics.ts`, `moments.ts`; Menu → Cinematics: Full / Short / Off)
   gl/           three.js map: terrain, water, props, cities, unit models, particles, fog of war, 2D overlay
   render.ts     the flat 2D map used as the fallback renderer
 tests/        Vitest: engine rules, determinism, full AI games, multiplayer server integration

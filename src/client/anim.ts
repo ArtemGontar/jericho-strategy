@@ -48,6 +48,8 @@ interface Lunge {
   dur: number;
 }
 
+const smoothstep = (k: number): number => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
+
 export type AnimSpeed = 'normal' | 'fast' | 'instant';
 const RATE: Record<AnimSpeed, number> = { normal: 1, fast: 0.45, instant: 0.08 };
 export function animSpeed(): AnimSpeed {
@@ -69,6 +71,8 @@ export class Animator {
   projectiles: Projectile[] = [];
   rings: Ring[] = [];
   ghosts: Ghost[] = [];
+  /** a struck unit's knock-back: the tile it stands on, the push direction and when the blow lands */
+  hits: Array<{ x: number; y: number; dx: number; dy: number; at: number }> = [];
   /** tiles being flashed (key -> end time) */
   flashes = new Map<number, number>();
   private cursor = 0;
@@ -76,6 +80,11 @@ export class Animator {
 
   get busy(): boolean {
     return this.cursor > performance.now();
+  }
+
+  /** Absolute time at which everything queued so far has finished playing. */
+  until(): number {
+    return Math.max(this.cursor, performance.now());
   }
 
   clear(): void {
@@ -86,6 +95,7 @@ export class Animator {
     this.rings = [];
     this.ghosts = [];
     this.flashes.clear();
+    this.hits = [];
     this.cursor = 0;
     this.sounds = [];
   }
@@ -117,6 +127,7 @@ export class Animator {
         this.floaters.push({ x: e.to.x, y: e.to.y, text: `-${e.dmgDef}`, color: '#ff6b5e', t0: hitAt, dur: 1100 });
         if (e.dmgAtt > 0) this.floaters.push({ x: e.from.x, y: e.from.y, text: `-${e.dmgAtt}`, color: '#ffb067', t0: hitAt + 60, dur: 1100 });
         this.flashes.set(e.to.y * 1000 + e.to.x, hitAt + 260);
+        this.hits.push({ x: e.to.x, y: e.to.y, dx: e.to.x - e.from.x, dy: e.to.y - e.from.y, at: hitAt });
         this.sounds.push({ at: hitAt, name: e.ranged ? (e.type === 'cannon' ? 'cannon' : e.type === 'catapult' ? 'catapult' : 'shoot') : e.type === 'swordsman' || e.type === 'knight' ? 'clash' : 'hit', done: false });
         this.cursor = t0 + dur + 120;
       } else if (e.kind === 'death') {
@@ -139,8 +150,9 @@ export class Animator {
     const m = this.moves.get(id);
     const l = this.lunges.find((q) => q.unit === id && now >= q.t0 && now < q.t0 + q.dur);
     if (l) {
+      // wind up (a short step back), strike through the target, then recover
       const k = (now - l.t0) / l.dur;
-      const f = k < 0.5 ? k * 2 : (1 - k) * 2;
+      const f = k < 0.25 ? -0.3 * smoothstep(k / 0.25) : k < 0.55 ? -0.3 + 1.3 * smoothstep((k - 0.25) / 0.3) : 1 - smoothstep((k - 0.55) / 0.45);
       const dx = l.to.x - l.from.x;
       const dy = l.to.y - l.from.y;
       const len = Math.hypot(dx, dy) || 1;
@@ -169,6 +181,7 @@ export class Animator {
     this.rings = this.rings.filter((r) => now < r.t0 + r.dur);
     this.lunges = this.lunges.filter((l) => now < l.t0 + l.dur);
     this.ghosts = this.ghosts.filter((g) => now < g.until + 400);
+    this.hits = this.hits.filter((h) => now < h.at + 300);
     for (const [k, v] of this.flashes) if (now > v) this.flashes.delete(k);
     for (const s of this.sounds) {
       if (!s.done && now >= s.at) {
@@ -179,7 +192,20 @@ export class Animator {
     this.sounds = this.sounds.filter((s) => !s.done);
     return (
       this.moves.size > 0 || this.lunges.length > 0 || this.floaters.length > 0 || this.projectiles.length > 0 ||
-      this.rings.length > 0 || this.ghosts.length > 0 || this.flashes.size > 0 || this.sounds.length > 0 || this.cursor > now
+      this.rings.length > 0 || this.ghosts.length > 0 || this.flashes.size > 0 || this.hits.length > 0 || this.sounds.length > 0 || this.cursor > now
     );
   }
+}
+
+/** Knock-back of whatever stands on a tile that was just struck: a quick shove away from the attacker and a settle. */
+export function recoil(anim: Animator, x: number, y: number, now: number): { x: number; y: number } | null {
+  for (const h of anim.hits) {
+    const k = (now - h.at) / 300;
+    if (k < 0 || k > 1) continue;
+    const len = Math.hypot(h.dx, h.dy) || 1;
+    // fast out, slower back
+    const push = (k < 0.25 ? k / 0.25 : 1 - (k - 0.25) / 0.75) * 0.16;
+    if (h.x === x && h.y === y) return { x: (h.dx / len) * push, y: (h.dy / len) * push };
+  }
+  return null;
 }
