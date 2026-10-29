@@ -6,7 +6,7 @@ import type { GameScreen } from '../gamescreen';
 import { civColor, tileYieldFromView } from '../render';
 import { isMuted, setMuted } from '../audio';
 import { icon } from '../icons';
-import { clear, fmtSigned, h, put } from './dom';
+import { clear, fmtSigned, h, put, tickNumber } from './dom';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -62,9 +62,12 @@ export function renderTopbar(gs: GameScreen, el: HTMLElement): void {
     if (!p.ai && p.endedTurn && p.alive) item.append(h('span', { class: 'tick', title: 'Ready' }, icon('plus', 8)));
     rankings.append(item);
   }
+  const goldNum = h('span', { class: 'num' }, String(v.gold));
+  tickNumber(goldNum, 'gold', v.gold);
+  const era = currentEra(v.techs);
   put(el,
     h('div', { class: 'pad-medals' }),
-    h('div', { class: 'stat', title: 'Treasury and income per turn' }, icon('gold', 20, 'coin'), h('span', { class: 'num' }, String(v.gold)), h('small', { class: v.income.gold >= 0 ? 'pos' : 'neg' }, fmtSigned(v.income.gold))),
+    h('div', { class: 'stat', title: 'Treasury and income per turn' }, icon('gold', 20, 'coin'), goldNum, h('small', { class: v.income.gold >= 0 ? 'pos' : 'neg' }, fmtSigned(v.income.gold))),
     h('span', { class: 'sep' }),
     h('div', { class: 'stat', title: 'Science per turn' }, icon('science', 20, 'sci'), h('span', { class: 'num' }, `+${v.income.science}`)),
     h('span', { class: 'sep' }),
@@ -76,13 +79,14 @@ export function renderTopbar(gs: GameScreen, el: HTMLElement): void {
     v.enlightenment ? countdown(gs) : null,
     h('div', { class: 'grow' }),
     rankings,
-    h('div', { class: 'era', title: civ.bonus }, `Turn ${v.turn} / ${v.settings.turnLimit}`, h('b', null, `${ERA_NAMES[currentEra(v.techs)]} Era`)),
+    h('div', { class: 'era', 'data-era': String(era), title: civ.bonus }, `Turn ${v.turn} / ${v.settings.turnLimit}`, h('b', null, `${ERA_NAMES[era]} Era`)),
     h('span', { class: 'sep' }),
     gs.opts.sendChat ? roundFlat('chat', 'Chat ( / )', () => gs.toggleChat()) : null,
     roundFlat('city', 'Your cities (L)', () => gs.openModal('cities'), 'hide-phone'),
     roundFlat('diplomacy', 'Diplomacy (D)', () => gs.openDiplomacy()),
     roundFlat('log', 'Message log', () => gs.openModal('log'), 'hide-phone'),
     roundFlat('menu', 'Menu (Esc)', () => gs.openModal('menu')),
+    h('div', { class: 'turnline', 'aria-hidden': 'true' }, h('i', { style: { transform: `scaleX(${Math.min(1, v.turn / Math.max(1, v.settings.turnLimit))})` } })),
   );
   gs.updateTimerLabel();
 }
@@ -160,14 +164,18 @@ export function pushNote(gs: GameScreen, host: HTMLElement, text: string, kind: 
   const n = h('div', { class: `note ${kind}` }, icon(NOTE_ICON[kind] ?? 'log', 20), h('div', null, text));
   n.addEventListener('click', () => {
     if (at) gs.focus(at.x, at.y);
-    n.remove();
+    n.classList.add('out');
+    setTimeout(() => n.remove(), 240);
   });
   host.append(n);
   // a phone has no room to spare: fewer notes, and they leave sooner
   const phone = window.matchMedia('(max-width: 760px)').matches;
   while (host.children.length > (phone ? 3 : 7)) host.firstChild?.remove();
   const long = kind === 'war' || kind === 'wonder' || kind === 'tech';
-  setTimeout(() => n.remove(), phone ? (long ? 8000 : 4500) : (long ? 12000 : 7000));
+  setTimeout(() => {
+    n.classList.add('out');
+    setTimeout(() => n.remove(), 240);
+  }, phone ? (long ? 8000 : 4500) : (long ? 12000 : 7000));
 }
 
 // ------------------------------------------------------------------ unit bar
@@ -256,7 +264,8 @@ export function renderUnitBar(gs: GameScreen, el: HTMLElement): void {
     h('div', { class: 'head' },
       h('div', { class: 'flag' }, flag, icon(def.id, 24)),
       h('div', { style: { flex: '1', minWidth: '0' } }, h('h3', null, def.name), stats),
-      hint),
+      hint,
+      !def.civilian ? h('div', { class: 'hpnum', title: 'Health' }, icon('health', 15), h('b', { class: 'num' }, String(u.hp))) : null),
     !def.civilian ? h('div', { class: 'bar hp' }, h('i', { style: { width: `${u.hp}%`, background: u.hp > 60 ? 'var(--good)' : u.hp > 30 ? '#e8c14a' : 'var(--bad)' } })) : null,
     roster,
     actions);
@@ -281,8 +290,28 @@ export function renderTurnControl(gs: GameScreen, el: HTMLElement): void {
     return c;
   };
   rim.append(circle(50, ready ? '#f2d98c' : '#8a6d2f', 2), circle(46.5, 'rgba(0,0,0,0.6)', 3), circle(44, ready ? '#d4af5a' : '#5a4820', 1));
+  // 24 tick marks around the bezel, like a dial
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2;
+    const long = i % 6 === 0;
+    const t = document.createElementNS(NS, 'line');
+    t.setAttribute('x1', String(52 + Math.cos(a) * (long ? 41 : 42.5)));
+    t.setAttribute('y1', String(52 + Math.sin(a) * (long ? 41 : 42.5)));
+    t.setAttribute('x2', String(52 + Math.cos(a) * 44));
+    t.setAttribute('y2', String(52 + Math.sin(a) * 44));
+    t.setAttribute('stroke', ready ? '#f2d98c' : '#8a6d2f');
+    t.setAttribute('stroke-width', long ? '1.6' : '1');
+    rim.append(t);
+  }
+  if (st.kind === 'wait') {
+    const orbit = circle(48, '#f2d98c', 2);
+    orbit.setAttribute('class', 'spin');
+    orbit.setAttribute('stroke-dasharray', '22 280');
+    orbit.setAttribute('stroke-linecap', 'round');
+    rim.append(orbit);
+  }
   const iconName = { end: 'skip', unit: 'warrior', city: 'city', research: 'science', policy: 'culture', wait: 'turn' }[st.kind];
-  const btn = h('button', { class: `nextturn ${ready ? 'ready' : ''}`, type: 'button', 'aria-label': st.label }, rim, h('span', { class: 'face' }, icon(iconName, 40)));
+  const btn = h('button', { class: `nextturn ${ready ? 'ready' : ''}`, type: 'button', 'aria-label': st.label }, h('span', { class: 'halo' }), rim, h('span', { class: 'face' }, icon(iconName, 40)));
   btn.disabled = gs.busy;
   btn.addEventListener('click', () => gs.primaryAction());
   put(el, btn, h('div', { class: 'turnlabel' }, st.label, st.sub ? h('small', null, st.sub) : null));

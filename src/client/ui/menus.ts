@@ -64,7 +64,7 @@ function snapshotBackdrop(view: ReturnType<typeof buildView>, w: number, h: numb
     out.height = Math.floor(h * dpr);
     const ctx = out.getContext('2d')!;
     ctx.drawImage(glCanvas, 0, 0, out.width, out.height);
-    ctx.drawImage(overlay, 0, 0, out.width, out.height);
+    // the overlay (city banners, markers) is left out: labels under a menu are only clutter
     gr.dispose();
     backdropCache = out;
     return out;
@@ -74,12 +74,22 @@ function snapshotBackdrop(view: ReturnType<typeof buildView>, w: number, h: numb
   }
 }
 
+/** Copy the backdrop into a menu canvas, toned down once here so the page never filters a full-screen layer per frame. */
+function stamp(canvas: HTMLCanvasElement, src: HTMLCanvasElement): void {
+  canvas.width = src.width;
+  canvas.height = src.height;
+  const ctx = canvas.getContext('2d')!;
+  ctx.filter = 'saturate(0.9)';
+  ctx.drawImage(src, 0, 0);
+  ctx.filter = 'none';
+  ctx.fillStyle = 'rgba(7, 10, 16, 0.38)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
 export function paintBackdrop(canvas: HTMLCanvasElement): void {
   try {
     if (backdropCache) {
-      canvas.width = backdropCache.width;
-      canvas.height = backdropCache.height;
-      canvas.getContext('2d')!.drawImage(backdropCache, 0, 0);
+      stamp(canvas, backdropCache);
       return;
     }
     const game = Game.create({ seed: Math.floor(Math.random() * 1e6), size: 'medium', players: [{ name: 'a', ai: true }, { name: 'b', ai: true }, { name: 'c', ai: true }] });
@@ -93,9 +103,7 @@ export function paintBackdrop(canvas: HTMLCanvasElement): void {
     const h = Math.max(400, window.innerHeight);
     const snap = snapshotBackdrop(view, w, h);
     if (snap) {
-      canvas.width = snap.width;
-      canvas.height = snap.height;
-      canvas.getContext('2d')!.drawImage(snap, 0, 0);
+      stamp(canvas, snap);
       return;
     }
     const cam = new Camera();
@@ -161,6 +169,7 @@ export interface TitleHandlers {
 }
 export function titleScreen(hd: TitleHandlers): HTMLElement {
   const { el, content } = screen();
+  el.classList.add('alive'); // only the title screen drifts and glints; the setup screens stay still
   const list = h('div', { class: 'menu-list' });
   const item = (label: string, fn: () => void, sub = '', lead = false) => {
     const b = h('button', { type: 'button', class: lead ? 'lead' : '' }, h('span', null, label), sub ? h('small', null, sub) : null);
@@ -176,12 +185,24 @@ export function titleScreen(hd: TitleHandlers): HTMLElement {
     item('Hot-seat', hd.onHotseat, 'one screen'),
     item('How to play', hd.onHelp),
   );
+  // arrow keys walk the list, like a console menu
+  list.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const items = Array.from(list.querySelectorAll('button'));
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+    e.preventDefault();
+  });
+  const ornament = () => h('div', { class: 'ornament', 'aria-hidden': 'true' }, h('i'), h('b'), h('i'));
   put(content, h('div', { class: 'title-wrap' },
     h('h1', { class: 'logo' }, 'JERICHO'),
+    ornament(),
     h('p', { class: 'tagline' }, 'Found cities. Discover the ages. Outwit your friends.'),
     list,
-    h('p', { class: 'muted', style: { fontSize: '12px', margin: '0' } }, soloOnly ? 'Solo and hot-seat edition. Online rooms need the game server (see the repository README).' : 'A turn-based strategy game for 1–8 players, played in your browser.'),
+    h('div', { class: 'civ-strip', 'aria-hidden': 'true', title: 'Eight civilisations' }, ...CIVS.map((c) => emblem(c.id, 38))),
+    h('p', { class: 'muted fine' }, soloOnly ? 'Solo and hot-seat edition. Online rooms need the game server (see the repository README).' : 'A turn-based strategy game for 1–8 players, played in your browser.'),
   ));
+  setTimeout(() => list.querySelector<HTMLButtonElement>('button.lead')?.focus({ preventScroll: true }), 60);
   return el;
 }
 
@@ -215,7 +236,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
     rand.addEventListener('click', () => { civ = null; draw(); });
     civList.append(rand);
     for (const c of CIVS) {
-      const row = h('button', { class: `civ-row ${civ === c.id ? 'on' : ''}`, type: 'button' }, emblem(c.id, 34), h('div', null, h('b', null, c.name), h('small', null, `${c.leader} · ${c.bonus}`)));
+      const row = h('button', { class: `civ-row ${civ === c.id ? 'on' : ''}`, type: 'button', style: `--civ:${c.color}` }, emblem(c.id, 34), h('div', null, h('b', null, c.name), h('small', null, `${c.leader} · ${c.bonus}`)));
       row.addEventListener('click', () => { civ = c.id; draw(); });
       civList.append(row);
     }

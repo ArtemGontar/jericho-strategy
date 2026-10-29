@@ -79,3 +79,36 @@ export function askConfirm(message: string, okLabel = 'Yes'): Promise<boolean> {
     (document.querySelector('.game') ?? document.body).append(back);
   });
 }
+
+const lastNumber = new Map<string, number>();
+
+/** Show a number that counts up or down to its new value the first time it changes (not on first sight). */
+export function tickNumber(el: HTMLElement, key: string, value: number, ms = 600): void {
+  const from = lastNumber.get(key);
+  lastNumber.set(key, value);
+  el.textContent = String(value);
+  if (from === undefined || from === value || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const t0 = performance.now();
+  const step = (now: number) => {
+    if (!el.isConnected) return;
+    const k = Math.min(1, (now - t0) / ms);
+    const e = 1 - Math.pow(1 - k, 3);
+    el.textContent = String(Math.round(from + (value - from) * e));
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/** Give each full-screen sheet a short entrance, without replaying it when its contents are redrawn. */
+export function installMotion(): void {
+  new MutationObserver((records) => {
+    for (const r of records) {
+      r.addedNodes.forEach((n) => {
+        if (n instanceof HTMLElement && n.classList.contains('overlay')) {
+          n.classList.add('enter');
+          setTimeout(() => n.classList.remove('enter'), 500);
+        }
+      });
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+}

@@ -29,6 +29,7 @@ const TECH_ICON: Record<string, string> = {
   gunpowder: 'musketman', metallurgy: 'cannon', astronomy: 'observatory', enlightenment: 'science',
 };
 
+const ERA_COLOR = ['var(--era0)', 'var(--era1)', 'var(--era2)', 'var(--era3)'];
 const NODE_W = 200;
 const NODE_H = 58;
 const STEP_X = 232;
@@ -97,7 +98,12 @@ export function showTechTree(gs: GameScreen): HTMLElement {
   svg.setAttribute('width', String(width));
   svg.setAttribute('height', String(height));
   tree.append(svg);
-  for (let era = 0; era < 4; era++) tree.append(h('div', { class: 'era-label', style: { left: `${eraX[era]}px` } }, ERA_NAMES[era]));
+  for (let era = 0; era < 4; era++) {
+    const edge = eraX[era + 1] ?? width;
+    tree.append(
+      h('div', { class: 'era-band', style: `left:${eraX[era] - 14}px;width:${edge - eraX[era] - 8}px;--era:${ERA_COLOR[era]}` }),
+      h('div', { class: 'era-label', style: `left:${eraX[era]}px;--era:${ERA_COLOR[era]}` }, ERA_NAMES[era]));
+  }
   const stateOf = (t: TechDef) => (v.techs.includes(t.id) ? 'known' : v.researching === t.id ? 'cur' : v.availableTechs.includes(t.id) ? 'avail' : 'locked');
   for (const { t, x, y } of nodes.values()) {
     for (const pre of t.pre) {
@@ -119,17 +125,21 @@ export function showTechTree(gs: GameScreen): HTMLElement {
     const cost = v.techCosts[t.id];
     const missing = t.pre.filter((p) => !v.techs.includes(p)).map((p) => TECH_BY_ID[p].name);
     const sub = st === 'known' ? 'Discovered' : st === 'cur' ? `${turnsLeft(v.researchCost - v.research, v.income.science)} turns left` : st === 'avail' ? `${cost} · ${turnsLeft(cost, v.income.science)} turns` : `Needs ${missing.join(', ')}`;
-    const node = h('div', { class: `node ${st}`, style: { left: `${x}px`, top: `${y}px` }, title: `Unlocks: ${t.desc}` },
-      h('span', { class: 'badge' }, icon(TECH_ICON[t.id] ?? 'science', 22)),
+    const node = h('div', { class: `node ${st}`, style: `left:${x}px;top:${y}px;--era:${ERA_COLOR[t.era]}`, title: `Unlocks: ${t.desc}` },
+      h('span', { class: 'badge' }, icon(TECH_ICON[t.id] ?? 'science', 22), st === 'known' ? h('i', { class: 'tick' }, icon('check', 9)) : null),
       h('div', null, h('b', null, t.name), h('span', null, st === 'locked' ? sub : `${t.desc} · ${sub}`)));
     if (st === 'cur' && v.researchCost) node.append(h('i', { class: 'prog', style: { width: `${Math.min(100, (v.research / v.researchCost) * 100)}%` } }));
     if (st === 'avail') {
-      node.addEventListener('click', async () => {
+      const pick = async () => {
         if (await gs.cmd({ t: 'research', tech: t.id })) {
           sfx('click');
           gs.closeModal();
         }
-      });
+      };
+      node.setAttribute('role', 'button');
+      node.tabIndex = 0;
+      node.addEventListener('click', pick);
+      node.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void pick(); } });
     }
     tree.append(node);
   }
@@ -212,18 +222,18 @@ export function showDiplomacy(gs: GameScreen, focusId?: number): HTMLElement {
     const row = h('button', { class: `who ${p.id === diploFocus ? 'on' : ''}`, type: 'button' },
       emblem(p.civ, 34),
       h('div', null, h('b', null, CIV_BY_ID[p.civ].leader), h('small', { class: p.alive ? `rel-${p.relation}` : '' }, p.alive ? rel : 'Eliminated')),
-      pending ? h('span', { class: 'pill gold' }, icon('peace', 16)) : h('span', { class: 'num muted' }, String(p.score)));
+      pending ? h('span', { class: 'gold-mark', title: 'Peace proposal waiting' }, icon('peace', 16)) : h('span', { class: 'num muted' }, String(p.score)));
     row.addEventListener('click', () => gs.openDiplomacy(p.id));
     list.append(row);
   }
 
-  const detail = h('div', { class: 'detail' });
+  const detail = h('div', { class: 'detail', style: sel ? `--civ:${CIV_BY_ID[sel.civ].color}` : '' });
   if (sel) {
     const civ = CIV_BY_ID[sel.civ];
     const strength = sel.relation === 'unmet' ? '—' : sel.power > me.power * 1.3 ? 'Stronger' : sel.power < me.power * 0.7 ? 'Weaker' : 'Even';
     put(detail,
       h('div', { style: { display: 'flex', gap: '18px', alignItems: 'center' } },
-        emblem(sel.civ, 76),
+        emblem(sel.civ, 96),
         h('div', null, h('h2', { style: { fontSize: '24px' } }, civ.leader), h('div', { class: 'muted' }, `${sel.name} · ${civ.name}${sel.ai ? ' · computer' : ''}`), h('div', { style: { color: 'var(--gold)', fontSize: '13px', marginTop: '4px' } }, civ.bonus))),
       h('hr', { class: 'rule soft' }),
       h('div', { class: 'facts' },
@@ -273,27 +283,40 @@ export function showMenu(gs: GameScreen): HTMLElement {
     b.addEventListener('click', fn);
     return b;
   };
+  const setting = (label: string, value: string, fn: () => void) => {
+    const b = h('button', { type: 'button' }, h('span', null, label), h('small', { class: 'val' }, value));
+    b.addEventListener('click', fn);
+    return b;
+  };
+  const cycle = (kind: 'music' | 'sfx') => () => {
+    setLevel(kind, LEVELS[(LEVELS.indexOf(getLevel(kind)) + 1) % LEVELS.length]);
+    if (kind === 'sfx') sfx('click');
+    gs.openModal('menu');
+  };
   const list = h('div', { class: 'menu-list' });
   list.append(
     item('Resume', () => gs.closeModal(), true),
     item('Policies', () => gs.openModal('policies')),
     item('How to play', () => gs.openModal('help')),
-    item(`Sound · ${isMuted() ? 'off' : 'on'}`, () => { setMuted(!isMuted()); gs.openModal('menu'); }),
-    item(`Graphics · ${GRAPHICS_LABEL[graphicsPref()]}`, async () => {
+  );
+  const prefs = h('div', { class: 'menu-list compact' });
+  prefs.append(
+    setting('Sound', isMuted() ? 'off' : 'on', () => { setMuted(!isMuted()); gs.openModal('menu'); }),
+    setting('Music', getLevel('music'), cycle('music')),
+    setting('Effects', getLevel('sfx'), cycle('sfx')),
+    setting('Graphics', GRAPHICS_LABEL[graphicsPref()], async () => {
       const order: Graphics[] = ['auto', 'high', 'medium', 'low', 'flat'];
       const next = order[(order.indexOf(graphicsPref()) + 1) % order.length];
       setGraphicsPref(next);
       if (await askConfirm(`Graphics set to ${GRAPHICS_LABEL[next]}. Reload the page to apply it? Your game is saved.`, 'Reload')) location.reload();
       else gs.openModal('menu');
     }),
-    item(`Music · ${getLevel('music')}`, () => { setLevel('music', LEVELS[(LEVELS.indexOf(getLevel('music')) + 1) % LEVELS.length]); gs.openModal('menu'); }),
-    item(`Effects · ${getLevel('sfx')}`, () => { setLevel('sfx', LEVELS[(LEVELS.indexOf(getLevel('sfx')) + 1) % LEVELS.length]); sfx('click'); gs.openModal('menu'); }),
-    item(`Animations · ${animSpeed()}`, () => { const o: AnimSpeed[] = ['normal', 'fast', 'instant']; setAnimSpeed(o[(o.indexOf(animSpeed()) + 1) % 3]); gs.openModal('menu'); }),
-    item(`Tile yields · ${gs.showYields ? 'on' : 'off'}`, () => { gs.togglePref('yields'); gs.openModal('menu'); }),
-    item(`Grid lines · ${gs.showGrid ? 'on' : 'off'}`, () => { gs.togglePref('grid'); gs.openModal('menu'); }),
+    setting('Animations', animSpeed(), () => { const o: AnimSpeed[] = ['normal', 'fast', 'instant']; setAnimSpeed(o[(o.indexOf(animSpeed()) + 1) % 3]); gs.openModal('menu'); }),
+    setting('Tile yields', gs.showYields ? 'on' : 'off', () => { gs.togglePref('yields'); gs.openModal('menu'); }),
+    setting('Grid lines', gs.showGrid ? 'on' : 'off', () => { gs.togglePref('grid'); gs.openModal('menu'); }),
   );
   if (gs.opts.sendChat) list.append(item('Chat', () => { gs.closeModal(); gs.toggleChat(); }));
-  const body: HTMLElement[] = [list];
+  const body: HTMLElement[] = [list, h('div', { class: 'eyebrow' }, 'Settings'), prefs];
   const invite = gs.opts.invite;
   if (invite) {
     const link = `${location.origin}${location.pathname}?room=${invite.code}`;
@@ -301,9 +324,9 @@ export function showMenu(gs: GameScreen): HTMLElement {
       h('div', { class: 'eyebrow' }, 'Room code'), h('div', { class: 'code', style: { fontSize: '34px' } }, invite.code),
       btn('Copy invite link', () => { void navigator.clipboard?.writeText(link).catch(() => undefined); gs.toast('Invite link copied'); }, 'small')));
   }
-  body.push(item('Leave game', async () => {
+  body.push(h('div', { class: 'menu-list' }, item('Leave game', async () => {
     if (await askConfirm(gs.transport.kind === 'local' ? 'Leave to the main menu? Your game is saved automatically each turn.' : 'Leave the game? You can rejoin with the room code.', 'Leave')) gs.opts.onExit();
-  }));
+  })));
   return sheet('Menu', body, () => gs.closeModal(), { narrow: true });
 }
 
@@ -345,17 +368,22 @@ export function showVictory(gs: GameScreen): HTMLElement {
   const won = !!winner && winner.id === v.me;
   const how: Record<string, string> = { science: 'a scientific victory', score: 'the highest score', domination: 'domination', 'last-standing': 'conquest' };
   const rows = v.players.slice().sort((a, b) => b.score - a.score).map((p, i) =>
-    h('tr', null, h('td', { class: 'num' }, String(i + 1)), h('td', null, emblem(p.civ, 22), ' ', p.name, p.id === v.winner ? ' ★' : ''), h('td', { class: 'num' }, String(p.score)), h('td', { class: 'num' }, `${p.cityCount} cities`), h('td', { class: 'num' }, `${p.techCount} techs`)));
-  const footer = h('footer', null,
-    btn('Main menu', () => gs.opts.onExit(), 'primary'),
-    gs.opts.hostActions ? btn('Play again', () => gs.opts.hostActions!.rematch()) : null,
-    btn('Keep looking at the map', () => gs.closeModal(), 'quiet'));
-  const s = sheet(won ? 'Victory' : 'Game over', [
-    h('div', { class: 'winner' }, icon(won ? 'crown' : 'skull', 54), h('h2', null, won ? 'You triumph' : winner ? `${winner.name} wins` : 'No winner'),
-      h('p', { class: 'muted', style: { margin: '0' } }, winner ? `${CIV_BY_ID[winner.civ].name} achieves ${how[v.victory ?? ''] ?? v.victory}.` : '')),
-    h('table', { class: 'table' }, h('thead', null, h('tr', null, ...['#', 'Civilisation', 'Score', '', ''].map((t) => h('th', null, t)))), h('tbody', null, ...rows)),
-  ], () => gs.closeModal(), { narrow: true });
-  s.append(footer);
+    h('tr', { class: p.id === v.winner ? 'top' : '' }, h('td', { class: 'num' }, String(i + 1)), h('td', null, emblem(p.civ, 22), ' ', p.name), h('td', { class: 'num' }, String(p.score)), h('td', { class: 'num' }, `${p.cityCount} ${p.cityCount === 1 ? 'city' : 'cities'}`), h('td', { class: 'num' }, `${p.techCount} ${p.techCount === 1 ? 'tech' : 'techs'}`)));
+  const crest = winner ? emblem(winner.civ, 112) : icon('skull', 64);
+  const s = h('div', { class: `sheet finale ${won ? 'won' : 'lost'}` },
+    won ? h('div', { class: 'rays', 'aria-hidden': 'true' }) : null,
+    h('div', { class: 'finale-in' },
+      h('div', { class: 'eyebrow' }, won ? 'Victory' : winner ? 'Defeat' : 'The age ends'),
+      h('div', { class: 'crest' }, crest),
+      h('h2', null, won ? 'You triumph' : winner ? `${CIV_BY_ID[winner.civ].name} wins` : 'No winner'),
+      h('p', { class: 'muted' }, winner ? `${CIV_BY_ID[winner.civ].name} achieves ${how[v.victory ?? ''] ?? v.victory}.` : ''),
+      h('div', { class: 'ornament', 'aria-hidden': 'true' }, h('i'), h('b'), h('i')),
+      h('table', { class: 'table' }, h('thead', null, h('tr', null, ...['#', 'Civilisation', 'Score', '', ''].map((t) => h('th', null, t)))), h('tbody', null, ...rows)),
+      h('div', { class: 'finale-actions' },
+        btn('Main menu', () => gs.opts.onExit(), 'primary'),
+        gs.opts.hostActions ? btn('Play again', () => gs.opts.hostActions!.rematch()) : null,
+        btn('Keep looking at the map', () => gs.closeModal(), 'quiet'))));
+  s.dataset.full = '1';
   return s;
 }
 
