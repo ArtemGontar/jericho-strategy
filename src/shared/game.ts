@@ -13,7 +13,7 @@ import { findPath, stepCost, tileBlockedFor } from './path';
 import { resolveAttack, cityStrength, bombardTargets, captureCity } from './combat';
 import { aiTakeTurn, aiAutoExplore, aiAutoWorker, aiChooseResearch } from './ai';
 import type {
-  AiLevel, AiPersonality, BuildingId, City, CmdResult, Focus, GameSettings, GameState, Note, Player, Proposal,
+  AiLevel, AiPersonality, BuildingId, City, CmdResult, Focus, GameSettings, GameState, Note, Player,
   QueueItem, Relation, ResourceId, Tile, Unit, UnitTypeId, WorkKind,
 } from './types';
 

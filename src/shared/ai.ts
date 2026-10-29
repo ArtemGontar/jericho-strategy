@@ -3,7 +3,7 @@ import { BUILDINGS, FINAL_TECH, IMPROVEMENTS, MIN_CITY_DISTANCE, PEACE_MIN_TURNS
 import { availableTechs, canBuildBuilding, canBuildUnit, itemCost, tileYield } from './economy';
 import { canEnterTerrain, findPath, tileBlockedFor } from './path';
 import { previewAttack } from './combat';
-import type { BuildingId, City, Player, Tile, Unit, UnitTypeId, WorkKind } from './types';
+import type { City, Player, Tile, Unit, UnitTypeId, WorkKind } from './types';
 import type { Game } from './game';
 
 // ---------------------------------------------------------------------------------------------
@@ -121,7 +121,6 @@ function gotoTile(game: Game, u: Unit, to: Pos): boolean {
 export function aiAutoExplore(game: Game, u: Unit): void {
   const bit = 1 << u.owner;
   const w = game.width;
-  const h = game.height;
   // BFS outward over explored, passable tiles until one touches the unknown
   const seen = new Set<number>([u.y * w + u.x]);
   let frontier: Pos[] = [{ x: u.x, y: u.y }];

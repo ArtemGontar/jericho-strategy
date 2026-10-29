@@ -56,7 +56,6 @@ export class UnitLayer {
   private discGeo = new CircleGeometry(0.31, 28).rotateX(-Math.PI / 2);
   private selGeo = new TorusGeometry(0.43, 0.026, 6, 48).rotateX(Math.PI / 2);
   private lastTime = 0;
-  private teamCache = new Map<string, string>();
   /** screen-space anchors for the 2D overlay, rebuilt every frame */
   anchors = new Map<number, { x: number; y: number; z: number; hgt: number }>();
   /** True when any figure is travelling or fighting this frame (shadows must keep up with them). */

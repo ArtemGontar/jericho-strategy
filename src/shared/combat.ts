@@ -43,7 +43,7 @@ export function defenceStrength(game: Game, u: Unit, attackerMounted: boolean): 
 }
 
 /** Strength of a unit when it attacks. */
-export function attackStrength(game: Game, u: Unit, ranged: boolean, defMounted: boolean, vsCity: boolean): number {
+export function attackStrength(_game: Game, u: Unit, ranged: boolean, defMounted: boolean, vsCity: boolean): number {
   const d = UNITS[u.type];
   let m = 1 + 0.15 * u.level;
   if (d.antiMounted && defMounted) m += d.antiMounted / 100;

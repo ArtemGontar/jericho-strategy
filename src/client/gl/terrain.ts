@@ -6,7 +6,7 @@ import { TERRAIN_LIST, RESOURCE_LIST, type GameView } from '../../shared/view';
 import type { TerrainId } from '../../shared/types';
 import { EDGE_NEIGHBOR_EVEN, EDGE_NEIGHBOR_ODD } from './hexmath';
 import { GLSL_NOISE, fbm, hash2 } from './noise';
-import { FOG_FRAGMENT, patchMaterial, type SharedUniforms } from './fog';
+import { FOG_FRAGMENT, type SharedUniforms } from './fog';
 
 export const SQ3 = Math.sqrt(3);
 export const tileXZ = (x: number, y: number): [number, number] => [SQ3 * (x + 0.5 * (y & 1)) + SQ3 / 2, 1.5 * y + 1];
@@ -84,7 +84,6 @@ export class Terrain {
   private depthTex: DataTexture;
   private decalCanvas = document.createElement('canvas');
   private decalTex: CanvasTexture;
-  private decalScale = 24;
   uniforms: SharedUniforms;
   private waterMat: ShaderMaterial;
   private terrainMat: MeshStandardMaterial;
@@ -293,7 +292,7 @@ export class Terrain {
     return Math.max(0, this.heightAt(X, Z));
   }
 
-  private tileData(view: GameView, x: number, y: number): TileData {
+  private tileData(_view: GameView, x: number, y: number): TileData {
     if (x < 0 || y < 0 || x >= this.W || y >= this.H) return OCEAN_TILE;
     return this.tiles[y * this.W + x] ?? VOID_TILE;
   }
@@ -683,7 +682,6 @@ export class Terrain {
     this.decalSig = sig;
     const maxPx = 3072;
     const scale = Math.min(26, maxPx / Math.max(this.extX, this.extZ));
-    this.decalScale = scale;
     const cw = Math.ceil(this.extX * scale);
     const ch = Math.ceil(this.extZ * scale);
     const cv = this.decalCanvas;

@@ -38,7 +38,7 @@ export class Sky {
   private extZ = 30;
   private built = false;
 
-  constructor(private scene: Scene) {
+  constructor(scene: Scene) {
     scene.add(this.group);
   }
 

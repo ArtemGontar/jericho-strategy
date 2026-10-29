@@ -85,7 +85,6 @@ export function findPath(game: Game, unit: Unit, to: Pos, opts: { maxCost?: numb
   const w = game.width;
   const h = game.height;
   if (unit.x === to.x && unit.y === to.y) return [];
-  const goalTile = game.tile(to.x, to.y);
   if (!standable(game, unit, to.x, to.y)) return null;
   const bit = 1 << unit.owner;
   const open: Node[] = [{ x: unit.x, y: unit.y, g: 0, f: 0, parent: null }];
