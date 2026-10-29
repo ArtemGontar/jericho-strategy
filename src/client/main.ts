@@ -96,7 +96,7 @@ function showOnlineEntry(code: string, error: string | null = null): void {
     code,
     (name) => void connectOnline(() => ({ t: 'create', name }), name),
     (c, name) => {
-      if (c.length !== 4) return showOnlineEntry(c, 'Enter the 4-letter room code.');
+      if (c.length !== 5) return showOnlineEntry(c, 'Enter the 5-letter room code.');
       void connectOnline(() => ({ t: 'join', code: c, name }), name);
     },
     showTitle,

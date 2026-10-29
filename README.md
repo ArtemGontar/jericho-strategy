@@ -22,7 +22,7 @@ Open <http://localhost:8080>. From the title screen:
 | Mode | What it is |
 | --- | --- |
 | **New game vs computer** | 1–7 AI rivals, three difficulties, how warlike they are (Calm / Normal / Fierce), map sizes, continent or islands, quick/standard speed. Autosaves every turn (**Continue game**). |
-| **Play online with friends** | Create a room, send the 4-letter code or invite link. Simultaneous turns, optional turn timer, lobby chat, reconnect after a refresh, host can hand a vanished player to the AI, and **Play again** after the game. |
+| **Play online with friends** | Create a room, send the 5-letter code or invite link. Simultaneous turns, optional turn timer, lobby chat, reconnect after a refresh, host can hand a vanished player to the AI, and **Play again** after the game. |
 | **Hot-seat** | 2–4 humans on one device with a "pass the device" curtain between turns, plus optional AI. |
 
 ### Playing with friends who are not on your network

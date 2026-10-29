@@ -8,6 +8,7 @@ import type { WorkKind } from '../shared/types';
 import { Animator } from './anim';
 import { Camera, MapRenderer, civColor, type MapDrawer, type RenderState } from './render';
 import { GLRenderer } from './gl/glrenderer';
+import { renderGuide } from './ui/guide';
 import { HEX, HEX_W } from './sprites';
 import { sfx, isMuted, setMuted } from './audio';
 import { askConfirm, btn, clear, h, put } from './ui/dom';
@@ -32,6 +33,9 @@ export class GameScreen {
   root: HTMLElement;
   canvas: HTMLCanvasElement;
   mini: HTMLCanvasElement;
+  guide: HTMLElement;
+  /** the player has sent a unit somewhere (for the first-game guide) */
+  moved = false;
   cam = new Camera();
   anim = new Animator();
   renderer: MapDrawer;
@@ -98,6 +102,7 @@ export class GameScreen {
     this.notes = h('div', { class: 'notes' });
     this.lenses = h('div', { class: 'lenses' });
     this.tileinfo = h('div', { class: 'tileinfo' });
+    this.guide = h('div', { class: 'guide hidden' });
     this.drawer = h('div', { class: 'drawer hidden' });
     this.tooltip = h('div', { class: 'tooltip hidden' });
     this.connBanner = h('div', { class: 'conn hidden' }, 'Reconnecting…');
@@ -106,7 +111,7 @@ export class GameScreen {
     this.root.append(
       ...(this.glCanvas ? [this.glCanvas] : []), this.canvas, this.topbar, this.medallions, this.notes, this.tileinfo,
       h('div', { class: 'mapdock' }, h('div', { class: 'minimap-wrap' }, this.mini), this.lenses),
-      this.unitbar, this.turncontrol, this.drawer, this.tooltip, this.connBanner);
+      this.unitbar, this.turncontrol, this.guide, this.drawer, this.tooltip, this.connBanner);
     parent.append(this.root);
     this.renderer = this.glCanvas ? new GLRenderer(this.glCanvas, this.canvas, this.cam, this.anim) : new MapRenderer(this.canvas, this.cam, this.anim);
 
@@ -766,7 +771,10 @@ export class GameScreen {
       return;
     }
     const ok = await this.cmd({ t: 'move', unit: u.id, to: t });
-    if (ok) sfx('move');
+    if (ok) {
+      sfx('move');
+      this.moved = true;
+    }
     this.afterUnitAction();
   }
 
@@ -915,6 +923,7 @@ export class GameScreen {
     renderUnitBar(this, this.unitbar);
     renderTurnControl(this, this.turncontrol);
     renderLenses(this, this.lenses);
+    renderGuide(this, this.guide);
     this.refreshTileInfo();
     this.renderSide();
   }
@@ -1049,16 +1058,18 @@ export class GameScreen {
     if (!content) return;
     this.closeModal();
     this.modalKind = kind;
-    this.modal = h('div', { class: `overlay ${content.dataset.full ? 'full' : ''}`, on: { click: (e) => { if (e.target === this.modal) this.closeModal(); } } }, content);
+    this.modal = h('div', { class: `overlay ${content.dataset.full ? 'full' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': kind, tabindex: -1, on: { click: (e) => { if (e.target === this.modal) this.closeModal(); } } }, content);
     this.root.append(this.modal);
+    this.modal.focus();
   }
 
   openDiplomacy(focus?: number): void {
     this.closeModal();
     const content = showDiplomacy(this, focus);
     this.modalKind = 'diplo';
-    this.modal = h('div', { class: 'overlay', on: { click: (e) => { if (e.target === this.modal) this.closeModal(); } } }, content);
+    this.modal = h('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Diplomacy', tabindex: -1, on: { click: (e) => { if (e.target === this.modal) this.closeModal(); } } }, content);
     this.root.append(this.modal);
+    this.modal.focus();
   }
 
   closeModal(): void {

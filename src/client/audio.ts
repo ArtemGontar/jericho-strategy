@@ -3,6 +3,28 @@ let ctx: AudioContext | null = null;
 let muted = false;
 try { muted = localStorage.getItem('jericho.muted') === '1'; } catch { /* ignore */ }
 
+export type Level = 'off' | 'low' | 'medium' | 'high';
+export const LEVELS: Level[] = ['off', 'low', 'medium', 'high'];
+const LEVEL_GAIN: Record<Level, number> = { off: 0, low: 0.35, medium: 0.7, high: 1 };
+const loadLevel = (key: string, fallback: Level): Level => {
+  try {
+    const v = localStorage.getItem(key);
+    if (v && (LEVELS as string[]).includes(v)) return v as Level;
+  } catch { /* ignore */ }
+  return fallback;
+};
+let musicLevel: Level = loadLevel('jericho.music', 'medium');
+let sfxLevel: Level = loadLevel('jericho.sfx', 'high');
+export function getLevel(kind: 'music' | 'sfx'): Level {
+  return kind === 'music' ? musicLevel : sfxLevel;
+}
+export function setLevel(kind: 'music' | 'sfx', l: Level): void {
+  if (kind === 'music') musicLevel = l;
+  else sfxLevel = l;
+  try { localStorage.setItem(kind === 'music' ? 'jericho.music' : 'jericho.sfx', l); } catch { /* ignore */ }
+  if (kind === 'music' && amb) amb.master.gain.value = LEVEL_GAIN[l];
+}
+
 export function isMuted(): boolean {
   return muted;
 }
@@ -34,7 +56,7 @@ function tone(freq: number, dur: number, type: OscillatorType = 'sine', vol = 0.
   o.frequency.setValueAtTime(freq, t0);
   if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t0 + dur);
   g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol * LEVEL_GAIN[sfxLevel]), t0 + 0.012);
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
   o.connect(g).connect(c.destination);
   o.start(t0);
@@ -54,12 +76,13 @@ function noise(dur: number, vol = 0.1, delay = 0, hp = 800): void {
   f.type = 'highpass';
   f.frequency.value = hp;
   const g = c.createGain();
-  g.gain.value = vol;
+  g.gain.value = vol * LEVEL_GAIN[sfxLevel];
   s.connect(f).connect(g).connect(c.destination);
   s.start(t0);
 }
 
 export function sfx(name: string): void {
+  if (sfxLevel === 'off') return;
   switch (name) {
     case 'click': tone(540, 0.05, 'triangle', 0.05); break;
     case 'error': tone(160, 0.18, 'sawtooth', 0.06, 0, -60); break;
@@ -118,7 +141,7 @@ export function startAmbience(): void {
   if (!c) return;
   const master = c.createGain();
   master.gain.value = 0;
-  master.gain.linearRampToValueAtTime(1, c.currentTime + 4);
+  master.gain.linearRampToValueAtTime(LEVEL_GAIN[musicLevel], c.currentTime + 4);
   master.connect(c.destination);
   const nodes: AudioNode[] = [master];
   const timers: number[] = [];

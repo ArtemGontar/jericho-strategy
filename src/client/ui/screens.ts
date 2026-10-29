@@ -1,7 +1,7 @@
 import { BUILDINGS, CIV_BY_ID, ERA_NAMES, POLICIES, TECHS, TECH_BY_ID, UNITS, policyCost } from '../../shared/data';
 import type { TechDef } from '../../shared/data';
 import type { GameScreen } from '../gamescreen';
-import { isMuted, setMuted, sfx } from '../audio';
+import { LEVELS, getLevel, isMuted, setLevel, setMuted, sfx } from '../audio';
 import { animSpeed, setAnimSpeed, type AnimSpeed } from '../anim';
 import { GRAPHICS_LABEL, graphicsPref, setGraphicsPref, type Graphics } from '../gl/glrenderer';
 import { icon } from '../icons';
@@ -286,6 +286,8 @@ export function showMenu(gs: GameScreen): HTMLElement {
       if (await askConfirm(`Graphics set to ${GRAPHICS_LABEL[next]}. Reload the page to apply it? Your game is saved.`, 'Reload')) location.reload();
       else gs.openModal('menu');
     }),
+    item(`Music · ${getLevel('music')}`, () => { setLevel('music', LEVELS[(LEVELS.indexOf(getLevel('music')) + 1) % LEVELS.length]); gs.openModal('menu'); }),
+    item(`Effects · ${getLevel('sfx')}`, () => { setLevel('sfx', LEVELS[(LEVELS.indexOf(getLevel('sfx')) + 1) % LEVELS.length]); sfx('click'); gs.openModal('menu'); }),
     item(`Animations · ${animSpeed()}`, () => { const o: AnimSpeed[] = ['normal', 'fast', 'instant']; setAnimSpeed(o[(o.indexOf(animSpeed()) + 1) % 3]); gs.openModal('menu'); }),
     item(`Tile yields · ${gs.showYields ? 'on' : 'off'}`, () => { gs.togglePref('yields'); gs.openModal('menu'); }),
     item(`Grid lines · ${gs.showGrid ? 'on' : 'off'}`, () => { gs.togglePref('grid'); gs.openModal('menu'); }),

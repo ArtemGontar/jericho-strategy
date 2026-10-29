@@ -16,30 +16,42 @@ What was checked: the engine over many AI-only games (`scripts/audit.ts`: 21 gam
 
 Also checked and fine: no GPU resource growth over 20 turns (geometries/textures/programs flat), save size (442 KB for a 120-turn, 8-player, large map, well under the 5 MB localStorage limit), `npm audit` (0 vulnerabilities), command fuzzing (no invariant violations).
 
+## Implemented since (second pass)
+
+| Item | What changed | Measured result |
+|---|---|---|
+| Server hardening | 5-letter room codes, per-address connection / room-creation / wrong-code limits, 20-minute lobby TTL | `tests/limits.test.ts` |
+| Join bug | The join screen still demanded a 4-letter code, so nobody could join a room after the code length change. Found by the online e2e run. | e2e "Online" passes again |
+| AI aggression | Personalities, an "Aggressive computers" setup option, siege rush on battered cities, war planning on the same landmass, Enlightenment countdown with a world-wide response | `scripts/wars.ts`, 6 games each, 4 players, medium map: normal 2.3 captures/game, hard 1.2 captures/game, 0.0–0.2 eliminations/game |
+| Ships and islands | Trireme, caravel, frigate, harbor, boarding and disembarking, island and scattered-island map styles, AIs build and explore by sea | `AUDIT_ISLANDS=1 scripts/audit.ts` |
+| First-game guidance | A "Getting started" checklist that ticks itself off and can be dismissed; dialogs get `role="dialog"`, focus on open | e2e, screenshots |
+| Volume | Separate music and effects levels (off / low / medium / high), remembered | — |
+
+**Still not solved:** all 12 simulated games above ended by science (turn 123 on hard, 147 on normal). Wars and captures are up, but conquest never finishes a game, and the countdown did not change who wins. Whether that is a problem for humans needs a playtest.
+
 ## Open — ranked
 
 ### Gameplay and balance
-1. **The AI almost never fights.** Over 21 games (after the movement fix): 16 ended by science, 5 by score, **0 by conquest, 10 city captures in total** (2 before the fix). War declarations are gated (grace period, neighbour distance, low probabilities) so that beginners are not rushed; the side effect is that the game is a research race. *Suggestion:* make `warlord` and `hard` AIs commit to a target (stage an army, then declare), scale the grace period down with difficulty, and add an "Aggressive computers" setup option.
-2. **Hard AI finishes Enlightenment around turn 107–118.** Whether a good human can beat that is unmeasured — it needs a playtest, not a simulation. If it is too fast, add 10–15 % to `TECH_ERA_FACTOR` for the hard level only.
-3. **No ships.** Water is a wall: no island maps, no naval exploration, no coastal defence. This is the largest missing piece of the Civilization feel.
-4. Auto-explore can thrash (a scout walks back and forth for several turns before settling on a target). Cosmetic for AIs, annoying for a human who set "auto".
-5. No barbarians, trade routes, religion or great people — fine for a first release, but the mid-game has few decisions beyond expand/research/war.
+1. **Games still end by research.** See above. Candidate levers: slower late-era techs, a conquest-friendlier victory threshold, stronger AI offence once a rival starts the Enlightenment.
+2. Whether a good human can beat the hard AI's Enlightenment (around turn 107–123) is unmeasured.
+3. Auto-explore can thrash for a few turns before settling on a target.
+4. No barbarians, trade routes, religion or great people.
 
 ### Multiplayer and operations
-6. Room codes are four letters and rooms are open to anyone who guesses one while in the lobby. Fine among friends, weak on a public server. Longer codes or a host-set password would close it.
-7. The server refuses new rooms at 300, so a script could fill it. Needs a per-IP limit on room creation and connections.
-8. No spectators; a player who leaves a lobby is not shown why.
-9. CI runs the browser tests on a software GL stack, so it exercises only the flat 2D renderer. The 3D path has had one manual 15-turn run and the unit tests in `tests/geometry.test.ts`, nothing automated in CI.
+5. Rooms are open to anyone with the code while in the lobby; there is no host password.
+6. No spectators.
+7. CI runs the browser tests on a software GL stack, so only the flat renderer is automated; the 3D path has manual runs and `tests/geometry.test.ts`.
 
 ### Client and UX
-10. **3D performance on real hardware is unmeasured.** Software rendering is far slower than any GPU, so the numbers here prove correctness, not smoothness. Quality drops automatically if frames run long; Menu → Graphics overrides it.
-11. No tutorial or first-game guidance beyond the tips; no idle-unit list; no colour-blind palette; English only. Accessibility is partial (labels added now, but menus are not fully keyboard-navigable and there is no focus trap in dialogs).
-12. Sound has one mute toggle: no separate volume for music and effects. The audio itself has not been listened to by anyone yet.
-13. Notifications overlap the top of a phone screen for a few seconds.
+8. **3D performance on real hardware is unmeasured.** Software rendering proves correctness, not smoothness. Quality drops automatically if frames run long; Menu → Graphics overrides it.
+9. No idle-unit list, no colour-blind palette, English only. Menus are not fully keyboard-navigable and dialogs have no focus trap.
+10. The audio has not been listened to by anyone yet.
+11. Notifications overlap the top of a phone screen for a few seconds.
+12. Flat-renderer screenshots through Playwright time out on this machine (the page never goes idle); the e2e flows themselves pass. Not investigated.
 
 ### Engineering
-14. Two map renderers (3D and flat 2D) now have to be kept in step. The flat one could be dropped once the 3D one has proved itself on real devices — or kept as the accessibility/low-power option.
-15. One commit on the branch (`d0317eb`) is missing the attribution trailers; it was pushed before I could amend it.
+13. Two map renderers (3D and flat 2D) must be kept in step.
+14. One commit on the branch (`d0317eb`) is missing the attribution trailers; it was pushed before it could be amended.
 
 ## How to re-run the checks
 

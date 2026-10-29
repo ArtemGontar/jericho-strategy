@@ -276,7 +276,7 @@ export function onlineEntryScreen(initialCode: string, onCreate: (name: string) 
     h('div', { class: 'body' },
       error ? h('div', { class: 'error-line' }, error) : null,
       field('Your name', nameIn),
-      h('div', { style: { display: 'grid', gap: '8px', paddingTop: '8px' } }, h('div', { class: 'eyebrow' }, 'Host a game'), h('p', { class: 'muted', style: { margin: '0', fontSize: '14px' } }, 'Create a room, then send the invite link or the four-letter code to your friends.'), h('div', null, btn('Create a room', () => onCreate(name()), 'primary'))),
+      h('div', { style: { display: 'grid', gap: '8px', paddingTop: '8px' } }, h('div', { class: 'eyebrow' }, 'Host a game'), h('p', { class: 'muted', style: { margin: '0', fontSize: '14px' } }, 'Create a room, then send the invite link or the five-letter code to your friends.'), h('div', null, btn('Create a room', () => onCreate(name()), 'primary'))),
       h('hr', { class: 'rule soft' }),
       h('div', { style: { display: 'grid', gap: '10px' } }, h('div', { class: 'eyebrow' }, 'Join a friend'), h('div', { style: { display: 'flex', gap: '14px', alignItems: 'center' } }, codeIn, btn('Join', () => onJoin(codeIn.value.toUpperCase().trim(), name()), 'primary')))),
     h('footer', null, btn('Back', onBack))));

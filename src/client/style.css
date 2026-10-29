@@ -211,6 +211,20 @@ input[type=range] { padding: 0; accent-color: var(--gold); border: 0; }
 .bar { height: 4px; background: rgba(255, 255, 255, 0.1); position: relative; }
 .bar > i { position: absolute; inset: 0 auto 0 0; background: var(--good); }
 .bar.hp > i { background: var(--good); }
+.guide { position: absolute; left: 14px; top: 78px; width: 262px; z-index: 5; padding: 8px 0; pointer-events: auto;
+  background: linear-gradient(90deg, rgba(8, 11, 17, 0.82), rgba(8, 11, 17, 0)); }
+.guide .head { display: flex; align-items: center; justify-content: space-between; padding: 0 6px 4px 2px; }
+.guide ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+.guide li { display: flex; gap: 10px; align-items: flex-start; padding: 4px 2px; color: var(--muted); font-size: 13px; }
+.guide li.now { color: var(--text); }
+.guide li.done b { text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, 0.25); }
+.guide li small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.35; }
+.guide .mark { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font-size: 10px; margin-top: 1px; }
+.guide li.now .mark { border-color: var(--gold-hi); color: var(--gold-hi); }
+.guide li.done .mark { background: var(--gold-hi); border-color: var(--gold-hi); color: #11151c; }
+.guide .cheer { margin: 4px 2px; font-size: 13px; color: var(--gold-hi); }
+@media (max-width: 760px) { .guide { display: none; } }
+.game:has(.drawer:not(.hidden)) .guide { display: none; }
 .countdown { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; border-bottom: 1px solid var(--gold-hi); color: var(--gold-hi); font: inherit; font-size: 13px; letter-spacing: 0.04em; padding: 4px 6px; cursor: pointer; animation: pulse-gold 1.8s ease-in-out infinite; }
 .countdown.foe { color: #ff9c8a; border-bottom-color: #ff9c8a; }
 .countdown b { font-size: 16px; }
@@ -274,6 +288,7 @@ input[type=range] { padding: 0; accent-color: var(--gold); border: 0; }
 .chips span { display: inline-flex; align-items: center; gap: 5px; }
 
 /* ---------- full-screen overlays ---------- */
+.overlay:focus { outline: none; }
 .overlay { position: absolute; inset: 0; z-index: 20; background: var(--scrim); display: flex; animation: fade .16s; }
 @keyframes fade { from { opacity: 0; } }
 .overlay > .sheet { margin: auto; max-height: calc(100% - 28px); display: flex; flex-direction: column; overflow: hidden; }
