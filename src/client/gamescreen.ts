@@ -52,6 +52,7 @@ export class GameScreen {
   showYields = false;
   showGrid = false;
   private lastAmbient = 0;
+  private lastDrawAt = 0;
   private drawFailures = 0;
   busy = false;
   noteHistory: Array<{ id: number; turn: number; text: string; kind: string; at?: Pos }> = [];
@@ -356,8 +357,10 @@ export class GameScreen {
     }
     const animating = this.anim.update(now, sfx);
     const selected = this.selUnit || this.attackTargets.size > 0;
-    const ambient = (this.renderer.continuous || now - this.lastAmbient > 48) && !document.hidden;
+    const ambient = (this.renderer.continuous ? now - this.lastAmbient > (this.renderer.idleMs ?? 0) : now - this.lastAmbient > 48) && !document.hidden;
     if (!this.dirty && !animating && !selected && !ambient) return;
+    if (now - this.lastDrawAt < 12) return; // a 144 Hz screen does not need 144 maps a second
+    this.lastDrawAt = now;
     if (ambient) this.lastAmbient = now;
     this.dirty = false;
     const city = this.openCity;

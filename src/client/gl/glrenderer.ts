@@ -31,6 +31,8 @@ export function setGraphicsPref(g: Graphics): void {
 /** The 3D map: a tilted orthographic view of lit, shadowed terrain, with the 2D overlay drawn on top. */
 export class GLRenderer implements MapDrawer {
   readonly continuous = true;
+  /** With nothing but water and foliage moving, 30 frames a second look the same as 60 and cost half. */
+  readonly idleMs = 30;
   readonly gl: WebGLRenderer;
   readonly scene = new Scene();
   readonly camera = new OrthographicCamera(-10, 10, 10, -10, 1, 600);
@@ -131,6 +133,8 @@ export class GLRenderer implements MapDrawer {
     this.gl.toneMappingExposure = 1.05;
     this.gl.shadowMap.enabled = true;
     this.gl.shadowMap.type = PCFSoftShadowMap;
+    // the shadow map is refreshed on demand (see refreshShadows), not on every frame
+    this.gl.shadowMap.autoUpdate = false;
     cam.setPitch(PITCH);
     const pref = graphicsPref();
     if (pref !== 'auto') {
@@ -183,6 +187,23 @@ export class GLRenderer implements MapDrawer {
     this.units.dispose_all();
     this.gl.dispose();
     this.gl.forceContextLoss();
+  }
+
+  private shadowAt = -1e9;
+  private shadowKey = '';
+
+  /**
+   * Drawing the shadow map costs as much as drawing the scene. It has to keep up while the view or any figure moves, but
+   * when only idle animation is running, 15 refreshes a second are indistinguishable from 60.
+   */
+  private refreshShadows(now: number): void {
+    const key = `${this.target.x.toFixed(2)}:${this.target.z.toFixed(2)}:${this.cam.zoom.toFixed(3)}:${this.cam.w}:${this.quality}:${this.sunDir.x.toFixed(3)}`;
+    const busy = this.units.motion || this.projectiles.active;
+    if (key !== this.shadowKey || busy || now - this.shadowAt > 66) {
+      this.shadowKey = key;
+      this.shadowAt = now;
+      this.gl.shadowMap.needsUpdate = true;
+    }
   }
 
   private syncCamera(): void {
@@ -245,6 +266,7 @@ export class GLRenderer implements MapDrawer {
     this.terrain.setTime(t);
     this.sky.update(t, Math.min(0.1, (st.now - (this.lastNow || st.now)) / 1000), this.terrain.extX, this.cam.zoom, this.terrain.extZ, (x, z) => this.terrain.fogAt(x, z));
     this.syncCamera();
+    this.refreshShadows(st.now);
     this.gl.render(this.scene, this.camera);
     const ctx = this.canvas.getContext('2d')!;
     const dpr = this.canvas.width / this.cam.w;

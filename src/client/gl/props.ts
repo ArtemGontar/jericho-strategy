@@ -287,16 +287,30 @@ export class Props {
         }
       }
     }
+    // one instanced mesh per kind of prop per block of ground, so blocks that are off screen are not drawn or shadowed
+    const BLOCK = 20;
     for (const [, s] of sets) {
-      const mesh = new InstancedMesh(s.geo, s.mat, s.mats.length);
+      const blocks = new Map<number, number[]>();
       for (let k = 0; k < s.mats.length; k++) {
-        mesh.setMatrixAt(k, s.mats[k]);
-        mesh.setColorAt(k, s.colors[k]);
+        const e = s.mats[k].elements;
+        const key = Math.floor(e[12] / BLOCK) * 1024 + Math.floor(e[14] / BLOCK);
+        const list = blocks.get(key);
+        if (list) list.push(k);
+        else blocks.set(key, [k]);
       }
-      mesh.castShadow = s.shadow;
-      mesh.receiveShadow = true;
-      mesh.frustumCulled = false;
-      this.group.add(mesh);
+      for (const [, list] of blocks) {
+        const mesh = new InstancedMesh(s.geo, s.mat, list.length);
+        list.forEach((k, n) => {
+          mesh.setMatrixAt(n, s.mats[k]);
+          mesh.setColorAt(n, s.colors[k]);
+        });
+        mesh.castShadow = s.shadow;
+        mesh.receiveShadow = true;
+        // swaying foliage and tall props reach beyond the instance origins, so pad the culling sphere
+        mesh.computeBoundingSphere();
+        if (mesh.boundingSphere) mesh.boundingSphere.radius += 2.5;
+        this.group.add(mesh);
+      }
     }
   }
 

@@ -58,6 +58,8 @@ export class UnitLayer {
   private teamCache = new Map<string, string>();
   /** screen-space anchors for the 2D overlay, rebuilt every frame */
   anchors = new Map<number, { x: number; y: number; z: number; hgt: number }>();
+  /** True when any figure is travelling or fighting this frame (shadows must keep up with them). */
+  motion = false;
 
   constructor(private scene: Scene, private terrain: Terrain, private anim: Animator, private fx: Particles) {}
 
@@ -101,6 +103,7 @@ export class UnitLayer {
     this.lastTime = now;
     const t = now / 1000;
     this.anchors.clear();
+    this.motion = false;
 
     // stack offsets: how many units share each tile
     const stacks = new Map<number, { mil: number; civ: number }>();
@@ -169,6 +172,7 @@ export class UnitLayer {
       }
       let [X, Z] = tileXZf(tx, ty);
       const moving = !!ap && !lunge;
+      if (ap || lunge) this.motion = true;
       // ease toward the unit's slot on the tile; while travelling it walks the tile centres
       const wantX = moving ? 0 : off[0];
       const wantZ = moving ? 0 : off[1];

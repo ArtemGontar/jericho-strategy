@@ -61,7 +61,15 @@ export class Builder {
     return this.add(g, color, t);
   }
   cone(r: number, h: number, color: string | number, t: Xf = {}, seg = 8): this {
-    return this.cyl(0.0001, r, h, color, t, seg);
+    // a cone's apex "cap" has no area, so leave it out: one cap fewer of triangles per cone, same picture
+    const g = new CylinderGeometry(0.0001, r, h, seg, 1);
+    const src = g.index!.array;
+    const keep: number[] = [];
+    for (const grp of g.groups) if (grp.materialIndex !== 1) for (let i = grp.start; i < grp.start + grp.count; i++) keep.push(src[i]);
+    g.setIndex(keep);
+    g.clearGroups();
+    g.translate(0, h / 2, 0);
+    return this.add(g, color, t);
   }
   sphere(r: number, color: string | number, t: Xf = {}, seg = 10): this {
     return this.add(new SphereGeometry(r, seg, Math.max(5, Math.round(seg * 0.7))), color, t);

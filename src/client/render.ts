@@ -128,6 +128,8 @@ function corner(cx: number, cy: number, r: number, i: number): [number, number] 
 export interface MapDrawer {
   /** true when the picture is always in motion and wants a frame every tick */
   readonly continuous?: boolean;
+  /** Minimum gap between frames that only repaint ambient motion (water, sway), in ms. */
+  readonly idleMs?: number;
   resize(): void;
   draw(st: RenderState): void;
   dispose?(): void;
