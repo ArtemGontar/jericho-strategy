@@ -258,7 +258,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
 export function onlineEntryScreen(initialCode: string, onCreate: (name: string) => void, onJoin: (code: string, name: string) => void, onBack: () => void, error: string | null): HTMLElement {
   const { el, content } = screen();
   const nameIn = h('input', { value: savedName(), placeholder: 'Your name', maxLength: 20 });
-  const codeIn = h('input', { value: initialCode, placeholder: 'ABCD', maxLength: 4, style: { textTransform: 'uppercase', letterSpacing: '0.4em', fontSize: '24px', textAlign: 'center', width: '150px', fontFamily: 'var(--display)' } });
+  const codeIn = h('input', { value: initialCode, placeholder: 'ABCDE', maxLength: 6, style: { textTransform: 'uppercase', letterSpacing: '0.4em', fontSize: '24px', textAlign: 'center', width: '150px', fontFamily: 'var(--display)' } });
   const name = () => {
     const n = nameIn.value.trim() || 'Player';
     saveName(n);

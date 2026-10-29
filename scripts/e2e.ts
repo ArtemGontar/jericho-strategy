@@ -160,7 +160,7 @@ try {
     await A.page.click('button:has-text("Create a room")');
     await A.page.waitForSelector('.code');
     const code = (await A.page.locator('.code').first().innerText()).trim();
-    check('room code is 4 letters', /^[A-Z]{4}$/.test(code), code);
+    check('room code is 5 letters', /^[A-Z]{5}$/.test(code), code);
     await B.page.goto(`${base}/?room=${code}`);
     await B.page.fill('input[placeholder="Your name"]', 'Bob');
     await B.page.click('button:has-text("Join")');

@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Game, type PlayerSlot } from '../shared/game';
 import { buildView, filterEvents } from '../shared/view';
@@ -18,7 +18,42 @@ export interface ServerOptions {
   dataDir?: string;
   /** do not persist rooms to disk (tests) */
   ephemeral?: boolean;
+  /** abuse limits per client address; the defaults suit a public server */
+  limits?: Partial<Limits>;
 }
+
+export interface Limits {
+  /** simultaneous websocket connections from one address */
+  connections: number;
+  /** rooms one address may create per hour */
+  roomsPerHour: number;
+  /** wrong room codes one address may try per ten minutes before being paused */
+  badCodes: number;
+}
+const DEFAULT_LIMITS: Limits = { connections: 16, roomsPerHour: 8, badCodes: 12 };
+let LIMITS: Limits = DEFAULT_LIMITS;
+const CODE_LENGTH = 5;
+
+interface Abuse {
+  conns: number;
+  created: number[];
+  bad: number[];
+}
+const abuse = new Map<string, Abuse>();
+function abuseOf(ip: string): Abuse {
+  let a = abuse.get(ip);
+  if (!a) abuse.set(ip, (a = { conns: 0, created: [], bad: [] }));
+  return a;
+}
+/** the client's address; behind a reverse proxy set TRUST_PROXY=1 to read X-Forwarded-For */
+function clientIp(req: IncomingMessage): string {
+  if (process.env.TRUST_PROXY === '1') {
+    const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
+    if (fwd) return fwd;
+  }
+  return req.socket.remoteAddress ?? 'unknown';
+}
+const recent = (list: number[], windowMs: number, now = Date.now()) => list.filter((t) => now - t < windowMs);
 
 let DIST = '';
 let DATA = '';
@@ -169,7 +204,7 @@ function newCode(): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   for (;;) {
     let c = '';
-    for (let i = 0; i < 4; i++) c += alphabet[Math.floor(Math.random() * alphabet.length)];
+    for (let i = 0; i < CODE_LENGTH; i++) c += alphabet[randomInt(alphabet.length)];
     if (!rooms.has(c)) return c;
   }
 }
@@ -233,7 +268,14 @@ function serveFile(req: IncomingMessage, res: ServerResponse): void {
 
 function attachSockets(wss: WebSocketServer): void {
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  const ip = clientIp(req);
+  const ab = abuseOf(ip);
+  if (ab.conns >= LIMITS.connections) {
+    ws.close(1013, 'Too many connections');
+    return;
+  }
+  ab.conns++;
   let room: Room | null = null;
   let member: Member | null = null;
   let budget = 40;
@@ -278,6 +320,9 @@ wss.on('connection', (ws) => {
     if (msg.t === 'ping') return void ws.send(JSON.stringify({ t: 'pong' } satisfies ServerMsg));
     if (msg.t === 'create') {
       if (rooms.size >= 300) return err('The server is full right now. Try again in a few minutes.');
+      ab.created = recent(ab.created, 3600_000);
+      if (ab.created.length >= LIMITS.roomsPerHour) return err('You have created a lot of rooms recently. Please wait a while before making another.');
+      ab.created.push(Date.now());
       const r = new Room(newCode());
       rooms.set(r.code, r);
       const m: Member = { slot: 0, token: randomBytes(12).toString('hex'), ws: null };
@@ -287,8 +332,13 @@ wss.on('connection', (ws) => {
       return;
     }
     if (msg.t === 'join') {
-      const r = rooms.get((msg.code || '').toUpperCase().trim());
-      if (!r) return err('No game with that code.');
+      ab.bad = recent(ab.bad, 600_000);
+      if (ab.bad.length >= LIMITS.badCodes) return err('Too many wrong codes. Wait a few minutes and try again.');
+      const r = rooms.get(String(msg.code || '').toUpperCase().trim());
+      if (!r) {
+        ab.bad.push(Date.now());
+        return err('No game with that code.');
+      }
       const returning = msg.token ? r.members.find((m) => m.token === msg.token) : undefined;
       if (returning) {
         attach(r, returning);
@@ -445,6 +495,7 @@ wss.on('connection', (ws) => {
   // an oversized or malformed frame makes ws emit 'error'; without a listener that would crash the process
   ws.on('error', () => ws.terminate());
   ws.on('close', () => {
+    ab.conns = Math.max(0, ab.conns - 1);
     clearInterval(refill);
     if (room && member) {
       const r = room;
@@ -475,6 +526,8 @@ export function startServer(opts: ServerOptions = {}): Promise<{ port: number; c
   DIST = resolve(opts.dist ?? process.env.DIST ?? join(process.cwd(), 'dist'));
   DATA = resolve(opts.dataDir ?? process.env.DATA_DIR ?? join(process.cwd(), 'server-data'));
   EPHEMERAL = !!opts.ephemeral;
+  LIMITS = { ...DEFAULT_LIMITS, ...opts.limits };
+  abuse.clear();
   rooms = new Map();
   const server = createServer(serveStatic);
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
@@ -485,12 +538,15 @@ export function startServer(opts: ServerOptions = {}): Promise<{ port: number; c
     const now = Date.now();
     for (const [code, r] of rooms) {
       const anyone = r.members.some((m) => m.ws);
-      if (!anyone && now - r.lastActive > 6 * 3600 * 1000) {
+      // an abandoned lobby is not worth keeping for hours; a started game is
+      const ttl = r.phase === 'lobby' ? 20 * 60 * 1000 : 6 * 3600 * 1000;
+      if (!anyone && now - r.lastActive > ttl) {
         if (r.timer) clearTimeout(r.timer);
         rooms.delete(code);
       }
     }
-  }, 10 * 60 * 1000);
+    for (const [ip, a] of abuse) if (a.conns === 0 && !recent(a.created, 3600_000, now).length && !recent(a.bad, 600_000, now).length) abuse.delete(ip);
+  }, 5 * 60 * 1000);
   sweep.unref();
   if (!EPHEMERAL) loadRooms();
   return new Promise((resolveStart) => {

@@ -200,9 +200,9 @@ async function connectOnline(initial: () => ClientMsg, name: string): Promise<vo
 // ----------------------------------------------------------------------------- boot
 const roomParam = new URLSearchParams(location.search).get('room');
 const previous = savedOnline();
-if (roomParam && previous && previous.code === roomParam.toUpperCase().slice(0, 4)) {
+if (roomParam && previous && previous.code === roomParam.toUpperCase().slice(0, 6)) {
   // opened our own invite link again (e.g. after a refresh): slip straight back into the game
   void connectOnline(() => ({ t: 'join', code: previous.code, name: previous.name, token: previous.token }), previous.name);
-} else if (roomParam) showOnlineEntry(roomParam.toUpperCase().slice(0, 4));
+} else if (roomParam) showOnlineEntry(roomParam.toUpperCase().slice(0, 6));
 else showTitle();
 void savedName;

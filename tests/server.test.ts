@@ -10,7 +10,7 @@ import type { GameView } from '../src/shared/view';
 let port = 0;
 let close: () => Promise<void>;
 beforeAll(async () => {
-  const s = await startServer({ port: 0, ephemeral: true, dist: '/nonexistent' });
+  const s = await startServer({ port: 0, ephemeral: true, dist: '/nonexistent', limits: { connections: 200, roomsPerHour: 1000, badCodes: 1000 } });
   port = s.port;
   close = s.close;
 });
@@ -169,7 +169,7 @@ describe('hostile input', () => {
     await good.open();
     good.send({ t: 'create', name: 'Fine' });
     await good.until(() => !!good.room);
-    expect(good.room?.code).toHaveLength(4);
+    expect(good.room?.code).toHaveLength(5);
   });
 
   it('answers garbage and wrongly typed messages without crashing', async () => {
