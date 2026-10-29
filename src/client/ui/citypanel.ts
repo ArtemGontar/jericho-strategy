@@ -129,16 +129,6 @@ export function renderCityPanel(gs: GameScreen, panel: HTMLElement, c: ViewCity)
     wonders: all.filter((o) => o.kind === 'building' && BUILDINGS[o.id as BuildingId].wonder),
   };
   if (!groups[tab].length) tab = groups.buildings.length ? 'buildings' : groups.units.length ? 'units' : groups.wonders.length ? 'wonders' : tab;
-  const tabs = h('div', { class: 'tabrow' });
-  (['buildings', 'units', 'wonders'] as const).forEach((k) => {
-    const b = h('button', { class: tab === k ? 'on' : '', type: 'button' }, `${k} · ${groups[k].length}`);
-    b.addEventListener('click', () => {
-      tab = k;
-      gs.refreshUI();
-    });
-    tabs.append(b);
-  });
-  const list = h('div');
   const row = (o: BuildOption) => {
     const info = itemInfo(o.kind, o.id);
     const queued = c.queue?.some((q) => q.kind === o.kind && q.id === o.id);
@@ -159,9 +149,27 @@ export function renderCityPanel(gs: GameScreen, panel: HTMLElement, c: ViewCity)
     });
     return r;
   };
-  for (const o of groups[tab]) list.append(row(o));
-  if (!groups[tab].length) list.append(h('div', { class: 'hint', style: { padding: '10px 0' } }, tab === 'wonders' ? 'No wonders available yet. Research more technologies.' : 'Nothing available.'));
-  const options = h('section', null, tabs, list);
+  // switching tab swaps only this section, so the rest of the drawer stays untouched
+  const buildOptions = (): HTMLElement => {
+    const kinds = ['buildings', 'units', 'wonders'] as const;
+    const tabs = h('div', { class: 'tabrow' });
+    for (const k of kinds) {
+      const b = h('button', { class: tab === k ? 'on' : '', type: 'button' }, `${k} · ${groups[k].length}`);
+      b.addEventListener('click', () => {
+        tab = k;
+        const next = buildOptions();
+        options.replaceWith(next);
+        options = next;
+        next.querySelectorAll('button')[kinds.indexOf(k)]?.focus({ preventScroll: true });
+      });
+      tabs.append(b);
+    }
+    const list = h('div');
+    for (const o of groups[tab]) list.append(row(o));
+    if (!groups[tab].length) list.append(h('div', { class: 'hint', style: { padding: '10px 0' } }, tab === 'wonders' ? 'No wonders available yet. Research more technologies.' : 'Nothing available.'));
+    return h('section', null, tabs, list);
+  };
+  let options = buildOptions();
 
   const have = h('section', null, h('div', { class: 'eyebrow' }, 'Built'), h('div', { class: 'chips' }));
   const chips = have.querySelector('.chips')!;

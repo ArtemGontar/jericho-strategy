@@ -100,6 +100,8 @@ export function titleScreen(hd: TitleHandlers): HTMLElement {
   const item = (label: string, fn: () => void, sub = '', lead = false) => {
     const b = h('button', { type: 'button', class: lead ? 'lead' : '' }, h('span', null, label), sub ? h('small', null, sub) : null);
     b.addEventListener('click', fn);
+    // the pointer takes the focus, so only one row is ever lit
+    b.addEventListener('pointerenter', () => b.focus({ preventScroll: true }));
     return b;
   };
   const soloOnly = !!import.meta.env.VITE_SOLO_ONLY;

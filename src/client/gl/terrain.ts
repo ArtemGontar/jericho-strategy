@@ -107,6 +107,8 @@ export class Terrain {
     this.decalCanvas.height = 4;
     this.decalTex = new CanvasTexture(this.decalCanvas);
     this.decalTex.colorSpace = SRGBColorSpace;
+    // the shader reads v straight from the world z, so the canvas must not be flipped on upload
+    this.decalTex.flipY = false;
     this.uniforms = {
       uFog: { value: this.fogTex },
       uFogOrg: { value: new Vector2() },

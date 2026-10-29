@@ -1113,6 +1113,8 @@ export class GameScreen {
   openModal(kind: string): void {
     const content = this.buildModal(kind);
     if (!content) return;
+    // asking for the dialog that is already open (a tab, a setting) swaps its contents instead of reopening it
+    if (this.modal && this.modalKind === kind) return this.rerenderModal(content);
     this.replaceModal();
     this.modalKind = kind;
     this.modal = h('div', { class: `overlay ${content.dataset.full ? 'full' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': kind, tabindex: -1, on: { click: (e) => { if (e.target === this.modal) this.closeModal(); } } }, content);
@@ -1121,8 +1123,9 @@ export class GameScreen {
   }
 
   openDiplomacy(focus?: number): void {
-    this.replaceModal();
     const content = showDiplomacy(this, focus);
+    if (this.modal && this.modalKind === 'diplo') return this.rerenderModal(content);
+    this.replaceModal();
     this.modalKind = 'diplo';
     this.modal = h('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Diplomacy', tabindex: -1, on: { click: (e) => { if (e.target === this.modal) this.closeModal(); } } }, content);
     this.root.append(this.modal);
@@ -1177,13 +1180,17 @@ export class GameScreen {
     }
   }
 
-  private rerenderModal(): void {
+  /** Swaps the contents of the open dialog, keeping its scroll positions and the focused button. */
+  private rerenderModal(next?: HTMLElement | null): void {
     if (!this.modal) return;
-    const content = this.buildModal(this.modalKind);
+    const content = next ?? this.buildModal(this.modalKind);
     if (!content) return;
     const scrollers = Array.from(this.modal.querySelectorAll<HTMLElement>('.body, .treewrap')).map((b) => [b.scrollTop, b.scrollLeft] as const);
+    const buttons = () => Array.from(this.modal!.querySelectorAll<HTMLElement>('button'));
+    const focused = buttons().indexOf(document.activeElement as HTMLElement);
     clear(this.modal);
     this.modal.append(content);
+    if (focused >= 0) buttons()[focused]?.focus({ preventScroll: true });
     if (!this.modal.contains(document.activeElement)) this.modal.focus();
     Array.from(this.modal.querySelectorAll<HTMLElement>('.body, .treewrap')).forEach((b, i) => {
       if (scrollers[i]) {
