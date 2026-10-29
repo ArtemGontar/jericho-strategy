@@ -6,26 +6,26 @@ export const Prefab = {
   broadleaf(): BufferGeometry {
     const b = new Builder();
     b.cyl(0.022, 0.04, 0.16, '#5b4129', {}, 6);
-    b.sphere(0.17, '#47803a', { y: 0.27, sy: 0.92 }, 9);
-    b.sphere(0.13, '#558f3d', { x: -0.1, y: 0.2, z: 0.05 }, 8);
-    b.sphere(0.125, '#3d7230', { x: 0.1, y: 0.22, z: -0.04 }, 8);
-    b.sphere(0.1, '#639c42', { x: 0.01, y: 0.4, z: 0.02 }, 8);
+    b.sphere(0.17, '#4c9a3c', { y: 0.27, sy: 0.92 }, 9);
+    b.sphere(0.13, '#62ad44', { x: -0.1, y: 0.2, z: 0.05 }, 8);
+    b.sphere(0.125, '#3b8a36', { x: 0.1, y: 0.22, z: -0.04 }, 8);
+    b.sphere(0.1, '#82bd4c', { x: 0.01, y: 0.4, z: 0.02 }, 8);
     return b.build();
   },
   pine(): BufferGeometry {
     const b = new Builder();
     b.cyl(0.018, 0.034, 0.12, '#55402b', {}, 6);
-    b.cone(0.17, 0.22, '#2e6a3a', { y: 0.08 }, 8);
-    b.cone(0.135, 0.2, '#34763f', { y: 0.2 }, 8);
-    b.cone(0.1, 0.18, '#3b8446', { y: 0.31 }, 8);
-    b.cone(0.06, 0.13, '#46944f', { y: 0.41 }, 8);
+    b.cone(0.17, 0.22, '#2a6b48', { y: 0.08 }, 8);
+    b.cone(0.135, 0.2, '#308050', { y: 0.2 }, 8);
+    b.cone(0.1, 0.18, '#3a9058', { y: 0.31 }, 8);
+    b.cone(0.06, 0.13, '#52a362', { y: 0.41 }, 8);
     return b.build();
   },
   rock(): BufferGeometry {
     const g = new IcosahedronGeometry(0.1, 0);
     const b = new Builder();
-    b.add(g, '#8b867d', { y: 0.05, sy: 0.7, sx: 1.2 });
-    b.add(new IcosahedronGeometry(0.06, 0), '#76726a', { x: 0.1, y: 0.03, z: 0.04, sy: 0.75 });
+    b.add(g, '#9d9183', { y: 0.05, sy: 0.7, sx: 1.2 });
+    b.add(new IcosahedronGeometry(0.06, 0), '#85796c', { x: 0.1, y: 0.03, z: 0.04, sy: 0.75 });
     return b.build();
   },
   cactus(): BufferGeometry {

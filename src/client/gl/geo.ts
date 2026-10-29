@@ -113,8 +113,38 @@ export class Builder {
     const g = mergeGeometries(this.parts, false)!;
     for (const p of this.parts) p.dispose();
     this.parts = [];
+    addOutlineNormals(g);
     return g;
   }
+}
+
+/**
+ * Adds `onrm`: a normal averaged over every vertex that shares a position, so the hard edges of boxes and cones do not
+ * tear apart when the outline pass pushes the shell outwards.
+ */
+export function addOutlineNormals(g: BufferGeometry): void {
+  const pos = g.attributes.position;
+  const nrm = g.attributes.normal;
+  if (!nrm) return;
+  const sums = new Map<string, Vector3>();
+  const keys: string[] = new Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const k = `${Math.round(pos.getX(i) * 1000)},${Math.round(pos.getY(i) * 1000)},${Math.round(pos.getZ(i) * 1000)}`;
+    keys[i] = k;
+    let s = sums.get(k);
+    if (!s) sums.set(k, (s = new Vector3()));
+    s.x += nrm.getX(i);
+    s.y += nrm.getY(i);
+    s.z += nrm.getZ(i);
+  }
+  const out = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const s = sums.get(keys[i])!.clone().normalize();
+    out[i * 3] = s.x;
+    out[i * 3 + 1] = s.y;
+    out[i * 3 + 2] = s.z;
+  }
+  g.setAttribute('onrm', new Float32BufferAttribute(out, 3));
 }
 
 const matCache = new Map<string, MeshStandardMaterial>();

@@ -5,10 +5,14 @@ import type { Particles } from './fx';
 import { Builder } from './geo';
 import { patchMaterial } from './fog';
 import { rngFor } from './noise';
+import { addInk } from './models';
 import { tileXZ, type Terrain } from './terrain';
 
-const WALLS = ['#e9dcc0', '#dccdae', '#eadfc6', '#d6c5a2', '#e2d3b4'];
-const ROOFS = ['#b5543a', '#a64a34', '#c2603f', '#8e4333', '#b86a3c'];
+/** thickness of the ink outline around buildings, in building space */
+const INK = 0.007;
+
+const WALLS = ['#f1debb', '#e4cfa6', '#eed9b2', '#dcc194', '#e8d2a8'];
+const ROOFS = ['#c0502f', '#b0452c', '#cc6238', '#9c3f2c', '#c8723a'];
 const STONE = '#b8af9a';
 /** whole-town scale: layouts below are drawn in a compact unit space and enlarged to fill the tile */
 const S = 1.4;
@@ -28,6 +32,7 @@ function house(b: Builder, t: Builder, x: number, z: number, rng: () => number, 
   const ry = Math.round(rng() * 4) * (Math.PI / 2) + (rng() - 0.5) * 0.25;
   const wall = WALLS[Math.floor(rng() * WALLS.length)];
   const roof = ROOFS[Math.floor(rng() * ROOFS.length)];
+  b.box(w * 1.05, 0.022, d * 1.05, '#b3a68a', { x, y: 0.011, z, ry });
   b.box(w, h, d, wall, { x, y: h / 2, z, ry });
   const two = rng() < 0.3 + tier * 0.12;
   let top = h;
@@ -40,7 +45,8 @@ function house(b: Builder, t: Builder, x: number, z: number, rng: () => number, 
   const cs = Math.cos(ry);
   const sn = Math.sin(ry);
   b.box(0.03, 0.05, 0.006, '#3a2a1c', { x: x + sn * (d / 2 + 0.002), y: 0.025, z: z + cs * (d / 2 + 0.002), ry });
-  b.box(0.026, 0.026, 0.006, '#e8c872', { x: x + cs * w * 0.3 + sn * (d / 2 + 0.002), y: h * 0.62, z: z - sn * w * 0.3 + cs * (d / 2 + 0.002), ry });
+  b.box(0.03, 0.03, 0.006, '#3f6f7a', { x: x + cs * -w * 0.3 + sn * (d / 2 + 0.002), y: h * 0.62, z: z - sn * -w * 0.3 + cs * (d / 2 + 0.002), ry });
+  b.box(0.026, 0.026, 0.006, '#f0cf78', { x: x + cs * w * 0.3 + sn * (d / 2 + 0.002), y: h * 0.62, z: z - sn * w * 0.3 + cs * (d / 2 + 0.002), ry });
   if (rng() < 0.4) t.box(w * 0.12, 0.012, d * 1.14, 'white', { x, y: top + 0.058, z, ry });
   // chimney
   const chx = x + cs * w * 0.25;
@@ -166,14 +172,14 @@ export class CityLayer {
 
   constructor(private scene: Scene, private terrain: Terrain, private fx: Particles) {
     this.unitMat = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
-    patchMaterial(this.unitMat, terrain.uniforms);
+    patchMaterial(this.unitMat, terrain.uniforms, { paint: 15 });
   }
 
   private team(color: string): MeshStandardMaterial {
     let m = this.teamMats.get(color);
     if (!m) {
       m = new MeshStandardMaterial({ color: new Color(color), roughness: 0.7 });
-      patchMaterial(m, this.terrain.uniforms);
+      patchMaterial(m, this.terrain.uniforms, { paint: 15 });
       this.teamMats.set(color, m);
     }
     return m;
@@ -239,10 +245,12 @@ export class CityLayer {
     main.castShadow = true;
     main.receiveShadow = true;
     group.add(main);
+    addInk(main, this.terrain.uniforms, INK);
     if (t.count) {
       const tm = new Mesh(t.build(), this.team(color));
       tm.castShadow = true;
       group.add(tm);
+      addInk(tm, this.terrain.uniforms, INK);
     }
     // banner on the keep
     const flagPivot = new Object3D();
@@ -253,6 +261,7 @@ export class CityLayer {
     const clothMesh = new Mesh(cloth.build(), this.team(color));
     clothMesh.castShadow = true;
     flagPivot.add(clothMesh);
+    addInk(clothMesh, this.terrain.uniforms, INK);
     group.add(flagPivot);
     const [X, Z] = tileXZ(c.x, c.y);
     group.position.set(X, Math.max(0, this.terrain.heightAt(X, Z)) - 0.005, Z);

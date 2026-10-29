@@ -1,4 +1,4 @@
-import { Color, Group, Mesh, MeshStandardMaterial, Object3D, TorusGeometry, CylinderGeometry, type BufferGeometry } from 'three';
+import { BackSide, Color, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, TorusGeometry, CylinderGeometry, type BufferGeometry } from 'three';
 import type { UnitTypeId } from '../../shared/types';
 import { UNITS } from '../../shared/data';
 import { Builder } from './geo';
@@ -54,8 +54,8 @@ export interface Rig {
   fired?: boolean;
 }
 
-const SKIN = '#dcae82';
-const HAIR = '#2e2018';
+const SKIN = '#e3ae7c';
+const HAIR = '#3a2616';
 const DARK = '#2c2219';
 
 class RigBuild {
@@ -99,8 +99,13 @@ function addHuman(rb: RigBuild, parent: Object3D | null, c: Costume, rig: Rig, b
   // torso
   body.n.box(0.16, 0.2, 0.1, c.tunic, { y: 0.1 });
   if (c.teamTunic) body.t.box(0.165, 0.2, 0.105, 'white', { y: 0.1 });
-  body.n.box(0.17, 0.035, 0.11, '#4a3a28', { y: 0.01 });
+  body.n.box(0.17, 0.035, 0.11, '#5a4128', { y: 0.01 });
+  body.n.box(0.03, 0.03, 0.012, '#d9b25a', { y: 0.01, z: 0.058 });
   body.t.box(0.175, 0.02, 0.115, 'white', { y: 0.032 });
+  // tunic skirt with a team-coloured hem, and a team-coloured collar
+  body.n.cyl(0.092, 0.112, 0.09, c.tunic, { y: -0.075 }, 8);
+  body.t.cyl(0.113, 0.113, 0.014, 'white', { y: -0.078 }, 8);
+  body.t.cyl(0.056, 0.07, 0.03, 'white', { y: 0.19 }, 8);
   if (c.cloak) body.t.box(0.19, 0.27, 0.025, 'white', { y: 0.1, z: -0.07, rx: 0.12 });
   // head
   const head = rb.pivot(body.pivot, 0, 0.255, 0);
@@ -153,7 +158,8 @@ function addHuman(rb: RigBuild, parent: Object3D | null, c: Costume, rig: Rig, b
   const mkLeg = (side: number): Part => {
     const l = rb.pivot(body.pivot, side * 0.045, 0.0, 0);
     l.n.cyl(0.036, 0.03, 0.17, c.pants ?? '#4d3e2f', { y: -0.17 }, 7);
-    l.n.box(0.06, 0.03, 0.1, '#2c2219', { y: -0.17, z: 0.015 });
+    l.n.cyl(0.034, 0.036, 0.05, '#dccaa2', { y: -0.17 }, 7);
+    l.n.box(0.06, 0.03, 0.1, '#6a4a2c', { y: -0.17, z: 0.015 });
     return l;
   };
   const legL = mkLeg(-1);
@@ -162,6 +168,7 @@ function addHuman(rb: RigBuild, parent: Object3D | null, c: Costume, rig: Rig, b
   const mkArm = (side: number): Part => {
     const a = rb.pivot(body.pivot, side * 0.1, 0.18, 0);
     a.n.cyl(0.03, 0.024, 0.14, c.teamTunic ? SKIN : c.tunic, { y: -0.14 }, 7);
+    a.n.cyl(0.027, 0.027, 0.03, '#dccaa2', { y: -0.135 }, 6);
     a.n.sphere(0.028, SKIN, { y: -0.145 }, 6);
     return a;
   };
@@ -290,57 +297,57 @@ function flag(rb: RigBuild, parent: Object3D | null, x: number, y: number, z: nu
 // ---------------------------------------------------------------- the roster
 const BUILDERS: Record<UnitTypeId, (rb: RigBuild, rig: Rig) => void> = {
   warrior(rb, rig) {
-    const h = addHuman(rb, null, { tunic: '#8a5a3a', pants: '#6b5338', hat: 'headband' }, rig);
+    const h = addHuman(rb, null, { tunic: '#b8582f', pants: '#7a5a38', hat: 'headband' }, rig);
     roundShield(h.armL, 0.095, 'team');
     h.armR.n.cyl(0.02, 0.03, 0.2, '#6b4a2e', { x: 0.02, y: -0.2, z: 0.03, rx: 0 }, 6);
     h.armR.n.sphere(0.04, '#7a5a38', { x: 0.02, y: 0.0, z: 0.03 }, 6);
     rig.weapon = h.armR.pivot;
   },
   swordsman(rb, rig) {
-    const h = addHuman(rb, null, { tunic: '#98a3ae', pants: '#59534c', hat: 'crest' }, rig);
+    const h = addHuman(rb, null, { tunic: '#7f93ad', pants: '#5f574c', hat: 'crest' }, rig);
     kiteShield(h.armL);
     sword(h.armR, 0.26);
     h.body.t.box(0.16, 0.06, 0.105, 'white', { y: 0.16 });
     rig.weapon = h.armR.pivot;
   },
   spearman(rb, rig) {
-    const h = addHuman(rb, null, { tunic: '#a38a5a', pants: '#5a4a38', hat: 'helm' }, rig);
+    const h = addHuman(rb, null, { tunic: '#c9a35a', pants: '#6a5238', hat: 'helm' }, rig);
     roundShield(h.armL, 0.095, 'team');
     staff(h.armR, 0.7, 'spear');
     rig.weapon = h.armR.pivot;
   },
   pikeman(rb, rig) {
-    const h = addHuman(rb, null, { tunic: '#8e97a2', pants: '#4d453c', hat: 'helm', teamTunic: true }, rig);
+    const h = addHuman(rb, null, { tunic: '#7189a8', pants: '#54483a', hat: 'helm', teamTunic: true }, rig);
     staff(h.armR, 0.95, 'pike');
     rig.weapon = h.armR.pivot;
   },
   musketman(rb, rig) {
-    const h = addHuman(rb, null, { tunic: '#2a2a35', pants: '#e6e0d0', hat: 'tricorn', teamTunic: true }, rig);
+    const h = addHuman(rb, null, { tunic: '#2f4272', pants: '#efe8d4', hat: 'tricorn', teamTunic: true }, rig);
     musket(h.armR);
-    h.body.n.box(0.04, 0.2, 0.108, '#e6e0d0', { y: 0.1 });
+    h.body.n.box(0.04, 0.2, 0.108, '#efe8d4', { y: 0.1 });
     rig.weapon = h.armR.pivot;
   },
   archer(rb, rig) {
-    const h = addHuman(rb, null, { tunic: '#6e8a4a', pants: '#5a4a34', hat: 'hood' }, rig);
+    const h = addHuman(rb, null, { tunic: '#5f9a42', pants: '#6a5236', hat: 'hood' }, rig);
     bow(h.armL);
     quiver(h.body);
     rig.weapon = h.armR.pivot;
   },
   crossbowman(rb, rig) {
-    const h = addHuman(rb, null, { tunic: '#7e6a4a', pants: '#4d3e2f', hat: 'kettle', teamTunic: false }, rig);
+    const h = addHuman(rb, null, { tunic: '#a47c46', pants: '#54402e', hat: 'kettle', teamTunic: false }, rig);
     crossbow(h.armR);
     h.body.t.box(0.17, 0.02, 0.112, 'white', { y: 0.195 });
     rig.weapon = h.armR.pivot;
   },
   scout(rb, rig) {
-    const h = addHuman(rb, null, { tunic: '#6e5a3a', pants: '#4a3c2c', hat: 'wide', cloak: true }, rig);
+    const h = addHuman(rb, null, { tunic: '#8a7a46', pants: '#54402c', hat: 'wide', cloak: true }, rig);
     h.body.n.box(0.12, 0.14, 0.06, '#5f4a30', { y: 0.1, z: -0.1 });
     staff(h.armR, 0.4, 'staff');
     h.armL.n.cyl(0.02, 0.016, 0.1, '#b8903a', { x: -0.03, y: -0.2, z: 0.05, rx: 1.1 }, 6);
     rig.weapon = h.armR.pivot;
   },
   worker(rb, rig) {
-    const h = addHuman(rb, null, { tunic: '#8a7a56', pants: '#5b4a34', hat: 'straw' }, rig);
+    const h = addHuman(rb, null, { tunic: '#d0b062', pants: '#6a5236', hat: 'straw' }, rig);
     staff(h.armR, 0.34, 'pick');
     h.body.n.box(0.07, 0.08, 0.045, '#7a5a38', { x: -0.08, y: 0.03, z: 0.0 });
     rig.weapon = h.armR.pivot;
@@ -390,7 +397,7 @@ const BUILDERS: Record<UnitTypeId, (rb: RigBuild, rig: Rig) => void> = {
   },
   horseman(rb, rig) {
     const horse = addHorse(rb, rig, '#8a5a35', false);
-    const r = addHuman(rb, horse.pivot, { tunic: '#8a6a44', pants: '#4d3e2f', hat: 'cap', teamTunic: true }, rig, 0.1);
+    const r = addHuman(rb, horse.pivot, { tunic: '#a8723c', pants: '#54402e', hat: 'cap', teamTunic: true }, rig, 0.1);
     r.body.pivot.position.set(0.0, 0.1, 0);
     r.body.pivot.rotation.y = Math.PI / 2;
     rig.legL!.visible = false;
@@ -544,6 +551,26 @@ const heights: Partial<Record<UnitTypeId, number>> = { pikeman: 0.82, spearman: 
 
 const unitMatCache = new Map<string, MeshStandardMaterial>();
 
+/** Dark ink shell drawn behind figures and buildings; one shared material per outline width. */
+const inkMats = new Map<number, MeshBasicMaterial>();
+export function inkMaterial(u: SharedUniforms, width = 0.011): MeshBasicMaterial {
+  let m = inkMats.get(width);
+  if (!m) {
+    m = new MeshBasicMaterial({ color: new Color('#2b1d17'), side: BackSide });
+    patchMaterial(m, u, { outline: width });
+    inkMats.set(width, m);
+  }
+  return m;
+}
+
+/** A shell of the mesh's geometry in ink, added next to it so it follows the same transform. */
+export function addInk(mesh: Mesh, u: SharedUniforms, width?: number): Mesh {
+  const shell = new Mesh(mesh.geometry, inkMaterial(u, width));
+  shell.userData.ink = true;
+  mesh.parent?.add(shell);
+  return shell;
+}
+
 const protos = new Map<UnitTypeId, Rig>();
 
 /**
@@ -554,6 +581,8 @@ const protos = new Map<UnitTypeId, Rig>();
 export function releaseSharedFigures(): void {
   for (const r of protos.values()) r.root.traverse((o) => { (o as Mesh).geometry?.dispose(); });
   for (const m of unitMatCache.values()) m.dispose();
+  for (const m of inkMats.values()) m.dispose();
+  inkMats.clear();
 }
 
 function protoRig(type: UnitTypeId): Rig {
@@ -592,13 +621,18 @@ export function buildRig(type: UnitTypeId, team: string, u: SharedUniforms): Rig
   root.traverse((o) => after.push(o));
   const map = (o?: Object3D): Object3D | undefined => (o ? after[before.indexOf(o)] : undefined);
   const um = new MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0.05 });
-  patchMaterial(um, u);
+  patchMaterial(um, u, { paint: 26 });
   const tm = new MeshStandardMaterial({ color: new Color(team), roughness: 0.7, metalness: 0.0 });
-  patchMaterial(tm, u);
+  patchMaterial(tm, u, { paint: 26 });
+  const meshes: Mesh[] = [];
   root.traverse((o) => {
     const m = o as Mesh;
-    if (m.isMesh) m.material = m.userData.team ? tm : um;
+    if (m.isMesh) meshes.push(m);
   });
+  for (const m of meshes) {
+    m.material = m.userData.team ? tm : um;
+    addInk(m, u);
+  }
   return {
     ...proto,
     root,

@@ -13,7 +13,7 @@ export const crestUrl = url('crest') ?? '';
 
 /** Unit ids mapped onto the era and role of the painted roster. Ships and workers have no painting. */
 const UNIT_SPRITE: Record<string, string> = {
-  settler: 'settler', scout: 'communities_scout', warrior: 'communities_ranged', archer: 'cities_ranged', spearman: 'communities_infantry',
+  settler: 'settler', worker: 'worker', scout: 'communities_scout', warrior: 'communities_ranged', archer: 'cities_ranged', spearman: 'communities_infantry',
   horseman: 'communities_cavalry', swordsman: 'cities_infantry', catapult: 'cities_siege', crossbowman: 'connectedlands_ranged',
   pikeman: 'connectedlands_infantry', knight: 'connectedlands_cavalry', musketman: 'industry_infantry', cannon: 'industry_siege',
 };

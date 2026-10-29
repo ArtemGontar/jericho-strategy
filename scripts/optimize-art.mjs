@@ -103,6 +103,7 @@ async function atlas(file, prefix, pick, dir) {
 // units are named by era and role; the game's unit ids are mapped onto them in src/client/artwork.ts
 await atlas('UnitRosterAtlas.png', 'UnitRoster_', (n) => n.replace('UnitRoster_', '').toLowerCase(), 'units');
 await atlas('UnitAtlas.png', 'Unit_', (n) => (n === 'Unit_Settler' ? 'settler' : null), 'units');
+await atlas('Animations/WorkerActivities_Rural.png', 'Activity_', (n) => (n === 'Activity_Farmer_3' ? 'worker' : null), 'units');
 await atlas('BuildingAtlas.png', 'Building_', (n) => n.replace('Building_', '').toLowerCase(), 'buildings');
 
 // the install icons

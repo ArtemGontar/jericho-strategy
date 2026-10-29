@@ -26,18 +26,44 @@ export const FOG_FRAGMENT = /* glsl */ `
   }
 `;
 
+/** Brush-stroke mottle and a touch more colour in the albedo, so flat vertex colours read as painted. */
+function paintAlbedo(freq: number): string {
+  return `{
+    vec2 pp = vec2(vLoc.x + vLoc.z * 0.6, vLoc.y * 1.3 + vLoc.z * 0.45) * ${freq.toFixed(1)};
+    float pn = vnoise(pp) * 0.65 + vnoise(pp * 2.7 + 9.1) * 0.35;
+    diffuseColor.rgb *= 0.86 + pn * 0.3;
+    float pl = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
+    diffuseColor.rgb = clamp(mix(vec3(pl), diffuseColor.rgb, 1.2), 0.0, 1.0);
+  }`;
+}
+
+/** Warm, slightly violet shadows and a soft warm rim on the silhouette, like the hand-painted legacy art. */
+const PAINT_GRADE = /* glsl */ `
+  {
+    vec3 pc = gl_FragColor.rgb;
+    float plum = dot(pc, vec3(0.3, 0.59, 0.11));
+    float pshade = 1.0 - smoothstep(0.08, 0.5, plum);
+    pc = mix(pc, pc * vec3(1.12, 0.92, 1.0) + vec3(0.025, 0.004, 0.03), pshade * 0.55);
+    float prim = pow(1.0 - clamp(normal.z, 0.0, 1.0), 2.4);
+    pc += vec3(1.0, 0.82, 0.55) * prim * 0.1;
+    gl_FragColor.rgb = pc;
+  }
+`;
+
 /**
  * Teach a standard material about fog of war, and optionally wind sway for foliage and cloud shadows for the ground.
  * Works for plain meshes and instanced meshes alike.
  */
-export function patchMaterial(mat: Material, u: SharedUniforms, opts: { sway?: number; clouds?: boolean } = {}): void {
+export function patchMaterial(mat: Material, u: SharedUniforms, opts: { sway?: number; clouds?: boolean; paint?: number; outline?: number } = {}): void {
   mat.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
     Object.assign(shader.uniforms, u);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWorldF;\nuniform float uTime;')
+      .replace('#include <common>', `#include <common>\nvarying vec3 vWorldF;\nvarying vec3 vLoc;\nuniform float uTime;${opts.outline ? '\nattribute vec3 onrm;' : ''}`)
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
+        vLoc = position;
+        ${opts.outline ? `transformed += normalize(onrm) * ${opts.outline.toFixed(4)};` : ''}
         ${
           opts.sway
             ? `{
@@ -68,12 +94,19 @@ export function patchMaterial(mat: Material, u: SharedUniforms, opts: { sway?: n
         '#include <common>',
         `#include <common>
         varying vec3 vWorldF;
+        varying vec3 vLoc;
         uniform sampler2D uFog; uniform vec2 uFogOrg; uniform vec2 uFogExt; uniform vec3 uVoid; uniform float uTime;
         ${GLSL_NOISE}`,
       )
       .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        ${opts.paint ? paintAlbedo(opts.paint) : ''}`,
+      )
+      .replace(
         '#include <dithering_fragment>',
         `#include <dithering_fragment>
+        ${opts.paint ? PAINT_GRADE : ''}
         ${
           opts.clouds
             ? `{
@@ -85,6 +118,6 @@ export function patchMaterial(mat: Material, u: SharedUniforms, opts: { sway?: n
         ${FOG_FRAGMENT}`,
       );
   };
-  mat.customProgramCacheKey = () => `fog:${opts.sway ?? 0}:${opts.clouds ? 1 : 0}`;
+  mat.customProgramCacheKey = () => `fog:${opts.sway ?? 0}:${opts.clouds ? 1 : 0}:${opts.paint ?? 0}:${opts.outline ?? 0}`;
   mat.needsUpdate = true;
 }

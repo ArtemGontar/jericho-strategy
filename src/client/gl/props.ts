@@ -1,5 +1,5 @@
 import {
-  AdditiveBlending, Color, DoubleSide, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, Quaternion,
+  AdditiveBlending, BackSide, Color, DoubleSide, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, Quaternion,
   RingGeometry, Vector3, type BufferGeometry, type Scene,
 } from 'three';
 import { RESOURCE_LIST, TERRAIN_LIST, type GameView } from '../../shared/view';
@@ -9,6 +9,8 @@ import { rngFor } from './noise';
 import { SQ3, tileXZ, type Terrain } from './terrain';
 
 type Rng = () => number;
+
+const INK_COLOR = new Color('#2b1d17');
 
 /** A random point inside a pointy-top hex of the given radius, relative to its centre. */
 function spotIn(rng: Rng, r: number): [number, number] {
@@ -65,22 +67,34 @@ export class Props {
   private animalMat: MeshStandardMaterial;
   private ringMat: MeshBasicMaterial;
   private fishMat: MeshStandardMaterial;
+  private inkFoliageMat: MeshBasicMaterial;
+  private inkHardMat: MeshBasicMaterial;
   private geos = new Map<string, BufferGeometry>();
 
   constructor(scene: Scene, private terrain: Terrain) {
     scene.add(this.group);
     const u = terrain.uniforms;
     this.foliageMat = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
-    patchMaterial(this.foliageMat, u, { sway: 0.5 });
+    patchMaterial(this.foliageMat, u, { sway: 0.5, paint: 34 });
     this.hardMat = new MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
-    patchMaterial(this.hardMat, u);
+    patchMaterial(this.hardMat, u, { paint: 30 });
     this.glowMat = new MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.3, emissive: 0xffffff, emissiveIntensity: 0.5 });
     patchMaterial(this.glowMat, u);
     this.animalMat = new MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
-    patchMaterial(this.animalMat, u);
+    patchMaterial(this.animalMat, u, { paint: 34 });
     this.fishMat = new MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.1 });
     patchMaterial(this.fishMat, u);
     this.ringMat = new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false, side: DoubleSide, blending: AdditiveBlending });
+    // ink shells share the sway of the foliage they outline
+    this.inkFoliageMat = new MeshBasicMaterial({ color: INK_COLOR, side: BackSide });
+    patchMaterial(this.inkFoliageMat, u, { sway: 0.5, outline: 0.009 });
+    this.inkHardMat = new MeshBasicMaterial({ color: INK_COLOR, side: BackSide });
+    patchMaterial(this.inkHardMat, u, { outline: 0.008 });
+  }
+
+  dispose(): void {
+    this.inkFoliageMat.dispose();
+    this.inkHardMat.dispose();
   }
 
   private geo(key: string, make: () => BufferGeometry): BufferGeometry {
@@ -310,6 +324,15 @@ export class Props {
         mesh.computeBoundingSphere();
         if (mesh.boundingSphere) mesh.boundingSphere.radius += 2.5;
         this.group.add(mesh);
+        // solid props get an ink outline; grass, flowers and stalks are too fine for one
+        if (s.shadow && s.mat !== this.glowMat) {
+          const ink = new InstancedMesh(s.geo, s.mat === this.foliageMat ? this.inkFoliageMat : this.inkHardMat, list.length);
+          list.forEach((k, n) => ink.setMatrixAt(n, s.mats[k]));
+          ink.castShadow = false;
+          ink.receiveShadow = false;
+          ink.boundingSphere = mesh.boundingSphere;
+          this.group.add(ink);
+        }
       }
     }
   }
@@ -330,6 +353,8 @@ export class Props {
     const head = new Object3D();
     const hm = new Mesh(headGeo, this.animalMat);
     head.add(hm);
+    const hmInk = new Mesh(headGeo, this.inkHardMat);
+    head.add(hmInk);
     const baseY = (kind === 'horse' ? 0.34 : 0.29) * size;
     head.position.set(0.19 * size, baseY, 0);
     // neck
@@ -338,7 +363,7 @@ export class Props {
     }), this.animalMat);
     neck.position.set(0.09 * size, 0.2 * size, 0);
     body.castShadow = hm.castShadow = neck.castShadow = true;
-    root.add(body, neck, head);
+    root.add(body, neck, head, new Mesh(body.geometry, this.inkHardMat), neckInk(neck, this.inkHardMat));
     this.group.add(root);
     this.animals.push({ root, head, seed: rng() * 50, home: [x, z], kind, baseY });
   }
@@ -377,6 +402,13 @@ export class Props {
       } else f.ring.visible = false;
     }
   }
+}
+
+/** An ink shell for the neck, which sits at the neck's own offset. */
+function neckInk(neck: Mesh, mat: MeshBasicMaterial): Mesh {
+  const shell = new Mesh(neck.geometry, mat);
+  shell.position.copy(neck.position);
+  return shell;
 }
 
 function neckGeo(coat: string, size: number, len: number): BufferGeometry {
