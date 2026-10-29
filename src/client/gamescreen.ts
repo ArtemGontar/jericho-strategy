@@ -70,6 +70,8 @@ export class GameScreen {
   private topbar: HTMLElement;
   private medallions: HTMLElement;
   private unitbar: HTMLElement;
+  /** the selected unit's order buttons, floating beside it on the map */
+  unitActions: HTMLElement;
   private turncontrol: HTMLElement;
   private notes: HTMLElement;
   private returnFocus: HTMLElement | null = null;
@@ -103,6 +105,7 @@ export class GameScreen {
     this.topbar = h('div', { class: 'topbar' });
     this.medallions = h('div', { class: 'medallions' });
     this.unitbar = h('div', { class: 'unitbar hidden' });
+    this.unitActions = h('div', { class: 'unitactions hidden' });
     this.turncontrol = h('div', { class: 'turncontrol' });
     this.notes = h('div', { class: 'notes' });
     this.lenses = h('div', { class: 'lenses' });
@@ -117,7 +120,7 @@ export class GameScreen {
     this.root.append(
       ...(this.glCanvas ? [this.glCanvas] : []), this.canvas, this.topbar, this.medallions, this.notes, this.tileinfo,
       h('div', { class: 'mapdock' }, h('div', { class: 'minimap-wrap' }, this.mini), this.lenses),
-      this.unitbar, this.turncontrol, this.guide, this.drawer, this.tooltip, this.connBanner);
+      this.unitbar, this.unitActions, this.turncontrol, this.guide, this.drawer, this.tooltip, this.connBanner);
     parent.append(this.root);
     // the 3D renderer (and three.js with it) is a separate download: the map stays blank for the instant it takes to arrive
     this.renderer = this.glCanvas ? { resize() {}, draw() {} } : new MapRenderer(this.canvas, this.cam, this.anim);
@@ -425,6 +428,28 @@ export class GameScreen {
       if (++this.drawFailures >= 3 && this.glCanvas) this.fallBackToFlat();
     }
     this.drawMinimap();
+    this.placeUnitActions();
+  }
+
+  /** Keep the order buttons next to the selected unit: below its feet, or above its head near the bottom of the screen. */
+  private placeUnitActions(): void {
+    const el = this.unitActions;
+    const u = this.selUnit;
+    if (!u || el.classList.contains('hidden')) return;
+    let p = this.renderer.unitScreen?.(u.id) ?? null;
+    if (!p) {
+      const wp = this.cam.worldOfTile(u.x, u.y);
+      const s = this.cam.toScreen(wp.x, wp.y);
+      p = { x: s.x, y: s.y, top: s.y - HEX * 0.5 * this.cam.zoom };
+    }
+    const w = el.offsetWidth;
+    const hgt = el.offsetHeight;
+    const x = Math.max(8, Math.min(this.cam.w - w - 8, p.x - w / 2));
+    let y = p.y + 14;
+    if (y + hgt > this.cam.h - 170) y = p.top - hgt - 34;
+    y = Math.max(64, y);
+    el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    el.style.visibility = this.anim.busy || this.modal ? 'hidden' : '';
   }
 
   private loadGL(canvas: HTMLCanvasElement): void {
@@ -670,13 +695,31 @@ export class GameScreen {
       const key = t.y * this.view.settings.width + t.x;
       if (this.attackTargets.has(key)) {
         this.showAttackPreview(u, t, sx, sy);
+      } else if (this.warTarget(u, t)) {
+        put(this.tooltip, h('div', null, h('b', null, 'Attack '), this.warTarget(u, t)!.name), h('div', { class: 'muted' }, 'Declares war'));
+        this.tooltip.classList.remove('hidden');
+        this.moveTooltip(sx, sy);
       } else if (this.view.state[key] > 0 && (u.mp ?? 0) > 0 && !(t.x === u.x && t.y === u.y)) {
         const p = this.vm.path(u, t);
         if (p && p.length) this.path = p;
       }
     }
     this.refreshTileInfo();
-    this.canvas.classList.toggle('pointer', !!t && (this.attackTargets.has(t.y * this.view.settings.width + t.x) || this.hasOwnCity(t)));
+    this.canvas.classList.toggle('pointer', !!t && (this.attackTargets.has(t.y * this.view.settings.width + t.x) || this.hasOwnCity(t) || (!!u && !!this.warTarget(u, t))));
+  }
+
+  /** A foreign unit or city the selected unit could attack once war is declared; null when at war already or out of reach. */
+  private warTarget(u: ViewUnit, t: Pos): { owner: number; name: string } | null {
+    const def = UNITS[u.type];
+    if (def.civilian || u.attacked || (u.mp ?? 0) <= 0) return null;
+    const W = this.view.settings.width;
+    if (this.view.state[t.y * W + t.x] !== 2) return null;
+    const d = hexDistance(u.x, u.y, t.x, t.y);
+    if (d < 1 || d > (def.ranged > 0 ? def.range : 1)) return null;
+    const owner = this.view.units.find((o) => o.x === t.x && o.y === t.y && o.owner !== this.me)?.owner
+      ?? this.view.cities.find((c) => c.x === t.x && c.y === t.y && c.owner !== this.me)?.owner;
+    const p = owner == null ? undefined : this.view.players[owner];
+    return owner != null && p?.relation === 'peace' ? { owner, name: p.name } : null;
   }
 
   private hasOwnCity(t: Pos): boolean {
@@ -795,6 +838,15 @@ export class GameScreen {
     }
     const W = this.view.settings.width;
     const key = t.y * W + t.x;
+    // a foreign unit or city in reach while at peace: one click, one confirmation, and the fight begins
+    const wt = this.warTarget(u, t);
+    if (wt) {
+      this.pending = null;
+      if (!(await askConfirm(`Declare war on ${wt.name} and attack?`, 'Declare war'))) return;
+      if (!(await this.cmd({ t: 'war', to: wt.owner }))) return;
+      this.recomputeSelection();
+      if (!this.attackTargets.has(key)) return;
+    }
     const isAttack = this.attackTargets.has(key);
     if (mode === 'touch') {
       if (!this.pending || this.pending.x !== t.x || this.pending.y !== t.y) {

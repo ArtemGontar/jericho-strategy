@@ -202,10 +202,13 @@ export function renderUnitBar(gs: GameScreen, el: HTMLElement): void {
   const u = gs.selUnit;
   if (!u) {
     el.classList.add('hidden');
+    gs.unitActions.classList.add('hidden');
     return;
   }
   el.classList.remove('hidden');
   const v = gs.view;
+  // on a big screen the order buttons float beside the unit; on a phone they stay in the bar
+  const floating = !window.matchMedia('(max-width: 760px)').matches;
   const def = UNITS[u.type];
   const col = civColor(v, u.owner);
   const hint = h('span', { class: 'hint' }, ' ');
@@ -248,8 +251,14 @@ export function renderUnitBar(gs: GameScreen, el: HTMLElement): void {
   if (u.order || u.auto || u.fortified) act('cancel', 'Cancel orders', () => void gs.cmd({ t: 'order', unit: u.id, order: 'cancel' }).then(() => gs.recomputeSelection()));
   const inCity = v.cities.find((c) => c.mine && c.x === u.x && c.y === u.y);
   if (inCity) act('city', 'Open city (C)', () => gs.openCityPanel(inCity.id));
-  actions.append(h('span', { class: 'gap' }));
+  const orders = [...actions.children];
+  actions.replaceChildren();
+  actions.append(...(floating ? [] : orders), h('span', { class: 'gap' }));
   act('disband', 'Disband (Del)', () => void gs.disband(u), { danger: true });
+  const fl = gs.unitActions;
+  clear(fl);
+  fl.classList.toggle('hidden', !floating);
+  if (floating) fl.append(...orders);
 
   const flag = document.createElementNS(NS, 'svg');
   flag.setAttribute('viewBox', '0 0 44 54');

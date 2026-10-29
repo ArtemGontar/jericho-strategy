@@ -136,6 +136,8 @@ export interface MapDrawer {
   pickTile?(sx: number, sy: number, W: number, H: number): { x: number; y: number } | null;
   /** whether a screen point lies on a city's banner */
   bannerHit?(cityId: number, sx: number, sy: number): boolean;
+  /** screen position of a unit's feet and of the top of its figure, for panels that follow it */
+  unitScreen?(id: number): { x: number; y: number; top: number } | null;
 }
 
 export class MapRenderer implements MapDrawer {

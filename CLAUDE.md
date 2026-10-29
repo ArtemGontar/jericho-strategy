@@ -15,3 +15,13 @@ git -c credential.helper= -c "http.https://github.com/.extraheader=AUTHORIZATION
 
 - Push `main` and the working branch together when the user asks to push.
 - If the file is missing, tell the user. Do not look for other credentials.
+
+## Running the app
+
+- Always run the app without sound.
+- Before the page loads, set `localStorage['jericho.muted'] = '1'` in the browser.
+  Or press the speaker button on the title screen or the map.
+- The sound setting is saved per origin, so set it again after you open a new origin.
+- When you finish, shut the app down.
+  Stop the dev server (port 5173) and close the preview tab.
+  Do not leave a server or browser tab running.

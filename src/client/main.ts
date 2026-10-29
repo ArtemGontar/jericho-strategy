@@ -5,6 +5,7 @@ import type { ClientMsg, RoomInfo } from '../shared/protocol';
 import { GameScreen } from './gamescreen';
 import { LocalTransport, RemoteTransport, hasSavedGame, loadSavedGame } from './transport';
 import { clear, h, installMotion } from './ui/dom';
+import { resetGuide } from './ui/guide';
 import { showHelp } from './ui/screens';
 import { lobbyScreen, onlineEntryScreen, savedName, setupScreen, titleScreen, type SoloConfig } from './ui/menus';
 
@@ -117,6 +118,7 @@ function startLocal(cfg: SoloConfig, mode: 'solo' | 'hotseat'): void {
   });
   const t = new LocalTransport(game, humans.map((_, i) => i));
   t.save();
+  resetGuide();
   startGame(t);
 }
 

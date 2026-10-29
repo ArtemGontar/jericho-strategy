@@ -255,6 +255,13 @@ export class GLRenderer implements MapDrawer {
     this.lastNow = st.now;
   }
 
+  unitScreen(id: number): { x: number; y: number; top: number } | null {
+    const a = this.units.anchors.get(id);
+    if (!a) return null;
+    const feet = this.screenOf(a.x, a.z, a.y);
+    return { x: feet.x, y: feet.y, top: this.screenOf(a.x, a.z, a.y + a.hgt).y };
+  }
+
   bannerHit(cityId: number, sx: number, sy: number): boolean {
     const r = this.overlay.rects.get(cityId);
     return !!r && sx >= r.x - 4 && sx <= r.x + r.w + 4 && sy >= r.y - 4 && sy <= r.y + r.h + 4;

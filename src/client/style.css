@@ -371,6 +371,10 @@ input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 1px va
 @keyframes pulse-gold { 50% { opacity: 0.62; } }
 .passengers { display: flex; gap: 6px; flex-wrap: wrap; padding: 2px 0 6px; }
 .passengers .round { width: 34px; height: 34px; }
+.unitactions { position: absolute; left: 0; top: 0; z-index: 6; display: flex; gap: 6px; align-items: center; padding: 6px 8px; max-width: calc(100vw - 16px); flex-wrap: wrap; justify-content: center;
+  background: rgba(12, 16, 24, 0.88); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5); backdrop-filter: blur(6px); pointer-events: auto; will-change: transform; }
+.unitactions .round { width: 36px; height: 36px; }
+.game.city-open .unitactions { display: none; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .actions .gap { flex: 1; }
 .hint { font-size: 12px; color: var(--muted); }

@@ -26,6 +26,11 @@ const setOff = (): void => {
   try { localStorage.setItem(KEY, 'off'); } catch { /* ignore */ }
 };
 
+/** Show the checklist again; a new game starts with it. */
+export function resetGuide(): void {
+  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+}
+
 /** A short checklist for a first game: it ticks itself off as the player does each thing, then goes away. */
 export function renderGuide(gs: GameScreen, el: HTMLElement): void {
   clear(el);
