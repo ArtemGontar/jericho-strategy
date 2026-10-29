@@ -100,6 +100,12 @@ export function sfx(name: string): void {
     case 'wonder': [392, 494, 587, 784, 988].forEach((f, i) => tone(f, 0.35, 'triangle', 0.08, i * 0.1)); break;
     case 'build': tone(660, 0.1, 'triangle', 0.06); tone(880, 0.14, 'triangle', 0.06, 0.08); break;
     case 'notify': tone(740, 0.08, 'sine', 0.04); break;
+    case 'whoosh': noise(0.45, 0.07, 0, 500); tone(220, 0.5, 'sine', 0.035, 0, 260); break;
+    case 'column': [262, 392, 523, 784].forEach((f, i) => tone(f, 0.9, 'sine', 0.045, i * 0.12)); noise(0.8, 0.03, 0.1, 3000); break;
+    case 'drums': [0, 0.28, 0.56].forEach((d) => { tone(70, 0.3, 'sine', 0.16, d, -30); noise(0.12, 0.05, d, 200); }); tone(110, 1.1, 'sawtooth', 0.025, 0.7, -40); break;
+    case 'splash': noise(0.35, 0.09, 0, 900); tone(180, 0.3, 'sine', 0.05, 0, -90); break;
+    case 'promote': [784, 988, 1319].forEach((f, i) => tone(f, 0.16, 'triangle', 0.05, i * 0.06)); break;
+    case 'grow': tone(587, 0.12, 'sine', 0.045); tone(784, 0.16, 'sine', 0.045, 0.08); break;
     case 'victory': [523, 659, 784, 1046, 784, 1046, 1318].forEach((f, i) => tone(f, 0.3, 'triangle', 0.09, i * 0.14)); break;
     case 'defeat': [392, 349, 311, 262].forEach((f, i) => tone(f, 0.4, 'sawtooth', 0.06, i * 0.2)); break;
   }

@@ -1,3 +1,4 @@
+import { CINE_LABEL, cineMode, setCineMode, type CineMode } from '../cinematics';
 import { BUILDINGS, CIV_BY_ID, ERA_NAMES, POLICIES, TECHS, TECH_BY_ID, UNITS, policyCost } from '../../shared/data';
 import type { TechDef } from '../../shared/data';
 import type { GameScreen } from '../gamescreen';
@@ -311,6 +312,7 @@ export function showMenu(gs: GameScreen): HTMLElement {
       if (await askConfirm(`Graphics set to ${GRAPHICS_LABEL[next]}. Reload the page to apply it? Your game is saved.`, 'Reload')) location.reload();
       else gs.openModal('menu');
     }),
+    setting('Cinematics', CINE_LABEL[cineMode()], () => { const o: CineMode[] = ['full', 'short', 'off']; setCineMode(o[(o.indexOf(cineMode()) + 1) % 3]); gs.openModal('menu'); }),
     setting('Animations', animSpeed(), () => { const o: AnimSpeed[] = ['normal', 'fast', 'instant']; setAnimSpeed(o[(o.indexOf(animSpeed()) + 1) % 3]); gs.openModal('menu'); }),
     setting('Tile yields', gs.showYields ? 'on' : 'off', () => { gs.togglePref('yields'); gs.openModal('menu'); }),
     setting('Grid lines', gs.showGrid ? 'on' : 'off', () => { gs.togglePref('grid'); gs.openModal('menu'); }),

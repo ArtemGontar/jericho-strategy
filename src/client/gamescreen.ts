@@ -8,6 +8,8 @@ import type { WorkKind } from '../shared/types';
 import { Animator } from './anim';
 import { Camera, MapRenderer, civColor, type MapDrawer, type RenderState } from './render';
 import { GLRenderer } from './gl/glrenderer';
+import { Moments } from './moments';
+import { cineMode } from './cinematics';
 import { renderGuide } from './ui/guide';
 import { HEX, HEX_W } from './sprites';
 import { sfx, isMuted, setMuted } from './audio';
@@ -58,6 +60,7 @@ export class GameScreen {
   private lastNoteId = -1;
   private lastTurn = 0;
   private lastEra = -1;
+  private moments!: Moments;
   private firstView = true;
   private raf = 0;
   private dirty = true;
@@ -107,6 +110,7 @@ export class GameScreen {
     this.drawer = h('div', { class: 'drawer hidden' });
     this.tooltip = h('div', { class: 'tooltip hidden' });
     this.connBanner = h('div', { class: 'conn hidden' }, 'Reconnecting…');
+    const self = this;
     const useGL = GLRenderer.supported();
     if (useGL) this.glCanvas = h('canvas', { class: 'mapgl' });
     this.root.append(
@@ -122,6 +126,8 @@ export class GameScreen {
     transport.onChat = (from, slot, text) => this.addChat(from, slot, text);
     transport.onCurtain = (name, done) => this.showCurtain(name, done);
 
+    this.moments = new Moments({ cam: this.cam, root: this.root, anim: this.anim, get renderer() { return self.renderer; }, busy: () => this.anim.busy || !!this.modalKind, wake: () => { this.dirty = true; } });
+    this.cleanup.push(() => this.moments.dispose());
     this.cleanup.push(() => this.renderer.dispose?.());
     this.bindInput();
     const onResize = () => {
@@ -212,8 +218,10 @@ export class GameScreen {
     if (this.firstView) {
       this.lastNoteId = maxId - 2;
     }
+    const fresh: typeof v.notes = [];
     for (const n of v.notes) {
       if (n.id <= this.lastNoteId) continue;
+      fresh.push(n);
       this.toast(n.text, n.kind, n.at);
       this.noteHistory.push({ id: n.id, turn: n.turn, text: n.text, kind: n.kind, at: n.at });
       if (n.kind === 'tech') sfx('tech');
@@ -221,6 +229,7 @@ export class GameScreen {
       else if (n.kind === 'war') sfx('notify');
     }
     this.lastNoteId = Math.max(this.lastNoteId, maxId);
+    this.moments.onView(v, events, fresh, this.firstView);
 
     // a new era dawns
     const era = currentEra(v.techs);
@@ -258,7 +267,8 @@ export class GameScreen {
     if (v.over && !this.overShown) {
       this.overShown = true;
       sfx(v.winner === v.me ? 'victory' : 'defeat');
-      setTimeout(() => this.openModal('victory'), 1400);
+      this.moments.finale(v);
+      setTimeout(() => this.openModal('victory'), cineMode() === 'off' ? 1400 : 4200);
     }
     if (this.modalKind && this.modalKind !== 'victory') this.rerenderModal();
     this.dirty = true;
@@ -352,6 +362,11 @@ export class GameScreen {
     this.raf = requestAnimationFrame(this.loop);
     if (!this.view) return;
     const now = performance.now();
+    // a clip owns the camera while it plays; a smooth focus requested meanwhile becomes where the clip hands it back
+    if (this.camTarget && this.moments.cine.active) {
+      this.moments.cine.retarget(this.camTarget);
+      this.camTarget = null;
+    }
     if (this.camTarget) {
       const dx = this.camTarget.x - this.cam.x;
       const dy = this.camTarget.y - this.cam.y;
@@ -366,7 +381,11 @@ export class GameScreen {
       this.cam.clamp();
       this.dirty = true;
     }
-    const animating = this.anim.update(now, sfx);
+    let animating = this.anim.update(now, sfx);
+    if (this.moments.update(now)) {
+      animating = true;
+      this.dirty = true;
+    }
     const selected = this.selUnit || this.attackTargets.size > 0;
     const ambient = (this.renderer.continuous || now - this.lastAmbient > 48) && !document.hidden;
     if (!this.dirty && !animating && !selected && !ambient) return;
@@ -1156,6 +1175,7 @@ export class GameScreen {
 
   private showEraBanner(era: number): void {
     sfx('wonder');
+    this.moments.era();
     const b = h('div', { class: 'erabanner' }, h('small', null, 'A new age begins'), h('b', null, `${ERA_NAMES[era]} Era`));
     this.root.append(b);
     setTimeout(() => b.remove(), 4200);
