@@ -36,6 +36,10 @@ export interface ViewUnit {
   y: number;
   hp: number;
   level: number;
+  /** ship this unit is aboard (own units only) */
+  carriedBy?: number;
+  /** ids of the units aboard this ship (own ships only) */
+  cargo?: number[];
   xp?: number;
   nextXp?: number | null;
   upgrade?: { to: UnitTypeId; cost: number; error: string | null } | null;
@@ -180,7 +184,10 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
   for (const u of game.units) {
     const own = u.owner === me;
     if (!own && !(game.tile(u.x, u.y).visible & bit)) continue;
+    if (!own && u.carriedBy != null) continue; // passengers are not visible from outside
     const v: ViewUnit = { id: u.id, owner: u.owner, type: u.type, x: u.x, y: u.y, hp: u.hp, level: u.level, fortified: u.fortified };
+    if (u.carriedBy != null) v.carriedBy = u.carriedBy;
+    if (UNITS[u.type].naval && (UNITS[u.type].capacity ?? 0) > 0 && own) v.cargo = game.cargoOf(u).map((c) => c.id);
     if (own) {
       v.mp = u.mp;
       v.order = u.order;

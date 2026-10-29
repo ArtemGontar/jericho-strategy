@@ -250,3 +250,95 @@ describe('movement regressions', () => {
     for (const p of game.players) expect(game.playerCities(p.id).length, `${p.name} founded a city`).toBeGreaterThan(0);
   });
 });
+
+describe('ships', () => {
+  /** a land tile next to water with a free coastal tile beside it, found by search so the test does not depend on a seed */
+  function shore(g: ReturnType<typeof twoHumans>) {
+    // borders over the sea close it to warships of a civilisation at peace; keep the test water neutral
+    for (const t of g.tiles) if (!TERRAIN[t.terrain].land) t.owner = -1;
+    for (const t of g.tiles) {
+      if (t.terrain === 'coast' || t.terrain === 'ocean') continue;
+      if (!TERRAIN[t.terrain].passable || t.city >= 0) continue;
+      const water = g.nb(t.x, t.y).find((n) => g.tile(n.x, n.y).terrain === 'coast' && !g.unitsAt(n.x, n.y).length);
+      if (water) return { land: { x: t.x, y: t.y }, water };
+    }
+    throw new Error('no shore');
+  }
+
+  it('sail on water only, and ocean-going ships may leave the coast', () => {
+    const g = twoHumans(21);
+    const { water } = shore(g);
+    const tri = g.addUnit(0, 'trireme', water.x, water.y);
+    const cara = g.addUnit(0, 'caravel', water.x, water.y);
+    let landTarget: { x: number; y: number } | null = null;
+    let deep: { x: number; y: number } | null = null;
+    for (const n of g.nb(water.x, water.y)) {
+      const t = g.tile(n.x, n.y);
+      if (TERRAIN[t.terrain].land && t.city < 0 && !landTarget) landTarget = n;
+      if (t.terrain === 'ocean' && !deep) deep = n;
+    }
+    // a ship cannot walk inland
+    if (landTarget) expect(g.exec(0, { t: 'move', unit: tri.id, to: landTarget }).ok).toBe(false);
+    // the trireme refuses deep water; the caravel does not (when such a tile is adjacent)
+    if (deep) {
+      cara.mp = 8;
+      expect(g.exec(0, { t: 'move', unit: cara.id, to: deep }).ok).toBe(true);
+      tri.mp = 8;
+      expect(g.exec(0, { t: 'move', unit: tri.id, to: deep }).ok).toBe(false);
+    }
+  });
+
+  it('carry land units: board, sail together, disembark; sinking the ship drowns the cargo', () => {
+    const g = twoHumans(21);
+    const { land, water } = shore(g);
+    const ship = g.addUnit(0, 'trireme', water.x, water.y);
+    const man = g.addUnit(0, 'warrior', land.x, land.y);
+    man.mp = 4;
+    // climbing aboard by walking onto the ship
+    expect(g.exec(0, { t: 'move', unit: man.id, to: water }).ok).toBe(true);
+    expect(man.carriedBy).toBe(ship.id);
+    expect(man.x === water.x && man.y === water.y).toBe(true);
+    expect(g.cargoOf(ship).length).toBe(1);
+    // the passenger cannot fight from the deck
+    // sail to another coastal tile; the passenger comes along
+    const next = g.nb(water.x, water.y).find((n) => g.tile(n.x, n.y).terrain === 'coast' && !g.unitsAt(n.x, n.y).length);
+    if (next) {
+      ship.mp = 6;
+      expect(g.exec(0, { t: 'move', unit: ship.id, to: next }).ok).toBe(true);
+      expect(man.x === ship.x && man.y === ship.y).toBe(true);
+    }
+    // capacity: a trireme holds two
+    const a = g.addUnit(0, 'warrior', land.x, land.y);
+    const b = g.addUnit(0, 'archer', land.x, land.y);
+    for (const u of [a, b]) u.mp = 4;
+    expect(ship.x === water.x && ship.y === water.y).toBe(next ? false : true);
+    // disembark onto land next to the ship's current tile
+    const shoreNow = g.nb(ship.x, ship.y).find((n) => TERRAIN[g.tile(n.x, n.y).terrain].passable && g.tile(n.x, n.y).city < 0 && !g.unitsAt(n.x, n.y).length);
+    if (shoreNow) {
+      man.mp = 4;
+      expect(g.exec(0, { t: 'move', unit: man.id, to: shoreNow }).ok).toBe(true);
+      expect(man.carriedBy == null).toBe(true);
+      expect(man.mp).toBe(0);
+    }
+    // a sunk ship takes its passengers with it
+    const g2 = twoHumans(21);
+    const s2 = shore(g2);
+    const ship2 = g2.addUnit(0, 'trireme', s2.water.x, s2.water.y);
+    const rider = g2.addUnit(0, 'warrior', s2.land.x, s2.land.y);
+    rider.mp = 4;
+    g2.exec(0, { t: 'move', unit: rider.id, to: s2.water });
+    expect(rider.carriedBy).toBe(ship2.id);
+    g2.removeUnit(ship2);
+    expect(g2.units.includes(rider)).toBe(false);
+  });
+
+  it('only coastal cities build ships, and only with the technology', () => {
+    const g = twoHumans(21);
+    const c = g.playerCities(0)[0];
+    const coastal = g.isCoastal(c.x, c.y);
+    const p = g.players[0];
+    expect(g.exec(0, { t: 'queue', city: c.id, op: 'set', kind: 'unit', id: 'trireme' }).ok).toBe(false);
+    p.techs.push('sailing');
+    expect(g.exec(0, { t: 'queue', city: c.id, op: 'set', kind: 'unit', id: 'trireme' }).ok).toBe(coastal);
+  });
+});

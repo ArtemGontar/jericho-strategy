@@ -1,5 +1,6 @@
 import { neighborsOf, type Pos } from './hex';
 import { TERRAIN, UNITS } from './data';
+import { canStandOn, navalStepCost } from './naval';
 import { TERRAIN_LIST, type GameView, type ViewUnit } from './view';
 
 /** Client-side movement planning from a player's view (mirrors the server rules closely enough for previews). */
@@ -29,10 +30,27 @@ export class ViewMap {
     return this.view.cities.find((c) => c.x === x && c.y === y);
   }
 
+  isCoastal(x: number, y: number): boolean {
+    for (const n of neighborsOf(x, y, this.w, this.h)) {
+      const t = this.terrainId(n.x, n.y);
+      if (t === 'ocean' || t === 'coast') return true;
+    }
+    return false;
+  }
+
+  /** May this unit stand here at all? Ships need water, or a friendly coastal city. */
+  standable(u: ViewUnit, x: number, y: number): boolean {
+    const def = UNITS[u.type];
+    const city = def.naval ? this.cityAt(x, y) : undefined;
+    const port = !!city && city.owner === u.owner && this.isCoastal(x, y);
+    return canStandOn(u.type, this.terrainId(x, y), port);
+  }
+
   stepCost(u: ViewUnit, fx: number, fy: number, x: number, y: number): number {
     const def = UNITS[u.type];
     const t = this.terrain(x, y);
-    if (!t.passable) return Infinity;
+    if (!this.standable(u, x, y)) return Infinity;
+    if (def.naval) return navalStepCost();
     if (def.scout) return 2;
     if (this.road(x, y) && this.road(fx, fy)) return 1;
     return t.move;
@@ -40,7 +58,7 @@ export class ViewMap {
 
   blocked(u: ViewUnit, x: number, y: number, finalStep: boolean): boolean {
     if (!this.explored(x, y)) return true;
-    if (!this.terrain(x, y).passable) return true;
+    if (!this.standable(u, x, y)) return true;
     const owner = this.owner(x, y);
     const d0 = UNITS[u.type];
     if (owner >= 0 && owner !== u.owner && this.view.players[owner]?.relation === 'peace' && !d0.civilian && !d0.scout) return true;
@@ -48,8 +66,11 @@ export class ViewMap {
     if (city && city.owner !== u.owner) return true;
     const def = UNITS[u.type];
     for (const o of this.unitsAt(x, y)) {
+      if (o.carriedBy != null) continue;
       if (o.owner !== u.owner) return true;
-      if (finalStep && !city && !!UNITS[o.type].civilian === !!def.civilian && o.id !== u.id) return true;
+      const od = UNITS[o.type];
+      const sameClass = !!od.naval === !!def.naval && (def.naval || !!od.civilian === !!def.civilian);
+      if (finalStep && !city && sameClass && o.id !== u.id) return true;
     }
     return false;
   }

@@ -4,7 +4,7 @@ import type { BuildingId, City, Player, Tile } from './types';
 import type { Game } from './game';
 
 /** Global knobs: how expensive technology (per era) and production items are relative to the base tables. */
-export const TECH_ERA_FACTOR = [1.0, 2.4, 3.9, 5.6];
+export const TECH_ERA_FACTOR = [1.0, 2.7, 4.5, 6.8];
 export const PROD_COST_FACTOR = 0.75;
 
 export interface Yield {
@@ -112,6 +112,7 @@ export function assignWorkedTiles(game: Game, playerId: number): void {
 export function cityYield(game: Game, city: City): CityYield {
   const civ = civOf(game, city.owner);
   const y = cityCenterYield(game, city);
+  const harbour = hasBuilding(city, 'harbor');
   let food = y.food;
   let prod = y.prod;
   let gold = y.gold;
@@ -120,6 +121,8 @@ export function cityYield(game: Game, city: City): CityYield {
     food += t.food;
     prod += t.prod;
     gold += t.gold;
+    // a harbour makes the sea more fertile
+    if (harbour && !TERRAIN[game.tiles[idx].terrain].land) food += 1;
   }
   let science = 3 + Math.floor(city.pop * 0.7) + (city.capital ? 2 : 0);
   let culture = 1;
@@ -224,6 +227,7 @@ export function canBuildUnit(game: Game, playerId: number, city: City, unitId: s
   if (d.obsoleteBy && p.techs.includes(d.obsoleteBy)) return false;
   if (d.needs && !game.hasResource(playerId, d.needs)) return false;
   if (d.id === 'settler' && city.pop < 2) return false;
+  if (d.naval && !game.isCoastal(city.x, city.y)) return false;
   return true;
 }
 

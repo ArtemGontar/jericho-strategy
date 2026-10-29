@@ -79,6 +79,12 @@ export interface UnitDef {
   scout?: boolean;
   vision: number;
   desc: string;
+  /** a ship: sails on water instead of walking on land */
+  naval?: boolean;
+  /** how many land units a ship carries (0 = none) */
+  capacity?: number;
+  /** a ship that may leave the coast for the open ocean */
+  deepSea?: boolean;
   /** obsolete when this tech is known (can no longer be built) */
   obsoleteBy?: TechId;
 }
@@ -98,6 +104,9 @@ export const UNITS: Record<UnitTypeId, UnitDef> = {
   pikeman:     U({ id: 'pikeman', name: 'Pikeman', icon: '🛡️', cost: 70, moves: 2, strength: 18, ranged: 0, range: 0, tech: 'feudalism', antiMounted: 100, vision: 2, desc: 'Tough defender, strong against mounted units.' }),
   knight:      U({ id: 'knight', name: 'Knight', icon: '🐴', cost: 95, moves: 4, strength: 24, ranged: 0, range: 0, tech: 'chivalry', needs: 'horses', mounted: true, vision: 2, desc: 'Heavy cavalry. Requires horses.' }),
   musketman:   U({ id: 'musketman', name: 'Musketman', icon: '🔫', cost: 110, moves: 2, strength: 30, ranged: 0, range: 0, tech: 'gunpowder', vision: 2, desc: 'Gunpowder infantry.' }),
+  trireme:     U({ id: 'trireme', name: 'Trireme', icon: '⛵', cost: 45, moves: 3, strength: 6, ranged: 0, range: 0, tech: 'sailing', naval: true, capacity: 2, vision: 2, desc: 'Coastal ship that carries two land units. Cannot enter the deep ocean.', obsoleteBy: 'navigation' }),
+  caravel:     U({ id: 'caravel', name: 'Caravel', icon: '⛵', cost: 80, moves: 4, strength: 12, ranged: 0, range: 0, tech: 'navigation', naval: true, capacity: 3, deepSea: true, vision: 3, desc: 'Ocean-going ship that carries three land units.' }),
+  frigate:     U({ id: 'frigate', name: 'Frigate', icon: '🚢', cost: 120, moves: 4, strength: 18, ranged: 22, range: 2, tech: 'metallurgy', naval: true, capacity: 0, deepSea: true, vision: 3, desc: 'Warship that bombards ships and the coast from two tiles away.' }),
   cannon:      U({ id: 'cannon', name: 'Cannon', icon: '💣', cost: 130, moves: 2, strength: 10, ranged: 34, range: 2, tech: 'metallurgy', siege: true, vision: 2, desc: 'Heavy artillery.' }),
 };
 
@@ -134,6 +143,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   university:   B({ id: 'university', name: 'University', icon: '🎓', cost: 120, upkeep: 2, tech: 'education', needs: 'library', science: 5, desc: '+5 science. Requires a Library.' }),
   bank:         B({ id: 'bank', name: 'Bank', icon: '🏦', cost: 120, upkeep: 2, tech: 'banking', needs: 'market', gold: 5, desc: '+5 gold. Requires a Market.' }),
   observatory:  B({ id: 'observatory', name: 'Observatory', icon: '🔭', cost: 120, upkeep: 2, tech: 'astronomy', science: 4, culture: 1, desc: '+4 science.' }),
+  harbor:       B({ id: 'harbor', name: 'Harbor', icon: '⚓', cost: 60, upkeep: 1, tech: 'sailing', coastal: true, food: 1, desc: 'Coastal city: +1 food, and +1 food from every worked water tile.' }),
   pyramids:        B({ id: 'pyramids', name: 'Pyramids', icon: '🔺', cost: 170, upkeep: 0, tech: 'masonry', wonder: true, prod: 4, culture: 3, desc: 'Wonder: +4 production, +3 culture.' }),
   great_library:   B({ id: 'great_library', name: 'Great Library', icon: '🏛️', cost: 190, upkeep: 0, tech: 'writing', wonder: true, science: 8, culture: 3, desc: 'Wonder: +8 science, +3 culture.' }),
   hanging_gardens: B({ id: 'hanging_gardens', name: 'Hanging Gardens', icon: '🌳', cost: 190, upkeep: 0, tech: 'construction', wonder: true, food: 4, culture: 3, desc: 'Wonder: +4 food, +3 culture.' }),
@@ -162,6 +172,7 @@ export const TECHS: TechDef[] = [
   T('masonry', 'Masonry', 0, 30, [], 'Walls, Pyramids'),
   T('writing', 'Writing', 0, 35, ['pottery'], 'Library, Great Library'),
   T('wheel', 'The Wheel', 0, 35, ['husbandry'], 'Roads'),
+  T('sailing', 'Sailing', 0, 35, ['pottery'], 'Trireme, Harbor'),
   T('ironworking', 'Iron Working', 1, 70, ['bronze'], 'Swordsman'),
   T('mathematics', 'Mathematics', 1, 70, ['archery', 'masonry'], 'Catapult'),
   T('currency', 'Currency', 1, 70, ['bronze'], 'Market'),
@@ -171,9 +182,10 @@ export const TECHS: TechDef[] = [
   T('engineering', 'Engineering', 2, 130, ['mathematics', 'construction'], 'Crossbowman'),
   T('feudalism', 'Feudalism', 2, 130, ['ironworking'], 'Pikeman'),
   T('chivalry', 'Chivalry', 2, 150, ['feudalism', 'husbandry'], 'Knight'),
+  T('navigation', 'Navigation', 2, 140, ['sailing', 'mathematics'], 'Caravel, ocean voyages'),
   T('banking', 'Banking', 2, 150, ['currency', 'education'], 'Bank'),
   T('gunpowder', 'Gunpowder', 3, 230, ['feudalism', 'engineering'], 'Musketman'),
-  T('metallurgy', 'Metallurgy', 3, 260, ['gunpowder', 'mathematics'], 'Cannon'),
+  T('metallurgy', 'Metallurgy', 3, 260, ['gunpowder', 'mathematics'], 'Cannon, Frigate'),
   T('astronomy', 'Astronomy', 3, 230, ['education'], 'Observatory'),
   T('enlightenment', 'Enlightenment', 3, 400, ['astronomy', 'banking', 'gunpowder'], 'Science victory'),
 ];

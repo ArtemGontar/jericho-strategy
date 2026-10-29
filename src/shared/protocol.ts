@@ -24,6 +24,7 @@ export interface RoomSettings {
   seed: number | null;
   startAtWar: boolean;
   scienceVictory: boolean;
+  aggression: 'calm' | 'normal' | 'fierce';
 }
 
 export interface RoomInfo {
@@ -59,4 +60,4 @@ export type ServerMsg =
   | { t: 'error'; message: string }
   | { t: 'pong' };
 
-export const DEFAULT_ROOM_SETTINGS: RoomSettings = { size: 'medium', speed: 'standard', turnLimit: 200, turnTimer: 0, seed: null, startAtWar: false, scienceVictory: true };
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = { size: 'medium', speed: 'standard', turnLimit: 200, turnTimer: 0, seed: null, startAtWar: false, scienceVictory: true, aggression: 'normal' };

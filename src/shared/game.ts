@@ -20,6 +20,7 @@ import type {
 export type Command =
   | { t: 'move'; unit: number; to: Pos }
   | { t: 'attack'; unit: number; to: Pos }
+  | { t: 'board'; unit: number; ship: number }
   | { t: 'found'; unit: number }
   | { t: 'work'; unit: number; what: WorkKind }
   | { t: 'order'; unit: number; order: 'fortify' | 'sleep' | 'explore' | 'auto' | 'cancel' | 'skip' }
@@ -64,6 +65,7 @@ export interface NewGameOptions {
   allowScience?: boolean;
   allowDomination?: boolean;
   startAtWar?: boolean;
+  aggression?: 'calm' | 'normal' | 'fierce';
 }
 
 export const STATE_VERSION = 1;
@@ -104,6 +106,7 @@ export class Game {
       allowScience: opts.allowScience ?? true,
       allowDomination: opts.allowDomination ?? true,
       startAtWar: opts.startAtWar ?? false,
+      aggression: opts.aggression ?? 'normal',
     };
     const map = generateMap(size.width, size.height, n, seed);
     const rng = new Rng(seed ^ 0xa5a5a5a5);
@@ -193,6 +196,7 @@ export class Game {
 
   /** Fill in fields that older saves (or rooms persisted by an older server) do not have. */
   private normalise(): void {
+    if (!this.s.settings.aggression) this.s.settings.aggression = 'normal';
     for (const t of this.s.tiles) if (t.hut === undefined) t.hut = false;
     for (const u of this.s.units) if (u.xp === undefined) u.xp = 0;
     for (const c of this.s.cities) if (!c.locked) c.locked = [];
@@ -300,13 +304,33 @@ export class Game {
   }
 
   placeUnit(u: Unit, x: number, y: number): void {
+    // a ship takes its passengers along
+    const aboard = UNITS[u.type].naval ? this.cargoOf(u) : [];
     this.indexRemove(u);
     u.x = x;
     u.y = y;
     this.indexAdd(u);
+    for (const c of aboard) {
+      this.indexRemove(c);
+      c.x = x;
+      c.y = y;
+      this.indexAdd(c);
+    }
+  }
+
+  /** Units riding on this ship. */
+  cargoOf(ship: Unit): Unit[] {
+    return this.unitsAt(ship.x, ship.y).filter((c) => c.carriedBy === ship.id);
   }
 
   removeUnit(u: Unit): void {
+    // a ship that goes down takes everyone aboard with it
+    if (UNITS[u.type].naval) {
+      for (const c of this.cargoOf(u).slice()) {
+        this.events.push({ kind: 'death', type: c.type, owner: c.owner, at: { x: c.x, y: c.y }, mask: this.tile(c.x, c.y).visible | (1 << c.owner) });
+        this.removeUnit(c);
+      }
+    }
     this.indexRemove(u);
     this.unitById.delete(u.id);
     const i = this.s.units.indexOf(u);
@@ -413,6 +437,7 @@ export class Game {
     switch (cmd.t) {
       case 'move': res = this.cmdMove(p, cmd.unit, cmd.to); break;
       case 'attack': res = this.cmdAttack(p, cmd.unit, cmd.to); break;
+      case 'board': res = this.cmdBoard(p, cmd.unit, cmd.ship); break;
       case 'found': res = this.cmdFound(p, cmd.unit); break;
       case 'work': res = this.cmdWork(p, cmd.unit, cmd.what); break;
       case 'order': res = this.cmdOrder(p, cmd.unit, cmd.order); break;
@@ -469,6 +494,11 @@ export class Game {
     if (typeof u === 'string') return { ok: false, error: u };
     if (!this.inBounds(to.x, to.y)) return { ok: false, error: 'Out of bounds.' };
     if (u.x === to.x && u.y === to.y) return { ok: true };
+    // walking onto a friendly ship next door means climbing aboard
+    if (!UNITS[u.type].naval && u.carriedBy == null && this.dist(u.x, u.y, to.x, to.y) === 1 && !TERRAIN[this.tile(to.x, to.y).terrain].land) {
+      const ship = this.unitsAt(to.x, to.y).find((s) => s.owner === p.id && UNITS[s.type].naval);
+      if (ship) return this.cmdBoard(p, id, ship.id);
+    }
     const tt = this.tile(to.x, to.y);
     if (!(tt.explored & (1 << p.id))) {
       // allow exploring toward unknown tiles only if adjacent
@@ -485,6 +515,31 @@ export class Game {
     u.fortified = false;
     u.skipped = false;
     this.followOrder(u);
+    return { ok: true };
+  }
+
+  private cmdBoard(p: Player, id: number, shipId: number): CmdResult {
+    const u = this.ownUnit(p, id);
+    if (typeof u === 'string') return { ok: false, error: u };
+    const ship = this.unit(shipId);
+    if (!ship || ship.owner !== p.id || !UNITS[ship.type].naval) return { ok: false, error: 'That is not one of your ships.' };
+    const def = UNITS[u.type];
+    if (def.naval) return { ok: false, error: 'Ships cannot board ships.' };
+    if (u.carriedBy != null) return { ok: false, error: 'Already aboard a ship.' };
+    if (this.dist(u.x, u.y, ship.x, ship.y) > 1) return { ok: false, error: 'The ship is too far away.' };
+    if (u.mp <= 0) return { ok: false, error: 'No movement left.' };
+    if ((UNITS[ship.type].capacity ?? 0) <= 0) return { ok: false, error: 'That ship cannot carry units.' };
+    if (this.cargoOf(ship).length >= (UNITS[ship.type].capacity ?? 0)) return { ok: false, error: 'The ship is full.' };
+    const from = { x: u.x, y: u.y };
+    u.carriedBy = ship.id;
+    u.order = null;
+    u.auto = null;
+    u.fortified = false;
+    u.skipped = false;
+    u.mp = 0;
+    u.active = true;
+    this.placeUnit(u, ship.x, ship.y);
+    this.events.push({ kind: 'move', unit: u.id, owner: u.owner, type: u.type, from, path: [{ x: ship.x, y: ship.y }], mask: this.trailMask([from, { x: ship.x, y: ship.y }], u) });
     return { ok: true };
   }
 
@@ -552,8 +607,10 @@ export class Game {
     // passing through a tile held by a friendly unit of the same class is fine as long as we keep moving
     const passThrough = !isDest && u.mp - cost > 0;
     if (tileBlockedFor(this, u, x, y, !passThrough)) return false;
+    const landing = u.carriedBy != null;
     this.placeUnit(u, x, y);
-    u.mp = Math.max(0, u.mp - cost);
+    u.mp = landing ? 0 : Math.max(0, u.mp - cost);
+    if (landing) u.carriedBy = null;
     u.active = true;
     u.fortified = false;
     // capturing lone civilians happens when a military unit walks in (handled by combat), so nothing here
@@ -1072,7 +1129,7 @@ export class Game {
 
   private economyTurn(p: Player): void {
     refreshPlayer(this, p.id);
-    const aiMult = p.ai ? (p.aiLevel === 'easy' ? 0.8 : p.aiLevel === 'hard' ? 1.25 : 1) : 1;
+    const aiMult = p.ai ? (p.aiLevel === 'easy' ? 0.8 : p.aiLevel === 'hard' ? 1.15 : 1) : 1;
     // gold
     p.gold += p.income.gold;
     if (p.gold < 0) {

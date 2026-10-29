@@ -1,13 +1,35 @@
 import { neighborsOf, type Pos } from './hex';
 import { TERRAIN, UNITS } from './data';
+import { canStandOn, navalStepCost } from './naval';
 import type { Unit } from './types';
 import type { Game } from './game';
 
 /** Movement-point cost for `unit` to step onto tile (x,y) from (fx,fy). */
+/** Can this unit stand on tile (x, y), by terrain alone (a ship also needs a friendly coastal city to enter land)? */
+function standable(game: Game, unit: Unit, x: number, y: number): boolean {
+  const t = game.tile(x, y);
+  let port = false;
+  if (t.city >= 0 && UNITS[unit.type].naval) {
+    const c = game.cities.find((cc) => cc.id === t.city);
+    port = !!c && c.owner === unit.owner && game.isCoastal(x, y);
+  }
+  return canStandOn(unit.type, t.terrain, port);
+}
+
+/** Two units compete for the same tile when they are the same kind of piece: two ships, two walkers, two civilians. */
+export function sameStackClass(a: Unit, b: Unit): boolean {
+  const da = UNITS[a.type];
+  const db = UNITS[b.type];
+  if (!!da.naval !== !!db.naval) return false;
+  if (da.naval) return true;
+  return !!da.civilian === !!db.civilian;
+}
+
 export function stepCost(game: Game, unit: Unit, fx: number, fy: number, x: number, y: number): number {
   const t = game.tile(x, y);
   const def = UNITS[unit.type];
-  if (!TERRAIN[t.terrain].passable) return Infinity;
+  if (!standable(game, unit, x, y)) return Infinity;
+  if (def.naval) return navalStepCost();
   if (def.scout) return 2;
   const from = game.tile(fx, fy);
   if (t.road && from.road) return 1;
@@ -16,7 +38,7 @@ export function stepCost(game: Game, unit: Unit, fx: number, fy: number, x: numb
 
 /** Can this unit ever stand on this tile (ignoring who is there)? */
 export function canEnterTerrain(game: Game, unit: Unit, x: number, y: number): boolean {
-  return TERRAIN[game.tile(x, y).terrain].passable;
+  return standable(game, unit, x, y);
 }
 
 /**
@@ -25,22 +47,19 @@ export function canEnterTerrain(game: Game, unit: Unit, x: number, y: number): b
  */
 export function tileBlockedFor(game: Game, unit: Unit, x: number, y: number, finalStep: boolean): boolean {
   const t = game.tile(x, y);
-  if (!TERRAIN[t.terrain].passable) return true;
+  if (!standable(game, unit, x, y)) return true;
   const def0 = UNITS[unit.type];
   if (t.owner >= 0 && t.owner !== unit.owner && game.relation(unit.owner, t.owner) === 'peace' && !def0.civilian && !def0.scout) return true;
   const occupants = game.unitsAt(x, y);
-  const def = UNITS[unit.type];
   const seen = (t.visible & (1 << unit.owner)) !== 0;
   for (const o of occupants) {
+    if (o.carriedBy != null) continue; // passengers do not take up room on the tile
     if (o.owner !== unit.owner) {
       if (!seen) continue; // hidden units do not influence planning
       return true;
     }
     // same-owner stacking rules (outside cities)
-    if (finalStep && t.city < 0) {
-      const odef = UNITS[o.type];
-      if (!!odef.civilian === !!def.civilian) return true;
-    }
+    if (finalStep && t.city < 0 && sameStackClass(o, unit)) return true;
   }
   if (t.city >= 0) {
     const c = game.cities.find((cc) => cc.id === t.city)!;
@@ -67,7 +86,7 @@ export function findPath(game: Game, unit: Unit, to: Pos, opts: { maxCost?: numb
   const h = game.height;
   if (unit.x === to.x && unit.y === to.y) return [];
   const goalTile = game.tile(to.x, to.y);
-  if (!TERRAIN[goalTile.terrain].passable) return null;
+  if (!standable(game, unit, to.x, to.y)) return null;
   const bit = 1 << unit.owner;
   const open: Node[] = [{ x: unit.x, y: unit.y, g: 0, f: 0, parent: null }];
   const best = new Map<number, number>();

@@ -6,10 +6,11 @@ export type ImprovementId = 'farm' | 'mine';
 export type WorkKind = 'farm' | 'mine' | 'road';
 export type UnitTypeId =
   | 'settler' | 'worker' | 'scout' | 'warrior' | 'archer' | 'spearman' | 'horseman' | 'swordsman'
-  | 'catapult' | 'crossbowman' | 'pikeman' | 'knight' | 'musketman' | 'cannon';
+  | 'catapult' | 'crossbowman' | 'pikeman' | 'knight' | 'musketman' | 'cannon'
+  | 'trireme' | 'caravel' | 'frigate';
 export type BuildingId =
   | 'granary' | 'walls' | 'barracks' | 'library' | 'workshop' | 'market' | 'temple' | 'aqueduct'
-  | 'university' | 'bank' | 'observatory'
+  | 'university' | 'bank' | 'observatory' | 'harbor'
   | 'pyramids' | 'great_library' | 'hanging_gardens' | 'oracle' | 'colossus';
 export type TechId = string;
 export type Focus = 'balanced' | 'food' | 'production' | 'gold';
@@ -63,6 +64,8 @@ export interface Unit {
   fortified: boolean;
   /** player pressed "skip" for this turn */
   skipped: boolean;
+  /** id of the ship carrying this unit, if it is aboard one */
+  carriedBy?: number | null;
 }
 
 export interface QueueItem {
@@ -158,7 +161,11 @@ export interface GameSettings {
   allowDomination: boolean;
   /** civilisations are at war when they first meet (otherwise at peace) */
   startAtWar: boolean;
+  /** how readily the computers start wars: calm, normal or fierce */
+  aggression: Aggression;
 }
+
+export type Aggression = 'calm' | 'normal' | 'fierce';
 
 export interface GameState {
   version: number;

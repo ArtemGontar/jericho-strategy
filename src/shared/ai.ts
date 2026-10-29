@@ -386,7 +386,10 @@ function tryAttack(game: Game, u: Unit): boolean {
     else if (pv.city) {
       const city = game.cityAt(q.x, q.y)!;
       score = 3 + (1 - city.hp / 300) * 4 + (pv.dmgDef - pv.dmgAtt) / 20;
-      if (d.ranged === 0 && pv.dmgAtt > u.hp * 0.7) score = -1;
+      // a melee blow that finishes the city takes it, however hard the garrison would hit back
+      const finishes = d.ranged === 0 && pv.dmgDef * 0.9 >= city.hp && pv.dmgAtt < u.hp;
+      if (finishes) score = 90;
+      else if (d.ranged === 0 && pv.dmgAtt > u.hp * 0.7) score = -1;
     } else {
       const killsIt = pv.dmgDef >= pv.defHp;
       score = (pv.dmgDef - pv.dmgAtt * 1.2) / 15 + (killsIt ? 4 : 0);
@@ -512,7 +515,9 @@ function runMilitary(game: Game, p: Player, units: Unit[]): void {
   if (wantsAttack && target) {
     // gather within 4 tiles of the target, then go in together
     const near = army.filter((u) => game.dist(u.x, u.y, target.x, target.y) <= 4).length;
-    const ready = near >= Math.max(3, Math.ceil(army.length * 0.6)) || game.turn - p.lastDefeat < 0;
+    // a city that is already battered is worth rushing before it heals, whatever the rest of the army is doing
+    const battered = target.hp <= game.cityMaxHp(target) * 0.45;
+    const ready = battered || near >= Math.max(3, Math.ceil(army.length * 0.6)) || game.turn - p.lastDefeat < 0;
     for (const u of army) {
       if (!game.unit(u.id)) continue;
       if (tryAttack(game, u)) continue;
@@ -669,35 +674,76 @@ function maybeBuy(game: Game, p: Player, city: City): void {
 // ---------------------------------------------------------------------------------------------
 // Diplomacy
 
+const AGGRESSION = { calm: 0.4, normal: 1, fierce: 2.6 } as const;
+const LEVEL_WARLIKE = { easy: 0.6, normal: 1, hard: 1.5 } as const;
+
 /** Beginner protection: computers hold back from attacking humans early, more so on easier settings. */
 function graceTurns(p: Player, target: Player, game: Game): number {
-  void game;
   const base = p.aiLevel === 'easy' ? 80 : p.aiLevel === 'hard' ? 35 : 55;
-  return target.ai ? 25 : base;
+  const a = game.s.settings.aggression;
+  const scale = a === 'calm' ? 1.5 : a === 'fierce' ? 0.55 : 1;
+  return target.ai ? 25 : Math.round(base * scale);
+}
+
+function minCityDistance(game: Game, a: number, b: number): number {
+  let d = 99;
+  for (const c of game.cities) {
+    if (c.owner !== a) continue;
+    for (const e of game.cities) if (e.owner === b) d = Math.min(d, game.dist(c.x, c.y, e.x, e.y));
+  }
+  return d;
+}
+
+/** Is `o` about to win by research? Everyone else has a reason to stop them. */
+function runawayLeader(game: Game, o: Player): boolean {
+  if (!game.s.settings.allowScience) return false;
+  const others = game.players.filter((x) => x.alive && x.id !== o.id);
+  if (!others.length) return false;
+  const best = Math.max(...others.map((x) => x.techs.length));
+  return o.techs.length >= 15 && o.techs.length >= best + 2;
+}
+
+/**
+ * Chance per turn that `p` declares war on `o`: low unless the neighbour is close, weaker, and our army is ready.
+ * Warlords and hard computers look for fights, builders only strike clear underdogs, and a civilisation sprinting
+ * toward the final technology draws everyone's attention.
+ */
+function warDesire(game: Game, p: Player, o: Player): number {
+  const leader = runawayLeader(game, o);
+  const d = minCityDistance(game, p.id, o.id);
+  if (d > (leader ? 24 : 14)) return 0;
+  const army = military(game, p.id).filter((u) => !UNITS[u.type].scout).length;
+  const need = p.personality === 'warlord' ? 4 : p.personality === 'balanced' ? 6 : 8;
+  if (army < need && !(leader && army >= 3)) return 0;
+  const ratio = game.militaryPower(p.id) / Math.max(1, game.militaryPower(o.id));
+  const base = p.personality === 'warlord' ? 0.12 : p.personality === 'balanced' ? 0.07 : 0.03;
+  const edge = Math.max(0, Math.min(2.5, (ratio - 0.8) / 0.8));
+  let prob = base * edge * LEVEL_WARLIKE[p.aiLevel ?? 'normal'] * AGGRESSION[game.s.settings.aggression];
+  if (leader) prob = Math.max(prob * 3, 0.05 * AGGRESSION[game.s.settings.aggression]);
+  return Math.min(0.5, prob);
 }
 
 function runDiplomacy(game: Game, p: Player): void {
   const others = game.players.filter((o) => o.alive && o.id !== p.id && game.relation(p.id, o.id) !== 'unmet');
   const myPower = game.militaryPower(p.id);
   const wars = others.filter((o) => game.atWar(p.id, o.id));
+  const a = game.s.settings.aggression;
+  // a war should last long enough to be fought: longer on fiercer settings
+  const minWar = a === 'calm' ? 3 : a === 'fierce' ? 16 : 8;
   for (const o of others) {
     const rel = game.relation(p.id, o.id);
     const since = game.turn - game.s.relationSince[p.id][o.id];
     if (rel === 'war') {
       const theirPower = game.militaryPower(o.id);
+      const losing = theirPower > myPower * 1.25;
       const wantsPeace =
-        p.personality === 'builder' ? since >= 3 && game.rng.chance(0.35)
-        : p.personality === 'balanced' ? since >= 6 && (theirPower > myPower * 0.9 || game.rng.chance(0.08))
-        : theirPower > myPower * 1.25 && since >= 6 && game.rng.chance(0.3);
+        p.personality === 'builder' ? since >= Math.min(minWar, 8) && game.rng.chance(losing ? 0.5 : 0.2)
+        : p.personality === 'balanced' ? since >= minWar && (losing || game.rng.chance(0.05))
+        : losing && since >= minWar && game.rng.chance(0.3);
       const alreadyAsked = game.s.proposals.some((x) => x.from === p.id && x.to === o.id);
       if (wantsPeace && !alreadyAsked) exec(game, p.id, { t: 'peace', to: o.id });
     } else if (rel === 'peace' && since >= PEACE_MIN_TURNS && wars.length === 0 && game.turn > graceTurns(p, o, game)) {
-      const theirPower = game.militaryPower(o.id);
-      const ratio = myPower / Math.max(1, theirPower);
-      const neighbours = game.cities.some((c) => c.owner === p.id && game.cities.some((e) => e.owner === o.id && game.dist(c.x, c.y, e.x, e.y) < 14));
-      if (!neighbours) continue;
-      const prob = p.personality === 'warlord' ? (ratio > 1.15 ? 0.06 : 0.01) : p.personality === 'balanced' ? (ratio > 1.5 ? 0.025 : 0) : ratio > 2.2 ? 0.01 : 0;
-      if (game.rng.chance(prob)) exec(game, p.id, { t: 'war', to: o.id });
+      if (game.rng.chance(warDesire(game, p, o))) exec(game, p.id, { t: 'war', to: o.id });
     }
   }
 }

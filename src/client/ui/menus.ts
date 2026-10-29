@@ -22,6 +22,7 @@ export interface SoloConfig {
   turnLimit: number;
   startAtWar: boolean;
   scienceVictory: boolean;
+  aggression: 'calm' | 'normal' | 'fierce';
   /** extra local humans (hot-seat), names */
   friends: string[];
 }
@@ -194,6 +195,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
   const level = segmented<AiLevel>([['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']], 'normal');
   const speed = segmented<'standard' | 'quick'>([['standard', 'Standard · 200'], ['quick', 'Quick · 120']], 'standard');
   const stance = segmented<'peace' | 'war'>([['peace', 'Peace'], ['war', 'War']], 'peace');
+  const aggr = segmented<'calm' | 'normal' | 'fierce'>([['calm', 'Calm'], ['normal', 'Normal'], ['fierce', 'Fierce']], 'normal');
   const victories = segmented<'all' | 'noscience'>([['all', 'All'], ['noscience', 'No science']], 'all');
   const size = h('select', null, h('option', { value: 'auto' }, 'Automatic'), ...Object.entries(MAP_SIZES).map(([k, v]) => h('option', { value: k }, v.label)));
   const seed = h('input', { placeholder: 'Random', inputMode: 'numeric' });
@@ -226,7 +228,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
     onStart({
       name, civ, opponents: Number(opp.value), aiLevel: level.get(), size: size.value as SoloConfig['size'], speed: speed.get(),
       seed: seed.value.trim() ? Number(seed.value) || null : null, turnLimit: speed.get() === 'quick' ? 120 : 200,
-      startAtWar: stance.get() === 'war', scienceVictory: victories.get() === 'all', friends,
+      startAtWar: stance.get() === 'war', scienceVictory: victories.get() === 'all', aggression: aggr.get(), friends,
     });
   };
 
@@ -247,6 +249,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
           field('Map', size),
           field('Speed', speed.el),
           field('Diplomacy', stance.el),
+          field('Computers', aggr.el),
           field('Victory', victories.el),
           field('Seed', seed)))),
     h('footer', null, btn('Back', onBack), h('span', { style: { flex: '1' } }), btn('Begin', start, 'primary big')));
@@ -331,6 +334,7 @@ export function lobbyScreen(rt: RemoteTransport, onLeave: () => void): { el: HTM
             sel('Speed', 'speed', [['standard', 'Standard'], ['quick', 'Quick']]),
             sel('Turn limit', 'turnLimit', [['100', '100'], ['120', '120'], ['150', '150'], ['200', '200'], ['300', '300']]),
             sel('Diplomacy', 'startAtWar', [['false', 'Start at peace'], ['true', 'Start at war']]),
+            sel('Computers', 'aggression', [['calm', 'Calm'], ['normal', 'Normal'], ['fierce', 'Fierce']]),
             sel('Science win', 'scienceVictory', [['true', 'Enabled'], ['false', 'Disabled']]),
             sel('Turn timer', 'turnTimer', [['0', 'Off'], ['60', '1 minute'], ['120', '2 minutes'], ['180', '3 minutes'], ['300', '5 minutes']]),
             h('div', { class: 'eyebrow', style: { padding: '18px 0 6px' } }, 'Chat'), chatLog, h('div', { style: { height: '6px' } }), chatIn))),

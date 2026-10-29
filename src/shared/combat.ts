@@ -83,7 +83,7 @@ function bestDefender(game: Game, att: Unit, x: number, y: number): Unit | null 
   const mounted = !!UNITS[att.type].mounted;
   for (const o of game.unitsAt(x, y)) {
     if (o.owner === att.owner || !game.atWar(att.owner, o.owner)) continue;
-    if (UNITS[o.type].civilian) continue;
+    if (UNITS[o.type].civilian || o.carriedBy != null) continue;
     const s = defenceStrength(game, o, mounted);
     if (s > bestS) {
       bestS = s;
@@ -97,12 +97,15 @@ export function previewAttack(game: Game, att: Unit, x: number, y: number): Atta
   const fail = (error: string): AttackPreview => ({ ok: false, error, dmgDef: 0, dmgAtt: 0, defHp: 0, attHp: att.hp, target: '', city: false });
   const d = UNITS[att.type];
   if (d.civilian) return fail('Civilians cannot attack.');
+  if (att.carriedBy != null) return fail('Units cannot attack from aboard a ship.');
   if (att.attacked) return fail('Already attacked this turn.');
   if (att.mp <= 0) return fail('No movement left.');
   const ranged = d.ranged > 0;
   const dist = game.dist(att.x, att.y, x, y);
   if (ranged ? dist < 1 || dist > d.range : dist !== 1) return fail('Out of range.');
   const city = game.cityAt(x, y);
+  // a ship without guns can only fight other ships
+  if (d.naval && !ranged && (TERRAIN[game.tile(x, y).terrain].land || city)) return fail('Ships without guns can only attack other ships.');
   const units = game.unitsAt(x, y).filter((o) => o.owner !== att.owner);
   const foeOwner = city && city.owner !== att.owner ? city.owner : units[0]?.owner;
   if (foeOwner === undefined || foeOwner === att.owner) return fail('Nothing to attack.');
