@@ -169,7 +169,11 @@ export function techCost(game: Game, player: Player, techId: string): number {
   const def = TECH_BY_ID[techId];
   const cities = game.cities.filter((c) => c.owner === player.id).length;
   const scale = 1 + 0.07 * Math.max(0, cities - 1);
-  return Math.max(5, Math.round(def.cost * TECH_ERA_FACTOR[def.era] * game.speedMult * scale));
+  // catch-up: every civilisation we have met that already knows the technology makes it cheaper to learn (up to -24%)
+  let known = 0;
+  for (const o of game.players) if (o.id !== player.id && o.alive && o.techs.includes(techId as never) && game.relation(player.id, o.id) !== 'unmet') known++;
+  const leak = 1 - 0.08 * Math.min(3, known);
+  return Math.max(5, Math.round(def.cost * TECH_ERA_FACTOR[def.era] * game.speedMult * scale * leak));
 }
 
 export function itemCost(game: Game, playerId: number, kind: 'unit' | 'building', id: string): number {

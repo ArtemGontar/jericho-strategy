@@ -173,6 +173,51 @@ describe('victory & elimination', () => {
     expect(g.s.victory).not.toBe('science');
   });
 
+  it('a towering culture starts a hegemony countdown that wins unless a rival catches up', () => {
+    const g = twoHumans();
+    g.players[0].culture = g.cultureGoal * 1.3;
+    g.players[1].culture = g.cultureGoal * 0.5;
+    g.exec(0, { t: 'end' });
+    g.exec(1, { t: 'end' });
+    expect(g.s.over).toBe(false);
+    expect(g.s.hegemony?.owner).toBe(0);
+    expect(buildView(g, 1).hegemony?.turnsLeft).toBeGreaterThan(0);
+    const left = g.s.hegemony!.duration;
+    for (let i = 0; i < left + 1 && !g.s.over; i++) {
+      g.exec(0, { t: 'end' });
+      g.exec(1, { t: 'end' });
+    }
+    expect(g.s.over).toBe(true);
+    expect(g.s.victory).toBe('culture');
+    expect(g.s.winner).toBe(0);
+  });
+
+  it('a rival whose culture catches up breaks the hegemony', () => {
+    const g = twoHumans();
+    g.players[0].culture = g.cultureGoal * 1.3;
+    g.players[1].culture = g.cultureGoal * 0.5;
+    g.exec(0, { t: 'end' });
+    g.exec(1, { t: 'end' });
+    expect(g.s.hegemony?.owner).toBe(0);
+    g.players[1].culture = g.cultureGoal * 1.25;
+    g.exec(0, { t: 'end' });
+    g.exec(1, { t: 'end' });
+    expect(g.s.hegemony ?? null).toBe(null);
+    expect(g.s.over).toBe(false);
+  });
+
+  it('technologies known by civilisations we have met get cheaper', () => {
+    const g = twoHumans();
+    g.s.relations[0][1] = 'peace';
+    g.s.relations[1][0] = 'peace';
+    const base = techCost(g, g.players[0], 'writing');
+    g.players[1].techs.push('pottery', 'writing');
+    expect(techCost(g, g.players[0], 'writing')).toBeLessThan(base);
+    g.s.relations[0][1] = 'unmet';
+    g.s.relations[1][0] = 'unmet';
+    expect(techCost(g, g.players[0], 'writing')).toBe(base);
+  });
+
   it('turn limit awards the highest score', () => {
     const g = twoHumans(7, { turnLimit: 3 } as never);
     g.s.settings.turnLimit = 3;

@@ -188,10 +188,12 @@ export interface GameState {
   notes: Note[];
   /** the Enlightenment countdown: set when a civilisation learns the final technology */
   enlightenment?: { owner: number; since: number; capital: number; duration: number } | null;
+  /** the cultural hegemony countdown: set when one civilisation's culture towers over everyone else's */
+  hegemony?: { owner: number; since: number; duration: number } | null;
   /** civilisations whose academy fell during a countdown and can no longer win by science */
   barred?: number[];
   winner: number | null;
-  victory: 'domination' | 'science' | 'score' | 'last-standing' | null;
+  victory: 'domination' | 'science' | 'culture' | 'score' | 'last-standing' | null;
   over: boolean;
   /** Turn counter of last processTurn (used for UI) */
   startPositions: Pos[];

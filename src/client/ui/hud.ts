@@ -71,12 +71,14 @@ export function renderTopbar(gs: GameScreen, el: HTMLElement): void {
     h('span', { class: 'sep' }),
     h('div', { class: 'stat', title: 'Science per turn' }, icon('science', 20, 'sci'), h('span', { class: 'num' }, `+${v.income.science}`)),
     h('span', { class: 'sep' }),
-    h('div', { class: 'stat', title: 'Culture per turn' }, icon('culture', 20, 'cult'), h('span', { class: 'num' }, `+${v.income.culture}`)),
+    h('div', { class: 'stat', title: v.cultureGoal ? `Culture per turn. Total ${v.culture} of ${v.cultureGoal} needed for cultural hegemony (and a 20% lead over every rival).` : 'Culture per turn' }, icon('culture', 20, 'cult'), h('span', { class: 'num' }, `+${v.income.culture}`)),
     idleUnits(gs),
     v.settings.turnTimer > 0 ? h('span', { class: 'sep' }) : null,
     v.settings.turnTimer > 0 ? h('div', { class: 'stat', title: 'Time left in this turn' }, icon('turn', 20), h('span', { class: 'num', id: 'timerlabel' }, '--')) : null,
     v.enlightenment ? h('span', { class: 'sep' }) : null,
     v.enlightenment ? countdown(gs) : null,
+    v.hegemony ? h('span', { class: 'sep' }) : null,
+    v.hegemony ? hegemonyChip(gs) : null,
     h('div', { class: 'grow' }),
     rankings,
     h('div', { class: 'era', 'data-era': String(era), title: civ.bonus }, `Turn ${v.turn} / ${v.settings.turnLimit}`, h('b', null, `${ERA_NAMES[era]} Era`)),
@@ -120,6 +122,18 @@ function countdown(gs: GameScreen): HTMLElement {
     if (cap) gs.focus(cap.x, cap.y);
   });
   return b;
+}
+
+/** The culture race: a civilisation's culture towers over everyone's, and rivals have a few turns to catch up. */
+function hegemonyChip(gs: GameScreen): HTMLElement {
+  const v = gs.view;
+  const e = v.hegemony!;
+  const who = v.players[e.owner];
+  const mine = e.owner === v.me;
+  return h('div', {
+    class: `countdown ${mine ? 'mine' : 'foe'}`,
+    title: mine ? `Your culture dominates. You win in ${e.turnsLeft} turns if the lead holds.` : `${who.name}'s culture dominates: they win in ${e.turnsLeft} turns unless a rival's culture catches up to within 10%, or their cities fall.`,
+  }, icon('culture', 16), h('span', null, mine ? 'Culture lead' : `${CIV_BY_ID[who.civ].name} culture`), h('b', { class: 'num' }, String(e.turnsLeft)));
 }
 
 function roundFlat(name: string, title: string, fn: () => void, extra = ''): HTMLButtonElement {
