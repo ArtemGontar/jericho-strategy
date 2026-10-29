@@ -4,6 +4,7 @@ import type { BuildOption, ViewCity } from '../../shared/view';
 import type { GameScreen } from '../gamescreen';
 import { sfx } from '../audio';
 import { icon } from '../icons';
+import { civColor } from '../render';
 import { clear, fmtSigned, h, put, turnsLeft } from './dom';
 
 let tab: 'buildings' | 'units' | 'wonders' = 'buildings';
@@ -16,6 +17,23 @@ function itemInfo(kind: 'unit' | 'building', id: string): { name: string; icon: 
   }
   const b = BUILDINGS[id as BuildingId];
   return { name: b.name, icon: b.id, desc: b.desc };
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** An item icon inside a progress ring, used for what the city is building right now. */
+function ringIcon(pct: number, name: string): HTMLElement {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 52 52');
+  svg.setAttribute('class', 'pring');
+  const circ = 2 * Math.PI * 22;
+  const mk = (stroke: string, w: number, extra: Record<string, string> = {}) => {
+    const c = document.createElementNS(SVG_NS, 'circle');
+    for (const [k, v] of Object.entries({ cx: '26', cy: '26', r: '22', fill: 'none', stroke, 'stroke-width': String(w), ...extra })) c.setAttribute(k, v);
+    return c;
+  };
+  svg.append(mk('rgba(255,255,255,0.1)', 4), mk('var(--prod)', 4, { 'stroke-dasharray': `${Math.max(0.001, Math.min(100, pct) / 100) * circ} ${circ}`, transform: 'rotate(-90 26 26)', 'stroke-linecap': 'round' }));
+  return h('div', { class: 'pdisc' }, svg, h('span', { class: 'pface' }, icon(name, 24, 'big')));
 }
 
 const FOCUS: Array<[Focus, string]> = [['balanced', 'Balanced'], ['food', 'Food'], ['production', 'Prod'], ['gold', 'Gold']];
@@ -32,7 +50,8 @@ export function renderCityPanel(gs: GameScreen, panel: HTMLElement, c: ViewCity)
     b.addEventListener('click', fn);
     return b;
   };
-  const header = h('header', null,
+  const header = h('header', { style: `--civ: ${civColor(gs.view, gs.view.me)}` },
+    h('span', { class: 'watermark', 'aria-hidden': 'true' }, icon('city', 168)),
     h('div', { class: 'titlerow' },
       nav('chevron', 'Previous city', () => gs.cycleCity(-1)),
       h('h2', null, (c.capital ? '★ ' : '') + c.name),
@@ -78,8 +97,8 @@ export function renderCityPanel(gs: GameScreen, panel: HTMLElement, c: ViewCity)
     remove.addEventListener('click', () => void gs.cmd({ t: 'queue', city: c.id, op: 'remove', index: 0 }));
     prod.append(
       h('div', { class: 'item current' },
-        icon(info.icon, 26, 'big'),
-        h('div', null, h('div', { class: 'nm' }, info.name), h('div', { class: 'bar', style: { marginTop: '6px' } }, h('i', { style: { width: `${pct}%`, background: 'var(--prod)' } }))),
+        ringIcon(pct, info.icon),
+        h('div', null, h('div', { class: 'nm' }, info.name), h('div', { class: 'ds' }, info.desc)),
         h('div', { class: 'cost num' }, `${Math.floor(c.prod ?? 0)}/${headCost}`, h('br'), `${turnsLeft(headCost - (c.prod ?? 0), y.prod)} turns`),
         remove));
     if (c.buyPrice != null) {

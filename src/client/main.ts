@@ -4,7 +4,7 @@ import { Game, type PlayerSlot } from '../shared/game';
 import type { ClientMsg, RoomInfo } from '../shared/protocol';
 import { GameScreen } from './gamescreen';
 import { LocalTransport, RemoteTransport, hasSavedGame, loadSavedGame } from './transport';
-import { clear, h } from './ui/dom';
+import { clear, h, installMotion } from './ui/dom';
 import { showHelp } from './ui/screens';
 import { lobbyScreen, onlineEntryScreen, savedName, setupScreen, titleScreen, type SoloConfig } from './ui/menus';
 
@@ -198,6 +198,7 @@ async function connectOnline(initial: () => ClientMsg, name: string): Promise<vo
 }
 
 // ----------------------------------------------------------------------------- boot
+installMotion();
 const roomParam = new URLSearchParams(location.search).get('room');
 const previous = savedOnline();
 if (roomParam && previous && previous.code === roomParam.toUpperCase().slice(0, 6)) {
