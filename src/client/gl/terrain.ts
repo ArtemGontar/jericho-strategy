@@ -1,5 +1,5 @@
 import {
-  BufferAttribute, BufferGeometry, CanvasTexture, Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, Mesh, MeshStandardMaterial,
+  Vector3, BufferAttribute, BufferGeometry, CanvasTexture, Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, Mesh, MeshStandardMaterial,
   PlaneGeometry, RedFormat, SRGBColorSpace, ShaderMaterial, UnsignedByteType, Vector2, type Scene, type WebGLProgramParametersWithUniforms,
 } from 'three';
 import { TERRAIN_LIST, RESOURCE_LIST, type GameView } from '../../shared/view';
@@ -210,6 +210,8 @@ export class Terrain {
         uDepth: { value: this.depthTex },
         uDepthOrg: { value: this.depthOrg },
         uDepthExt: { value: this.depthExt },
+        uSunDir: { value: new Vector3(-0.45, 0.8, 0.5) },
+        uSunTint: { value: new Vector3(1, 0.94, 0.82) },
       },
       vertexShader: /* glsl */ `
         varying vec3 vWorldF;
@@ -221,7 +223,7 @@ export class Terrain {
       fragmentShader: /* glsl */ `
         varying vec3 vWorldF;
         uniform sampler2D uFog; uniform vec2 uFogOrg; uniform vec2 uFogExt; uniform vec3 uVoid; uniform float uTime;
-        uniform sampler2D uDepth; uniform vec2 uDepthOrg; uniform vec2 uDepthExt;
+        uniform sampler2D uDepth; uniform vec2 uDepthOrg; uniform vec2 uDepthExt; uniform vec3 uSunDir; uniform vec3 uSunTint;
         ${GLSL_NOISE}
         void main(){
           vec2 p = vWorldF.xz;
@@ -232,7 +234,7 @@ export class Terrain {
           float w3 = fbm3(p * 9.0 + vec2(t * 0.12, -t * 0.09) + 5.0);
           vec3 n = normalize(vec3((w1 - 0.5) * 0.55 + (w3 - 0.5) * 0.35, 1.0, (w2 - 0.5) * 0.55 + (w3 - 0.5) * 0.3));
           vec3 V = normalize(cameraPosition - vWorldF);
-          vec3 L = normalize(vec3(-0.45, 0.8, 0.5));
+          vec3 L = normalize(uSunDir);
           vec3 H = normalize(L + V);
           float spec = pow(max(dot(n, H), 0.0), 120.0);
           float spec2 = pow(max(dot(n, H), 0.0), 18.0) * 0.12;
@@ -248,7 +250,7 @@ export class Terrain {
           float caus = pow(1.0 - abs(fbm3(p * 14.0 + t * 0.25) * 2.0 - 1.0), 6.0);
           col += vec3(0.5, 0.9, 0.8) * caus * 0.07 * (1.0 - dd);
           col = mix(col, vec3(0.2, 0.42, 0.62), fres * 0.45);
-          col += vec3(1.0, 0.94, 0.82) * (spec * 0.9 + spec2);
+          col += uSunTint * (spec * 0.9 + spec2);
           // surf where the water meets land
           float edge = depth + (vnoise(p * 15.0 + t * 0.35) - 0.5) * 0.04;
           float foam = 1.0 - smoothstep(0.004, 0.05, edge);
@@ -825,6 +827,11 @@ export class Terrain {
 
   setTime(t: number): void {
     this.uniforms.uTime.value = t;
+  }
+
+  setSun(dir: Vector3, tint: [number, number, number]): void {
+    (this.waterMat.uniforms.uSunDir.value as Vector3).copy(dir);
+    (this.waterMat.uniforms.uSunTint.value as Vector3).set(tint[0], tint[1], tint[2]);
   }
 
   /** known-resource helper so callers need not import the list */

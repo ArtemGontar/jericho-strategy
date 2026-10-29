@@ -1,3 +1,4 @@
+import { startAmbience } from './audio';
 import './style.css';
 import { Game, type PlayerSlot } from '../shared/game';
 import type { ClientMsg, RoomInfo } from '../shared/protocol';
@@ -8,6 +9,14 @@ import { showHelp } from './ui/screens';
 import { lobbyScreen, onlineEntryScreen, savedName, setupScreen, titleScreen, type SoloConfig } from './ui/menus';
 
 const app = document.getElementById('app')!;
+// browsers only allow sound after a gesture: start the ambience on the first click or key press
+const wake = () => {
+  startAmbience();
+  window.removeEventListener('pointerdown', wake);
+  window.removeEventListener('keydown', wake);
+};
+window.addEventListener('pointerdown', wake);
+window.addEventListener('keydown', wake);
 const ONLINE_KEY = 'jericho.online';
 
 let current: GameScreen | null = null;

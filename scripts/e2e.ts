@@ -21,6 +21,8 @@ function loadPlaywright(): typeof import('playwright') {
 
 const { chromium } = loadPlaywright();
 let failures = 0;
+/** E2E_ONLY=solo|hotseat|online|phone runs a single section */
+const only = process.env.E2E_ONLY;
 function check(name: string, ok: boolean, detail = ''): void {
   console.log(`${ok ? '  ✓' : '  ✗'} ${name}${detail ? ` — ${detail}` : ''}`);
   if (!ok) failures++;
@@ -52,7 +54,7 @@ const screenState = (page: import('playwright').Page) =>
 try {
   // ------------------------------------------------------------------ solo
   console.log('Solo game');
-  {
+  if (!only || only === 'solo') {
     const { page, errors } = await newPage('solo');
     await page.goto(base);
     await page.click('button:has-text("New game")');
@@ -120,7 +122,7 @@ try {
 
   // ------------------------------------------------------------------ hot-seat
   console.log('Hot-seat');
-  {
+  if (!only || only === 'hotseat') {
     const { page, errors } = await newPage('hotseat');
     await page.goto(base);
     await page.click('button:has-text("Hot-seat")');
@@ -149,7 +151,7 @@ try {
 
   // ------------------------------------------------------------------ online
   console.log('Online (2 players)');
-  {
+  if (!only || only === 'online') {
     const A = await newPage('A');
     const B = await newPage('B');
     await A.page.goto(base);
@@ -193,7 +195,7 @@ try {
 
   // ------------------------------------------------------------------ phone layout
   console.log('Phone layout');
-  {
+  if (!only || only === 'phone') {
     const { page, errors } = await newPage('phone', { viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
     await page.goto(base);
     await page.tap('button:has-text("New game")');

@@ -83,10 +83,6 @@ export class UnitLayer {
 
   private dispose(s: Slot): void {
     this.scene.remove(s.holder);
-    s.holder.traverse((o) => {
-      const m = o as Mesh;
-      if (m.isMesh && m.geometry !== this.ringGeo && m.geometry !== this.discGeo && m.geometry !== this.selGeo) m.geometry.dispose();
-    });
     for (const m of s.rig.mats) m.dispose();
     (s.ring.material as MeshBasicMaterial).dispose();
     (s.base.material as MeshBasicMaterial).dispose();

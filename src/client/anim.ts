@@ -104,11 +104,12 @@ export class Animator {
         this.floaters.push({ x: e.to.x, y: e.to.y, text: `-${e.dmgDef}`, color: '#ff6b5e', t0: hitAt, dur: 1100 });
         if (e.dmgAtt > 0) this.floaters.push({ x: e.from.x, y: e.from.y, text: `-${e.dmgAtt}`, color: '#ffb067', t0: hitAt + 60, dur: 1100 });
         this.flashes.set(e.to.y * 1000 + e.to.x, hitAt + 260);
-        this.sounds.push({ at: hitAt, name: e.ranged ? 'shoot' : 'hit', done: false });
+        this.sounds.push({ at: hitAt, name: e.ranged ? (e.type === 'cannon' ? 'cannon' : e.type === 'catapult' ? 'catapult' : 'shoot') : e.type === 'swordsman' || e.type === 'knight' ? 'clash' : 'hit', done: false });
         this.cursor = t0 + dur + 120;
       } else if (e.kind === 'death') {
         const at = this.cursor;
         this.ghosts.push({ type: e.type, owner: e.owner, x: e.at.x, y: e.at.y, fadeStart: at, until: at + 500 });
+        this.sounds.push({ at, name: 'death', done: false });
       } else if (e.kind === 'found') {
         this.rings.push({ x: e.at.x, y: e.at.y, t0: this.cursor, dur: 900, color: '#ffd24a', max: 1.6 });
         this.sounds.push({ at: this.cursor, name: 'found', done: false });

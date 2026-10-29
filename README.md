@@ -4,6 +4,8 @@ A Civilization-style turn-based strategy game that runs in your browser — play
 
 Found cities, work the land, research 22 technologies across four eras, adopt policies, race for wonders, explore tribal villages, make and break treaties, and conquer your neighbours — or out-research them to win by Enlightenment.
 
+The map is a real 3D scene drawn with WebGL (three.js) from a tilted camera: terrain with relief, rock and snow, a water shader with surf, shadows, wind in the trees, clouds and birds, towns that grow house by house, and articulated figures for every unit that walk, aim, strike, fortify and fall. The sun moves across the sky as turns pass. Menus sit on a 3D render of a finished world, and the game has a quiet generative soundtrack with wind, surf and birdsong.
+
 The interface follows the classic strategy-table look: a hanging research and culture medallion pair, a round *Next Turn* button that always shows what needs you next, unit flags on the map, a city drawer with pinnable tiles, a full tech tree with prerequisite lines, and a master/detail diplomacy screen. It is drawn with one small hand-made icon set (`src/client/icons.ts`) and a flat, hairline-separated visual language — no emoji, no nested cards.
 
 > The original Unity prototype is archived in [`legacy/`](legacy/README_unity_ru.md). This web version is a ground-up rewrite built around a small, deterministic, fully tested game engine.
@@ -44,6 +46,10 @@ Room state (the whole game) is saved on the server after every turn, so a restar
 7. **Fight.** Click an enemy to attack — hover first to preview the damage. Ranged units (archers, catapults, crossbowmen, cannons) shoot two tiles away without retaliation. Fighting earns experience and promotions; outdated units can be **upgraded** for gold inside your borders. Reduce a city to 0 HP and walk a melee unit in to capture it; capturing a lone worker or settler takes it prisoner.
 8. **Win** by being the last civilisation standing, by discovering **Enlightenment** first (science), or by holding the highest score when the turn limit ends.
 
+### Graphics
+
+The 3D renderer needs WebGL 2. On a software renderer (no GPU) the game falls back to a flat 2D map by itself, and when frames run slow it lowers shadows and resolution on its own. **Menu → Graphics** forces *High / Medium / Low / Flat 2D*. For testing, add `?flat` to the address for the 2D map or `?gl` to force 3D.
+
 ### Controls
 
 | Input | Action |
@@ -70,7 +76,9 @@ src/shared/   Pure TypeScript game engine – no DOM, no Node APIs, deterministi
   view.ts       per-player fog-of-war snapshot sent to clients
   data.ts       every rule number: terrain, units, buildings, wonders, techs, civilisations
 src/server/   Node + ws: static files, rooms, lobby, authoritative game, per-player views, turn timer, persistence
-src/client/   Canvas hex renderer, animations, icon set, HUD and screens (vanilla TypeScript, no framework)
+src/client/   HUD and screens (vanilla TypeScript, no framework), icon set, audio, animation timeline
+  gl/           three.js map: terrain, water, props, cities, unit models, particles, fog of war, 2D overlay
+  render.ts     the flat 2D map used as the fallback renderer
 tests/        Vitest: engine rules, determinism, full AI games, multiplayer server integration
 scripts/      simulate.ts (AI-vs-AI games) · fuzz.ts (stability) · idle.ts (AI aggression) · e2e.ts (browser tests)
 legacy/       The archived Unity prototype and its design documents

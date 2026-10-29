@@ -73,6 +73,7 @@ class RigBuild {
         const mesh = new Mesh(b.build(), m);
         mesh.castShadow = true;
         mesh.receiveShadow = false;
+        mesh.userData.team = m === teamMat;
         p.pivot.add(mesh);
       }
     }
@@ -451,7 +452,11 @@ const heights: Partial<Record<UnitTypeId, number>> = { pikeman: 0.82, spearman: 
 
 const unitMatCache = new Map<string, MeshStandardMaterial>();
 
-export function buildRig(type: UnitTypeId, team: string, u: SharedUniforms): Rig {
+const protos = new Map<UnitTypeId, Rig>();
+
+function protoRig(type: UnitTypeId): Rig {
+  let proto = protos.get(type);
+  if (proto) return proto;
   const rig: Rig = {
     type,
     kind: mounts.includes(type) ? 'mounted' : type === 'settler' ? 'cart' : type === 'catapult' ? 'siege' : type === 'cannon' ? 'cannon' : 'biped',
@@ -467,15 +472,51 @@ export function buildRig(type: UnitTypeId, team: string, u: SharedUniforms): Rig
   // humans are modelled facing +z; every rig is turned to face +x so one heading drives them all
   if (rig.kind === 'biped') rig.root.rotation.y = Math.PI / 2;
   BUILDERS[type](rb, rig);
+  // placeholder materials: every unit swaps in its own when cloned
+  const dummy = new MeshStandardMaterial();
+  rb.finish(dummy, dummy);
+  protos.set(type, rig);
+  return rig;
+}
+
+/** A fresh figure for one unit: geometry is shared with every other unit of the type, materials are its own. */
+export function buildRig(type: UnitTypeId, team: string, u: SharedUniforms): Rig {
+  const proto = protoRig(type);
+  const before: Object3D[] = [];
+  proto.root.traverse((o) => before.push(o));
+  const root = proto.root.clone(true);
+  const after: Object3D[] = [];
+  root.traverse((o) => after.push(o));
+  const map = (o?: Object3D): Object3D | undefined => (o ? after[before.indexOf(o)] : undefined);
   const um = new MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0.05 });
   patchMaterial(um, u);
   const tm = new MeshStandardMaterial({ color: new Color(team), roughness: 0.7, metalness: 0.0 });
   patchMaterial(tm, u);
-  um.userData.base = um.emissive.clone();
-  rig.mats = [um, tm];
-  rb.finish(um, tm);
-  void unitMatCache;
-  return rig;
+  root.traverse((o) => {
+    const m = o as Mesh;
+    if (m.isMesh) m.material = m.userData.team ? tm : um;
+  });
+  return {
+    ...proto,
+    root,
+    mats: [um, tm],
+    body: map(proto.body),
+    head: map(proto.head),
+    armL: map(proto.armL),
+    armR: map(proto.armR),
+    legL: map(proto.legL),
+    legR: map(proto.legR),
+    weapon: map(proto.weapon),
+    rider: map(proto.rider),
+    horseLegs: proto.horseLegs.map((o) => map(o)!),
+    oxLegs: proto.oxLegs.map((o) => map(o)!),
+    wheels: proto.wheels.map((o) => map(o)!),
+    tail: map(proto.tail),
+    neck: map(proto.neck),
+    throwArm: map(proto.throwArm),
+    barrel: map(proto.barrel),
+    flag: map(proto.flag),
+  };
 }
 
 // ---------------------------------------------------------------- animation
