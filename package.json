@@ -15,7 +15,8 @@
     "e2e": "tsx scripts/e2e.ts",
     "fuzz": "tsx scripts/fuzz.ts",
     "chaos": "tsx scripts/chaos.ts",
-    "idle": "tsx scripts/idle.ts"
+    "idle": "tsx scripts/idle.ts",
+    "bench": "tsx scripts/bench.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
