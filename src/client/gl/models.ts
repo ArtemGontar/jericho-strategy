@@ -473,8 +473,7 @@ function protoRig(type: UnitTypeId): Rig {
   if (rig.kind === 'biped') rig.root.rotation.y = Math.PI / 2;
   BUILDERS[type](rb, rig);
   // placeholder materials: every unit swaps in its own when cloned
-  const dummy = new MeshStandardMaterial();
-  rb.finish(dummy, dummy);
+  rb.finish(new MeshStandardMaterial(), new MeshStandardMaterial());
   protos.set(type, rig);
   return rig;
 }
