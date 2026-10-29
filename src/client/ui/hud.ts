@@ -69,6 +69,7 @@ export function renderTopbar(gs: GameScreen, el: HTMLElement): void {
     h('div', { class: 'stat', title: 'Science per turn' }, icon('science', 20, 'sci'), h('span', { class: 'num' }, `+${v.income.science}`)),
     h('span', { class: 'sep' }),
     h('div', { class: 'stat', title: 'Culture per turn' }, icon('culture', 20, 'cult'), h('span', { class: 'num' }, `+${v.income.culture}`)),
+    idleUnits(gs),
     v.settings.turnTimer > 0 ? h('span', { class: 'sep' }) : null,
     v.settings.turnTimer > 0 ? h('div', { class: 'stat', title: 'Time left in this turn' }, icon('turn', 20), h('span', { class: 'num', id: 'timerlabel' }, '--')) : null,
     v.enlightenment ? h('span', { class: 'sep' }) : null,
@@ -84,6 +85,18 @@ export function renderTopbar(gs: GameScreen, el: HTMLElement): void {
     roundFlat('menu', 'Menu (Esc)', () => gs.openModal('menu')),
   );
   gs.updateTimerLabel();
+}
+
+/** Units still waiting for orders; clicking (or pressing . / N) jumps to the next one. */
+function idleUnits(gs: GameScreen): HTMLElement | null {
+  const n = gs.myUnits().filter((u) => gs.needsOrders(u)).length;
+  if (!n) return null;
+  const b = h('button', { class: 'idle-units', type: 'button', title: 'Units waiting for orders. Click, or press . (N) for the next one.' }, h('b', { class: 'num' }, String(n)), h('span', null, n === 1 ? 'unit idle' : 'units idle'));
+  b.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    gs.selectNextIdle();
+  });
+  return h('span', { class: 'idle-wrap' }, h('span', { class: 'sep' }), b);
 }
 
 /** The Enlightenment race: who is about to win, and how long is left to take their capital. */
@@ -150,8 +163,11 @@ export function pushNote(gs: GameScreen, host: HTMLElement, text: string, kind: 
     n.remove();
   });
   host.append(n);
-  while (host.children.length > 7) host.firstChild?.remove();
-  setTimeout(() => n.remove(), kind === 'war' || kind === 'wonder' || kind === 'tech' ? 12000 : 7000);
+  // a phone has no room to spare: fewer notes, and they leave sooner
+  const phone = window.matchMedia('(max-width: 760px)').matches;
+  while (host.children.length > (phone ? 3 : 7)) host.firstChild?.remove();
+  const long = kind === 'war' || kind === 'wonder' || kind === 'tech';
+  setTimeout(() => n.remove(), phone ? (long ? 8000 : 4500) : (long ? 12000 : 7000));
 }
 
 // ------------------------------------------------------------------ unit bar

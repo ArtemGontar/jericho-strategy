@@ -68,6 +68,7 @@ export class GameScreen {
   private unitbar: HTMLElement;
   private turncontrol: HTMLElement;
   private notes: HTMLElement;
+  private returnFocus: HTMLElement | null = null;
   private lenses: HTMLElement;
   private tileinfo: HTMLElement;
   private drawer: HTMLElement;
@@ -282,6 +283,17 @@ export class GameScreen {
     if (!list.length) return null;
     if (after === null) return list[0];
     return list.find((u) => u.id > after) ?? list[0];
+  }
+
+  /** Select and centre the next (or, going back, the previous) unit that still needs orders. */
+  selectNextIdle(backwards = false): void {
+    const list = this.myUnits().filter((u) => this.needsOrders(u)).sort((a, b) => a.id - b.id);
+    if (!list.length) return;
+    const cur = this.selUnitId;
+    const next = backwards
+      ? [...list].reverse().find((u) => cur !== null && u.id < cur) ?? list[list.length - 1]
+      : this.nextUnitNeedingOrders(cur);
+    if (next) this.selectUnit(next.id, true);
   }
 
   selectUnit(id: number | null, center = false): void {
@@ -797,11 +809,20 @@ export class GameScreen {
 
   private onKey(e: KeyboardEvent): void {
     if (!this.view) return;
-    const target = e.target as HTMLElement;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
-      if (e.key === 'Escape') target.blur();
+    if (this.modal && e.key === 'Tab') {
+      this.trapFocus(e);
       return;
     }
+    const target = e.target as HTMLElement;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
+      if (e.key === 'Escape') {
+        target.blur();
+        if (this.modal) this.closeModal();
+      }
+      return;
+    }
+    // Enter and Space on a focused button activate that button, not the global shortcut
+    if ((e.key === 'Enter' || e.key === ' ') && target?.closest?.('button, a[href], [role="button"]')) return;
     if (this.modal && e.key !== 'Escape') return;
     const u = this.selUnit;
     const k = e.key.toLowerCase();
@@ -819,11 +840,8 @@ export class GameScreen {
         if (u) void this.cmd({ t: 'order', unit: u.id, order: 'skip' }).then(() => this.afterUnitAction());
         else this.primaryAction();
         break;
-      case 'n': {
-        const next = this.nextUnitNeedingOrders(this.selUnitId);
-        if (next) this.selectUnit(next.id, true);
-        break;
-      }
+      case 'n': case '.': this.selectNextIdle(); break;
+      case ',': this.selectNextIdle(true); break;
       case 'f': if (u) void this.cmd({ t: 'order', unit: u.id, order: 'fortify' }).then(() => this.afterUnitAction()); break;
       case 'z': if (u) void this.cmd({ t: 'order', unit: u.id, order: 'sleep' }).then(() => this.afterUnitAction()); break;
       case 'a': if (u) this.autoUnit(u); break;
@@ -1056,7 +1074,7 @@ export class GameScreen {
   openModal(kind: string): void {
     const content = this.buildModal(kind);
     if (!content) return;
-    this.closeModal();
+    this.replaceModal();
     this.modalKind = kind;
     this.modal = h('div', { class: `overlay ${content.dataset.full ? 'full' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': kind, tabindex: -1, on: { click: (e) => { if (e.target === this.modal) this.closeModal(); } } }, content);
     this.root.append(this.modal);
@@ -1064,7 +1082,7 @@ export class GameScreen {
   }
 
   openDiplomacy(focus?: number): void {
-    this.closeModal();
+    this.replaceModal();
     const content = showDiplomacy(this, focus);
     this.modalKind = 'diplo';
     this.modal = h('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Diplomacy', tabindex: -1, on: { click: (e) => { if (e.target === this.modal) this.closeModal(); } } }, content);
@@ -1072,10 +1090,52 @@ export class GameScreen {
     this.modal.focus();
   }
 
-  closeModal(): void {
+  /** Called before a dialog opens: remembers what had focus (once, so swapping dialogs keeps the original) and clears the old one. */
+  private replaceModal(): void {
+    if (!this.modal) {
+      const a = document.activeElement;
+      this.returnFocus = a instanceof HTMLElement && a !== document.body ? a : null;
+    }
     this.modal?.remove();
     this.modal = null;
     this.modalKind = '';
+  }
+
+  closeModal(): void {
+    if (!this.modal) return;
+    this.modal.remove();
+    this.modal = null;
+    this.modalKind = '';
+    const back = this.returnFocus;
+    this.returnFocus = null;
+    // focus goes back to what opened the dialog, if that is still on the page
+    if (back && back.isConnected) back.focus({ preventScroll: true });
+  }
+
+  /** Keeps Tab and Shift+Tab inside the open dialog. */
+  private trapFocus(e: KeyboardEvent): void {
+    const modal = this.modal;
+    if (!modal) return;
+    const items = Array.from(modal.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]'))
+      .filter((el) => el !== modal && el.tabIndex >= 0 && !(el as HTMLButtonElement).disabled && el.getClientRects().length > 0);
+    if (!items.length) {
+      e.preventDefault();
+      modal.focus();
+      return;
+    }
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+    if (!active || !modal.contains(active) || active === modal) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+    } else if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
   }
 
   private rerenderModal(): void {
@@ -1085,6 +1145,7 @@ export class GameScreen {
     const scrollers = Array.from(this.modal.querySelectorAll<HTMLElement>('.body, .treewrap')).map((b) => [b.scrollTop, b.scrollLeft] as const);
     clear(this.modal);
     this.modal.append(content);
+    if (!this.modal.contains(document.activeElement)) this.modal.focus();
     Array.from(this.modal.querySelectorAll<HTMLElement>('.body, .treewrap')).forEach((b, i) => {
       if (scrollers[i]) {
         b.scrollTop = scrollers[i][0];

@@ -34,7 +34,7 @@ Also checked and fine: no GPU resource growth over 20 turns (geometries/textures
 ### Gameplay and balance
 1. **Games still end by research.** See above. Candidate levers: slower late-era techs, a conquest-friendlier victory threshold, stronger AI offence once a rival starts the Enlightenment.
 2. Whether a good human can beat the hard AI's Enlightenment (around turn 107–123) is unmeasured.
-3. Auto-explore can thrash for a few turns before settling on a target.
+3. Auto-explore: measured over 24 seeds × 60 turns (`scripts/explore-thrash.ts`), a scout stepped back onto a tile from its last 12 steps 133 times in total (about 5.5 per game), and the examples inspected were retreats out of dead-end peninsulas; committing to a target tile did not reduce that and was dropped. Guarded by `tests/explore.test.ts`.
 4. No barbarians, trade routes, religion or great people.
 
 ### Multiplayer and operations
@@ -44,10 +44,10 @@ Also checked and fine: no GPU resource growth over 20 turns (geometries/textures
 
 ### Client and UX
 8. **3D performance on real hardware is unmeasured.** Software rendering proves correctness, not smoothness. Quality drops automatically if frames run long; Menu → Graphics overrides it.
-9. No idle-unit list, no colour-blind palette, English only. Menus are not fully keyboard-navigable and dialogs have no focus trap.
+9. No colour-blind palette, English only. Dialogs now trap focus and give it back; the rest of the menus are not fully keyboard-navigable.
 10. The audio has not been listened to by anyone yet.
-11. Notifications overlap the top of a phone screen for a few seconds.
-12. Flat-renderer screenshots through Playwright time out on this machine (the page never goes idle); the e2e flows themselves pass. Not investigated.
+11. (done) Phone notifications now sit below the top bar and medals, show at most three, and leave sooner.
+12. Playwright screenshots time out when Chromium is launched with `--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist` and the game page is open, even with the game loop stopped and CSS animations off; a bare animated canvas screenshots fine under the same flags, and the game screenshots fine with default launch arguments (0.5 s flat, 4 s for 3D). Not a game redraw problem; use default arguments for screenshots.
 
 ### Engineering
 13. Two map renderers (3D and flat 2D) must be kept in step.

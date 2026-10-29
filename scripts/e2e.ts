@@ -21,7 +21,7 @@ function loadPlaywright(): typeof import('playwright') {
 
 const { chromium } = loadPlaywright();
 let failures = 0;
-/** E2E_ONLY=solo|hotseat|online|phone runs a single section */
+/** E2E_ONLY=solo|hotseat|online|phone|gl runs a single section. The 3D section (gl) runs only when asked for: E2E_ONLY=gl, or E2E_GL=1. */
 const only = process.env.E2E_ONLY;
 function check(name: string, ok: boolean, detail = ''): void {
   console.log(`${ok ? '  ✓' : '  ✗'} ${name}${detail ? ` — ${detail}` : ''}`);
@@ -65,6 +65,27 @@ try {
     await page.waitForTimeout(400);
     let s = await screenState(page);
     check('founded a capital with the B key', s.cities === 1);
+    // idle units: the top bar counts them and "." jumps to the next one
+    const idle = await page.evaluate(() => { const sc = (window as any).__jericho.screen; return { n: sc.myUnits().filter((u: any) => sc.needsOrders(u)).length, shown: document.querySelector('.idle-units b')?.textContent ?? null }; });
+    check('top bar counts units waiting for orders', idle.n > 0 && idle.shown === String(idle.n), `${idle.shown} shown, ${idle.n} idle`);
+    const unitBefore = await page.evaluate(() => (window as any).__jericho.screen.selUnitId);
+    await page.keyboard.press('.');
+    const unitAfter = await page.evaluate(() => (window as any).__jericho.screen.selUnitId);
+    check('"." selects the next idle unit', unitAfter !== null && (idle.n === 1 || unitAfter !== unitBefore), `${unitBefore} -> ${unitAfter}`);
+    // dialogs trap focus, close on Escape and give focus back
+    await page.focus('button[aria-label^="Menu"]');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.overlay');
+    let escaped = false;
+    for (let i = 0; i < 30 && !escaped; i++) {
+      await page.keyboard.press(i % 2 ? 'Tab' : 'Shift+Tab');
+      escaped = !(await page.evaluate(() => !!document.activeElement?.closest('.overlay')));
+    }
+    check('Tab stays inside an open dialog', !escaped);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.overlay'));
+    const back = await page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? '');
+    check('Escape closes it and focus returns to the menu button', back.startsWith('Menu'), back);
     const label = () => page.locator('.turnlabel').first().innerText().then((t) => t.split('\n')[0].trim());
     let lastKey = '';
     let repeats = 0;
@@ -207,6 +228,37 @@ try {
     await page.waitForSelector('.drawer:not(.hidden)');
     check('city panel opens as a bottom sheet', true);
     check('no browser errors (phone)', errors.length === 0, errors.slice(0, 2).join(' | '));
+  }
+
+  // ------------------------------------------------------------------ 3D renderer
+  console.log('3D renderer');
+  if (only === 'gl' || (!only && process.env.E2E_GL)) {
+    const { page, errors } = await newPage('gl', { viewport: { width: 1100, height: 700 } });
+    await page.goto(`${base}/?gl`);
+    await page.click('button:has-text("New game")');
+    await page.click('button:has-text("Begin")');
+    await page.waitForSelector('canvas.map');
+    await page.waitForFunction(() => (window as any).__jericho?.screen?.view);
+    await page.keyboard.press('b');
+    await page.waitForTimeout(800);
+    const gl = () => page.evaluate(() => {
+      const sc = (window as any).__jericho.screen;
+      const c = document.createElement('canvas');
+      return { is3d: !!sc.glCanvas && sc.glCanvas.isConnected, failures: sc.drawFailures, turn: sc.view.turn, webgl2: !!c.getContext('webgl2') };
+    });
+    let g = await gl();
+    check('the 3D renderer is active', g.is3d && g.webgl2, JSON.stringify(g));
+    for (let i = 0; i < 4; i++) {
+      await page.evaluate(() => (window as any).__jericho.screen.endTurn());
+      await page.waitForTimeout(500);
+    }
+    g = await gl();
+    check('four turns later it is still 3D with no failed frames', g.is3d && g.failures === 0 && g.turn >= 4, JSON.stringify(g));
+    const shot = await page.screenshot();
+    check('the map actually draws something', shot.length > 30000, `${shot.length} bytes`);
+    const heap = await page.evaluate(() => (performance as any).memory?.usedJSHeapSize ?? 0);
+    check('JS heap stays modest', heap === 0 || heap < 400 * 1024 * 1024, `${(heap / 1048576).toFixed(0)} MB`);
+    check('no browser errors (3D)', errors.length === 0, errors.slice(0, 2).join(' | '));
   }
 } finally {
   await browser.close();

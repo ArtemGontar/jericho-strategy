@@ -96,6 +96,16 @@ npm run typecheck
 npm run sim -- 4 4 200      # 4 AI-only games, 4 players, 200 turn limit
 npm run fuzz -- 30          # stress many random games
 npm run build && npm run e2e   # full browser tests (needs Playwright + Chromium)
+npm run build && npm run e2e:flat   # the same on the flat 2D map (lighter on machines without a GPU)
+npm run build && npm run e2e:gl     # 3D smoke test: WebGL2 context, four turns, no failed frames, a drawn map, JS heap
+npx tsx scripts/explore-thrash.ts 24 60   # how much an auto-exploring scout doubles back
+```
+
+The 3D smoke test is not part of the default CI job, because it needs a WebGL2-capable Chromium. It passes here on a GPU-less machine (software rendering, about 20 s). To run it in CI, add a step after the normal end-to-end one; it has not been tried on GitHub's runners:
+
+```yaml
+      - name: 3D smoke test
+        run: npm run e2e:gl
 ```
 
 Balance knobs live in `src/shared/data.ts` (unit/building/tech tables) and the top of `src/shared/economy.ts` (`TECH_ERA_FACTOR`, `PROD_COST_FACTOR`).

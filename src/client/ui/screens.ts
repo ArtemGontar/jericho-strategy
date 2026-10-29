@@ -329,7 +329,7 @@ export function showHelp(gs: GameScreen): HTMLElement {
       h('ul', null,
         h('li', null, h('kbd', null, 'Click'), ' select, move, attack · right-click always commands'),
         h('li', null, 'Drag or arrow keys to pan · wheel or pinch to zoom'),
-        h('li', null, h('kbd', null, 'Enter'), ' next action · ', h('kbd', null, 'N'), ' next unit · ', h('kbd', null, 'Space'), ' skip'),
+        h('li', null, h('kbd', null, 'Enter'), ' next action · ', h('kbd', null, 'N'), ' or ', h('kbd', null, '.'), ' next idle unit · ', h('kbd', null, 'Space'), ' skip'),
         h('li', null, h('kbd', null, 'F'), ' fortify · ', h('kbd', null, 'Z'), ' sleep · ', h('kbd', null, 'A'), ' automate'),
         h('li', null, h('kbd', null, 'T'), ' tech · ', h('kbd', null, 'D'), ' diplomacy · ', h('kbd', null, 'L'), ' cities · ', h('kbd', null, 'Y'), ' yields'),
         h('li', null, 'On touch, tap a destination, then tap it again.'))));

@@ -378,7 +378,7 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; padding: 0 6px; f
   .medal { padding: 0; }
   .medal .disc { width: 54px; height: 54px; }
   .medal .disc .face { width: 40px; height: 40px; }
-  .notes { top: 48px; width: min(300px, 80vw); }
+  .notes { top: calc(60px + env(safe-area-inset-top, 0px)); right: env(safe-area-inset-right, 0px); width: min(300px, 78vw); }
   .note { font-size: 13px; padding: 7px 12px 7px 8px; }
   .unitbar { width: calc(100vw - 150px); min-width: 0; left: 0; transform: none; padding: 10px 12px 12px; clip-path: none; border-left: 0; }
   .mapdock { display: none; }
@@ -400,3 +400,9 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; padding: 0 6px; f
 .erabanner b { font-family: var(--display); font-size: clamp(30px, 6vw, 56px); letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold-hi); font-weight: 600; }
 @keyframes eraIn { 0% { opacity: 0; transform: scaleY(0.6); } 12% { opacity: 1; transform: none; } 82% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .erabanner, .note, .medal.alert .disc .face { animation: none; } }
+
+.idle-wrap { display: inline-flex; align-items: center; gap: inherit; }
+.idle-units { display: inline-flex; align-items: baseline; gap: 6px; background: none; border: 0; border-bottom: 1px solid var(--line); color: var(--text); font: inherit; font-size: 13px; padding: 4px 4px; cursor: pointer; }
+.idle-units:hover { border-bottom-color: var(--gold-hi); color: var(--gold-hi); }
+.idle-units b { font-size: 15px; color: var(--gold-hi); }
+@media (max-width: 760px) { .idle-wrap { display: none; } }
