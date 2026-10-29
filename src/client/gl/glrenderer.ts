@@ -11,22 +11,11 @@ import { Particles, Projectiles } from './fx';
 import { Overlay } from './overlay';
 import { tileXZ } from './terrain';
 import { Sky } from './sky';
+import { PITCH, glSupported, graphicsPref } from './prefs';
 
 const HEX = 48;
-export const PITCH = 52;
 
-export type Graphics = 'auto' | 'high' | 'medium' | 'low' | 'flat';
-export const GRAPHICS_LABEL: Record<Graphics, string> = { auto: 'Automatic', high: 'High', medium: 'Medium', low: 'Low', flat: 'Flat 2D' };
-export function graphicsPref(): Graphics {
-  try {
-    const v = localStorage.getItem('jericho.gfx');
-    if (v === 'high' || v === 'medium' || v === 'low' || v === 'flat') return v;
-  } catch { /* ignore */ }
-  return 'auto';
-}
-export function setGraphicsPref(g: Graphics): void {
-  try { localStorage.setItem('jericho.gfx', g); } catch { /* ignore */ }
-}
+export { GRAPHICS_LABEL, graphicsPref, setGraphicsPref, type Graphics } from './prefs';
 
 /** The 3D map: a tilted orthographic view of lit, shadowed terrain, with the 2D overlay drawn on top. */
 export class GLRenderer implements MapDrawer {
@@ -52,22 +41,7 @@ export class GLRenderer implements MapDrawer {
 
   /** WebGL2 present, not switched off, and not a software rasteriser (which would crawl). `?gl` forces it on. */
   static supported(): boolean {
-    try {
-      const q = new URLSearchParams(location.search);
-      if (q.has('flat') || localStorage.getItem('jericho.flat') === '1' || graphicsPref() === 'flat') return false;
-      const c = document.createElement('canvas');
-      const gl = c.getContext('webgl2') as WebGL2RenderingContext | null;
-      if (!gl) return false;
-      if (!q.has('gl') && localStorage.getItem('jericho.gl') !== '1' && graphicsPref() === 'auto') {
-        const ext = gl.getExtension('WEBGL_debug_renderer_info');
-        const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : '';
-        if (/swiftshader|llvmpipe|software|softpipe/i.test(name)) return false;
-      }
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
-      return true;
-    } catch {
-      return false;
-    }
+    return glSupported();
   }
 
   /** 2 = full effects, 1 = no shadows, 0 = also lower resolution. Drops by itself when frames take too long. */
@@ -127,7 +101,7 @@ export class GLRenderer implements MapDrawer {
   }
 
   constructor(public glCanvas: HTMLCanvasElement, public canvas: HTMLCanvasElement, public cam: Camera, public anim: Animator) {
-    this.gl = new WebGLRenderer({ canvas: glCanvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+    this.gl = new WebGLRenderer({ canvas: glCanvas, antialias: (window.devicePixelRatio || 1) < 1.75, alpha: false, powerPreference: 'high-performance' });
     this.gl.setClearColor(new Color(0x0a1120));
     this.gl.toneMapping = ACESFilmicToneMapping;
     this.gl.toneMappingExposure = 1.05;

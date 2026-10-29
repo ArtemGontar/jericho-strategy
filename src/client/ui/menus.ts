@@ -6,7 +6,7 @@ import type { AiLevel } from '../../shared/types';
 import type { RoomInfo, RoomSettings, RoomSlot } from '../../shared/protocol';
 import { Animator } from '../anim';
 import { Camera, MapRenderer } from '../render';
-import { GLRenderer } from '../gl/glrenderer';
+import { glSupported } from '../gl/prefs';
 import { btn, clear, h, put } from './dom';
 import { emblem } from './hud';
 import type { RemoteTransport } from '../transport';
@@ -37,12 +37,18 @@ export function saveName(n: string): void {
 
 /** Paint a generated world behind the menus. */
 let backdropCache: HTMLCanvasElement | null = null;
+let backdropPending: Promise<HTMLCanvasElement | null> | null = null;
 
 /** One 3D render of a finished world, kept as a picture and reused behind every menu. */
-function snapshotBackdrop(view: ReturnType<typeof buildView>, w: number, h: number): HTMLCanvasElement | null {
-  if (backdropCache) return backdropCache;
-  if (!GLRenderer.supported() || new URLSearchParams(location.search).has('flat')) return null;
+function snapshotBackdrop(view: ReturnType<typeof buildView>, w: number, h: number): Promise<HTMLCanvasElement | null> {
+  if (backdropCache) return Promise.resolve(backdropCache);
+  backdropPending ??= renderBackdrop(view, w, h).finally(() => { backdropPending = null; });
+  return backdropPending;
+}
+
+async function renderBackdrop(view: ReturnType<typeof buildView>, w: number, h: number): Promise<HTMLCanvasElement | null> {
   try {
+    const { GLRenderer } = await import('../gl/glrenderer');
     const dpr = Math.min(1.5, window.devicePixelRatio || 1);
     const glCanvas = document.createElement('canvas');
     const overlay = document.createElement('canvas');
@@ -74,6 +80,24 @@ function snapshotBackdrop(view: ReturnType<typeof buildView>, w: number, h: numb
   }
 }
 
+function paintFlatBackdrop(canvas: HTMLCanvasElement, view: ReturnType<typeof buildView>): void {
+  try {
+    const cam = new Camera();
+    cam.setWorld(view.settings.width, view.settings.height);
+    const r = new MapRenderer(canvas, cam, new Animator());
+    r.resize();
+    cam.zoom = Math.max(cam.w / (cam.worldW + 60), cam.h / (cam.worldH + 60)) * 1.02;
+    cam.x = cam.worldW / 2;
+    cam.y = cam.worldH / 2;
+    r.draw({
+      view, vm: new ViewMap(view), selectedUnit: null, selectedCity: null, hover: null, reach: null, path: null, pathTurns: 0,
+      attackTargets: new Set(), showYields: false, showGrid: false, workedTiles: null, now: 0,
+    });
+  } catch (e) {
+    console.warn('backdrop failed', e);
+  }
+}
+
 export function paintBackdrop(canvas: HTMLCanvasElement): void {
   try {
     if (backdropCache) {
@@ -91,24 +115,17 @@ export function paintBackdrop(canvas: HTMLCanvasElement): void {
     view.hut = view.hut.map(() => 0);
     const w = Math.max(640, window.innerWidth);
     const h = Math.max(400, window.innerHeight);
-    const snap = snapshotBackdrop(view, w, h);
-    if (snap) {
-      canvas.width = snap.width;
-      canvas.height = snap.height;
-      canvas.getContext('2d')!.drawImage(snap, 0, 0);
+    if (glSupported()) {
+      // the 3D picture needs the renderer to download first; until then the menu sits on the plain dark background
+      snapshotBackdrop(view, w, h).then((snap) => {
+        if (!snap) return paintFlatBackdrop(canvas, view);
+        canvas.width = snap.width;
+        canvas.height = snap.height;
+        canvas.getContext('2d')!.drawImage(snap, 0, 0);
+      });
       return;
     }
-    const cam = new Camera();
-    cam.setWorld(view.settings.width, view.settings.height);
-    const r = new MapRenderer(canvas, cam, new Animator());
-    r.resize();
-    cam.zoom = Math.max(cam.w / (cam.worldW + 60), cam.h / (cam.worldH + 60)) * 1.02;
-    cam.x = cam.worldW / 2;
-    cam.y = cam.worldH / 2;
-    r.draw({
-      view, vm: new ViewMap(view), selectedUnit: null, selectedCity: null, hover: null, reach: null, path: null, pathTurns: 0,
-      attackTargets: new Set(), showYields: false, showGrid: false, workedTiles: null, now: 0,
-    });
+    paintFlatBackdrop(canvas, view);
   } catch (e) {
     console.warn('backdrop failed', e);
   }
