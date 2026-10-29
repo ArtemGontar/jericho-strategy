@@ -26,8 +26,8 @@ function closureOfFinal(): Set<string> {
 const TECH_WEIGHT: Record<string, number> = {
   pottery: 3, mining: 4, archery: 2, bronze: 4, husbandry: 2, masonry: 3, writing: 7, wheel: 1,
   ironworking: 3, mathematics: 2, currency: 5, philosophy: 5, construction: 4,
-  education: 6, engineering: 3, feudalism: 3, chivalry: 2, banking: 5,
-  gunpowder: 4, metallurgy: 2, astronomy: 5, enlightenment: 10,
+  education: 6, engineering: 4, feudalism: 3, chivalry: 3, banking: 5,
+  gunpowder: 4, metallurgy: 3.5, astronomy: 5, enlightenment: 10,
   sailing: 4, navigation: 3,
 };
 
@@ -440,7 +440,8 @@ function planWar(game: Game, p: Player): WarPlan {
     const d = near ? game.dist(e.x, e.y, near.x, near.y) : 30;
     // the capital of a civilisation counting down to victory is the one target that matters
     const clock = game.s.enlightenment;
-    const s = d + e.hp / 40 - (clock && e.id === clock.capital ? 40 : 0);
+    const heg = game.s.hegemony;
+    const s = d + e.hp / 40 - (clock && e.id === clock.capital ? 40 : 0) - (heg && e.owner === heg.owner && e.capital ? 25 : 0);
     if (s < bs) {
       bs = s;
       best = e;
@@ -617,6 +618,11 @@ export function aiPlanCity(game: Game, p: Player, city: City): void {
   const desiredCities = p.personality === 'builder' ? 7 : p.personality === 'warlord' ? 4 : 5;
   const site = myCities.length + settlers < desiredCities + (game.turn > 120 ? 0 : 0) ? bestSite(game, p, null, city) : null;
   const sciWeight = p.personality === 'builder' ? 1.2 : 1;
+  // culture race: join it when within reach of the goal and not far behind the leader; builders always lean into it
+  const goal = game.cultureGoal;
+  const topCulture = Math.max(...game.players.filter((x) => x.alive).map((x) => x.culture));
+  const cultureRace = game.s.settings.allowScience && game.turn > 60 && p.culture > topCulture * 0.7 && topCulture > goal * 0.35;
+  const cultureWeight = (p.personality === 'builder' ? 1.25 : 1) * (cultureRace ? 1.35 : 1);
 
   if (gar === 0 || (th > 0.5 && gar < 2)) {
     const d = bestMilitary(game, p, city, 'melee') ?? 'warrior';
@@ -630,7 +636,7 @@ export function aiPlanCity(game: Game, p: Player, city: City): void {
   add('building', 'library', 6 * sciWeight);
   add('building', 'workshop', city.pop >= 3 ? 4.6 : 2.5);
   add('building', 'market', 5.2);
-  add('building', 'temple', 4.1);
+  add('building', 'temple', 4.1 * cultureWeight);
   add('building', 'university', 6.4 * sciWeight);
   add('building', 'bank', 5);
   add('building', 'observatory', 5);
@@ -643,7 +649,7 @@ export function aiPlanCity(game: Game, p: Player, city: City): void {
     for (const b of Object.values(BUILDINGS)) {
       if (!b.wonder) continue;
       if (queuedIn(game, p.id, 'building', b.id) > 0) continue;
-      add('building', b.id, 5.6);
+      add('building', b.id, 5.6 * (b.culture ? cultureWeight : 1));
     }
   }
   // the sea: a ship or two to explore, and a harbour where the water feeds us
@@ -721,7 +727,7 @@ function minCityDistance(game: Game, a: number, b: number): number {
 /** Is `o` about to win by research? Everyone else has a reason to stop them. */
 function runawayLeader(game: Game, o: Player): boolean {
   if (!game.s.settings.allowScience) return false;
-  if (game.s.enlightenment?.owner === o.id) return true;
+  if (game.s.enlightenment?.owner === o.id || game.s.hegemony?.owner === o.id) return true;
   const others = game.players.filter((x) => x.alive && x.id !== o.id);
   if (!others.length) return false;
   const best = Math.max(...others.map((x) => x.techs.length));
@@ -767,9 +773,9 @@ function runDiplomacy(game: Game, p: Player): void {
         : losing && since >= minWar && game.rng.chance(0.3);
       const alreadyAsked = game.s.proposals.some((x) => x.from === p.id && x.to === o.id);
       if (wantsPeace && !alreadyAsked) exec(game, p.id, { t: 'peace', to: o.id });
-    } else if (rel === 'peace' && game.s.enlightenment?.owner === o.id && since >= PEACE_MIN_TURNS) {
-      // the world turns on whoever is about to win by research, whatever else it was doing
-      if (game.rng.chance(0.55)) exec(game, p.id, { t: 'war', to: o.id });
+    } else if (rel === 'peace' && (game.s.enlightenment?.owner === o.id || game.s.hegemony?.owner === o.id) && since >= PEACE_MIN_TURNS) {
+      // the world turns on whoever is about to win by research or culture, whatever else it was doing
+      if (game.rng.chance(game.s.enlightenment?.owner === o.id ? 0.55 : 0.3)) exec(game, p.id, { t: 'war', to: o.id });
     } else if (rel === 'peace' && since >= PEACE_MIN_TURNS && wars.length === 0 && game.turn > graceTurns(p, o, game)) {
       if (game.rng.chance(warDesire(game, p, o))) exec(game, p.id, { t: 'war', to: o.id });
     }

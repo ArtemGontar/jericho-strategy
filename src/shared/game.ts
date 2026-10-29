@@ -233,6 +233,9 @@ export class Game {
   get units(): Unit[] { return this.s.units; }
   get speedMult(): number { return this.s.settings.speed === 'quick' ? 0.67 : 1; }
 
+  /** Culture a civilisation needs before it can claim cultural hegemony. */
+  get cultureGoal(): number { return Math.round(4000 * this.speedMult); }
+
   tile(x: number, y: number): Tile { return this.s.tiles[y * this.s.settings.width + x]; }
   inBounds(x: number, y: number): boolean { return x >= 0 && y >= 0 && x < this.width && y < this.height; }
   dist(ax: number, ay: number, bx: number, by: number): number { return hexDistance(ax, ay, bx, by); }
@@ -1180,6 +1183,7 @@ export class Game {
         p.research -= need;
         p.techs.push(p.researching);
         this.note([p.id], `Discovered ${TECHS.find((t) => t.id === p.researching)!.name}!`, 'tech');
+        if (this.s.settings.allowScience && !this.s.enlightenment && availableTechs(p).includes(FINAL_TECH)) this.note([], `${p.name} is one discovery away from the Enlightenment.`, 'wonder');
         p.researching = p.ai ? aiChooseResearch(this, p) : null;
         if (!p.researching && !p.ai && availableTechs(p).length) this.note([p.id], 'Choose your next technology.', 'info');
       }
@@ -1371,7 +1375,7 @@ export class Game {
   checkVictory(): void {
     if (this.s.over) return;
     const alive = this.s.players.filter((p) => p.alive);
-    if (this.s.settings.allowScience && this.tickEnlightenment(alive)) return;
+    if (this.s.settings.allowScience && (this.tickEnlightenment(alive) || this.tickHegemony(alive))) return;
     if (alive.length <= 1) {
       return this.finish(alive[0]?.id ?? null, 'last-standing');
     }
@@ -1431,12 +1435,50 @@ export class Game {
     return false;
   }
 
+  /**
+   * Cultural hegemony: a civilisation whose culture passes the goal and towers over every rival (+20%) starts a
+   * countdown; it ends if a rival's culture climbs back to within 10% of theirs. Culture keeps its worth after the
+   * last policy is adopted, and gives builders a race of their own. Returns true when the countdown ended the game.
+   */
+  private tickHegemony(alive: Player[]): boolean {
+    if (alive.length < 2) return false;
+    const goal = this.cultureGoal;
+    const ranked = alive.slice().sort((a, b) => b.culture - a.culture);
+    const top = ranked[0];
+    const second = ranked[1];
+    let h = this.s.hegemony ?? null;
+    if (h) {
+      const p = this.s.players[h.owner];
+      if (!p.alive || p.culture < goal || p.culture < second.culture * 1.1 || (second.id === p.id)) {
+        this.note([], `${p.name}'s cultural lead has slipped: the hegemony is broken.`, 'good');
+        this.s.hegemony = null;
+        h = null;
+      } else if (this.s.turn - h.since >= h.duration) {
+        this.finish(h.owner, 'culture');
+        return true;
+      } else {
+        const left = h.duration - (this.s.turn - h.since);
+        if (left <= 3 || left % 4 === 0) this.note([], `${p.name}'s cultural hegemony: ${left} turn${left === 1 ? '' : 's'} left. Out-build their culture or take their wonders!`, 'wonder');
+      }
+    }
+    if (!h && top.culture >= goal && top.culture >= second.culture * 1.2) {
+      const duration = this.s.settings.speed === 'quick' ? 7 : 10;
+      this.s.hegemony = { owner: top.id, since: this.s.turn, duration };
+      this.note([], `${top.name}'s culture dominates the world! They win in ${duration} turns unless a rival's culture catches up.`, 'wonder');
+    } else if (!h && this.s.turn % 10 === 0) {
+      // a visible race before the countdown: the leader's progress toward the goal
+      const share = Math.min(1, top.culture / goal);
+      if (share >= 0.5) this.note([], `Culture race: ${top.name} has ${Math.round(share * 100)}% of the culture needed for hegemony.`, 'info');
+    }
+    return false;
+  }
+
   private finish(winner: number | null, victory: GameState['victory']): void {
     this.s.over = true;
     this.s.winner = winner;
     this.s.victory = victory;
     const name = winner === null ? 'Nobody' : this.playerName(winner);
-    const how = victory === 'science' ? 'a scientific victory' : victory === 'score' ? 'the highest score' : 'domination';
+    const how = victory === 'science' ? 'a scientific victory' : victory === 'culture' ? 'cultural hegemony' : victory === 'score' ? 'the highest score' : 'domination';
     this.note([], `Game over — ${name} wins by ${how}!`, 'wonder');
   }
 

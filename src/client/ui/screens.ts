@@ -368,7 +368,7 @@ export function showVictory(gs: GameScreen): HTMLElement {
   const v = gs.view;
   const winner = v.winner !== null ? v.players[v.winner] : null;
   const won = !!winner && winner.id === v.me;
-  const how: Record<string, string> = { science: 'a scientific victory', score: 'the highest score', domination: 'domination', 'last-standing': 'conquest' };
+  const how: Record<string, string> = { science: 'a scientific victory', culture: 'cultural hegemony', score: 'the highest score', domination: 'domination', 'last-standing': 'conquest' };
   const rows = v.players.slice().sort((a, b) => b.score - a.score).map((p, i) =>
     h('tr', { class: p.id === v.winner ? 'top' : '' }, h('td', { class: 'num' }, String(i + 1)), h('td', null, emblem(p.civ, 22), ' ', p.name), h('td', { class: 'num' }, String(p.score)), h('td', { class: 'num' }, `${p.cityCount} ${p.cityCount === 1 ? 'city' : 'cities'}`), h('td', { class: 'num' }, `${p.techCount} ${p.techCount === 1 ? 'tech' : 'techs'}`)));
   const crest = winner ? emblem(winner.civ, 112) : icon('skull', 64);
