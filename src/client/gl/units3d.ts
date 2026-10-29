@@ -43,6 +43,7 @@ interface Slot {
   oz: number;
 }
 
+const EMISSIVE = new Color();
 const MIL_SLOTS: Array<[number, number]> = [[0, 0.1], [0.5, 0.2], [-0.5, 0.2], [0, -0.4], [0.45, -0.35], [-0.45, -0.35]];
 const CIV_SLOTS: Array<[number, number]> = [[-0.45, -0.22], [0.45, -0.25], [0, -0.5]];
 const CITY_SLOTS: Array<[number, number]> = [[0.62, 0.5], [-0.62, 0.5], [0.0, 0.78], [0.88, 0.0], [-0.88, 0.0]];
@@ -58,6 +59,8 @@ export class UnitLayer {
   private teamCache = new Map<string, string>();
   /** screen-space anchors for the 2D overlay, rebuilt every frame */
   anchors = new Map<number, { x: number; y: number; z: number; hgt: number }>();
+  /** True when any figure is travelling or fighting this frame (shadows must keep up with them). */
+  motion = false;
 
   constructor(private scene: Scene, private terrain: Terrain, private anim: Animator, private fx: Particles) {}
 
@@ -101,6 +104,7 @@ export class UnitLayer {
     this.lastTime = now;
     const t = now / 1000;
     this.anchors.clear();
+    this.motion = false;
 
     // stack offsets: how many units share each tile
     const stacks = new Map<number, { mil: number; civ: number }>();
@@ -169,6 +173,7 @@ export class UnitLayer {
       }
       let [X, Z] = tileXZf(tx, ty);
       const moving = !!ap && !lunge;
+      if (ap || lunge) this.motion = true;
       // ease toward the unit's slot on the tile; while travelling it walks the tile centres
       const wantX = moving ? 0 : off[0];
       const wantZ = moving ? 0 : off[1];
@@ -315,10 +320,11 @@ export class UnitLayer {
   }
 
   private tint(s: Slot, flash: number, selected: boolean): void {
-    const [um] = s.rig.mats;
-    const e = flash > 0 ? new Color(0.9 * flash, 0.12 * flash, 0.08 * flash) : selected ? new Color(0.05, 0.045, 0.02) : new Color(0, 0, 0);
+    const e = EMISSIVE;
+    if (flash > 0) e.setRGB(0.9 * flash, 0.12 * flash, 0.08 * flash);
+    else if (selected) e.setRGB(0.05, 0.045, 0.02);
+    else e.setRGB(0, 0, 0);
     for (const m of s.rig.mats as MeshStandardMaterial[]) m.emissive.copy(e);
-    void um;
   }
 
   /** Scene-space head position of a unit for floating labels; null when it is not drawn. */

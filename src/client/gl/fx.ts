@@ -221,6 +221,10 @@ export class Projectiles {
   private ballMat = new MeshStandardMaterial({ color: 0x25272b, roughness: 0.5, metalness: 0.5 });
   private tmp = new Vector3();
 
+  get active(): boolean {
+    return this.live.size > 0;
+  }
+
   constructor(scene: Scene, private terrain: Terrain, private anim: Animator, private fx: Particles) {
     scene.add(this.group);
   }

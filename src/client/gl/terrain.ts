@@ -1,5 +1,5 @@
 import {
-  Vector3, BufferAttribute, BufferGeometry, CanvasTexture, Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, Mesh, MeshStandardMaterial,
+  Vector3, Box3, Sphere, BufferAttribute, BufferGeometry, CanvasTexture, Color, DataTexture, Group, LinearFilter, LinearMipmapLinearFilter, Mesh, MeshStandardMaterial,
   PlaneGeometry, RedFormat, SRGBColorSpace, ShaderMaterial, UnsignedByteType, Vector2, type Scene, type WebGLProgramParametersWithUniforms,
 } from 'three';
 import { TERRAIN_LIST, RESOURCE_LIST, type GameView } from '../../shared/view';
@@ -64,9 +64,15 @@ export class Terrain {
   gx = 0;
   gz = 0;
   heights = new Float32Array(0);
-  mesh: Mesh | null = null;
   water: Mesh | null = null;
-  private geo: BufferGeometry | null = null;
+  /** The ground is cut into square blocks of the vertex grid that share one set of vertex buffers, so the ones off screen are skipped. */
+  private ground = new Group();
+  private chunks: Array<{ mesh: Mesh; i0: number; i1: number; j0: number; j1: number }> = [];
+  private attrs: BufferAttribute[] = [];
+  private built = false;
+  get mesh(): Group | null {
+    return this.built ? this.ground : null;
+  }
   private tiles: TileData[] = [];
   private sig = '';
   private fogSig = '';
@@ -326,7 +332,7 @@ export class Terrain {
   private build(view: GameView, cityKeys: Set<number>): void {
     const W = view.settings.width;
     const H = view.settings.height;
-    const fresh = !this.geo || this.W !== W || this.H !== H;
+    const fresh = !this.built || this.W !== W || this.H !== H;
     this.W = W;
     this.H = H;
     this.extX = SQ3 * (W + 0.5);
@@ -413,44 +419,60 @@ export class Terrain {
     this.fillVertices(view, i0, i1, j0, j1);
     this.fillNormals(Math.max(0, i0 - 1), Math.min(gx - 1, i1 + 1), Math.max(0, j0 - 1), Math.min(gz - 1, j1 + 1));
 
-    if (!this.geo) {
-      const index = new Uint32Array((gx - 1) * (gz - 1) * 6);
-      let n = 0;
-      for (let j = 0; j < gz - 1; j++) {
-        for (let i = 0; i < gx - 1; i++) {
-          const a = j * gx + i;
-          const b = a + 1;
-          const cc = a + gx;
-          const d = cc + 1;
-          index[n++] = a;
-          index[n++] = cc;
-          index[n++] = b;
-          index[n++] = b;
-          index[n++] = cc;
-          index[n++] = d;
+    if (fresh) {
+      for (const c of this.chunks) {
+        this.ground.remove(c.mesh);
+        c.mesh.geometry.dispose();
+      }
+      this.chunks = [];
+      this.attrs = [
+        new BufferAttribute(this.pos, 3),
+        new BufferAttribute(this.nor, 3),
+        new BufferAttribute(this.col, 3),
+        new BufferAttribute(this.msk, 4),
+      ];
+      const names = ['position', 'normal', 'color', 'aMask'];
+      const CH = 96;
+      for (let cj = 0; cj < gz - 1; cj += CH) {
+        for (let ci = 0; ci < gx - 1; ci += CH) {
+          const ci1 = Math.min(gx - 1, ci + CH);
+          const cj1 = Math.min(gz - 1, cj + CH);
+          const index = new Uint32Array((ci1 - ci) * (cj1 - cj) * 6);
+          let n = 0;
+          for (let j = cj; j < cj1; j++) {
+            for (let i = ci; i < ci1; i++) {
+              const a = j * gx + i;
+              const b = a + 1;
+              const cc = a + gx;
+              const d = cc + 1;
+              index[n++] = a;
+              index[n++] = cc;
+              index[n++] = b;
+              index[n++] = b;
+              index[n++] = cc;
+              index[n++] = d;
+            }
+          }
+          const g = new BufferGeometry();
+          g.setIndex(new BufferAttribute(index, 1));
+          names.forEach((k, q) => g.setAttribute(k, this.attrs[q]));
+          const mesh = new Mesh(g, this.terrainMat);
+          mesh.receiveShadow = true;
+          mesh.castShadow = true;
+          this.ground.add(mesh);
+          this.chunks.push({ mesh, i0: ci, i1: ci1, j0: cj, j1: cj1 });
         }
       }
-      this.geo = new BufferGeometry();
-      this.geo.setIndex(new BufferAttribute(index, 1));
-    }
-    const g = this.geo;
-    if (fresh) {
-      g.setAttribute('position', new BufferAttribute(this.pos, 3));
-      g.setAttribute('normal', new BufferAttribute(this.nor, 3));
-      g.setAttribute('color', new BufferAttribute(this.col, 3));
-      g.setAttribute('aMask', new BufferAttribute(this.msk, 4));
+      if (!this.ground.parent) this.scene.add(this.ground);
+      this.built = true;
     } else {
-      for (const k of ['position', 'normal', 'color', 'aMask']) g.attributes[k].needsUpdate = true;
+      // only the rows that were recomputed need to travel to the GPU
+      const rows = Math.min(gz - 1, j1 + 1) - Math.max(0, j0 - 1) + 1;
+      const first = Math.max(0, j0 - 1);
+      for (const at of this.attrs) at.addUpdateRange(first * gx * at.itemSize, rows * gx * at.itemSize);
+      for (const at of this.attrs) at.needsUpdate = true;
     }
-    g.computeBoundingSphere();
-    g.computeBoundingBox();
-    if (!this.mesh) {
-      this.mesh = new Mesh(g, this.terrainMat);
-      this.mesh.receiveShadow = true;
-      this.mesh.castShadow = true;
-      this.mesh.frustumCulled = false;
-      this.scene.add(this.mesh);
-    }
+    this.updateChunkBounds();
 
     // water depth map on the same grid
     if (fresh) {
@@ -474,6 +496,32 @@ export class Terrain {
     this.water.position.set(this.x0 + (this.extX + MARGIN * 2) / 2, 0.004, this.z0 + (this.extZ + MARGIN * 2) / 2);
     this.decalSig = '';
     this.fogSig = '';
+  }
+
+  private box = new Box3();
+  private updateChunkBounds(): void {
+    const gx = this.gx;
+    const pos = this.pos;
+    for (const c of this.chunks) {
+      let mnx = 1e9, mny = 1e9, mnz = 1e9, mxx = -1e9, mxy = -1e9, mxz = -1e9;
+      for (let j = c.j0; j <= c.j1; j++) {
+        for (let i = c.i0; i <= c.i1; i++) {
+          const k = (j * gx + i) * 3;
+          const x = pos[k], y = pos[k + 1], z = pos[k + 2];
+          if (x < mnx) mnx = x;
+          if (x > mxx) mxx = x;
+          if (y < mny) mny = y;
+          if (y > mxy) mxy = y;
+          if (z < mnz) mnz = z;
+          if (z > mxz) mxz = z;
+        }
+      }
+      const g = c.mesh.geometry;
+      this.box.min.set(mnx, mny, mnz);
+      this.box.max.set(mxx, mxy, mxz);
+      g.boundingBox = (g.boundingBox ?? new Box3()).copy(this.box);
+      g.boundingSphere = this.box.getBoundingSphere(g.boundingSphere ?? new Sphere());
+    }
   }
 
   private fillVertices(view: GameView, i0: number, i1: number, j0: number, j1: number): void {

@@ -221,4 +221,34 @@ describe('persistence', () => {
     port = savedPort;
     rmSync(dir, { recursive: true, force: true });
   });
+
+  it('only sends a view to players whose picture of the world changed', async () => {
+    const { a, b } = await twoPlayerGame();
+    const viewsOf = (c: Client) => c.msgs.filter((m) => m.t === 'view').length;
+    const bBefore = viewsOf(b);
+    const aBefore = viewsOf(a);
+    // Alice puts a unit to sleep: her own view changes, Bob's picture of the world does not
+    const settler = a.view!.units.find((u) => u.type === 'settler')!;
+    await a.cmd({ t: 'order', unit: settler.id, order: 'sleep' });
+    await a.until(() => viewsOf(a) > aBefore);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(viewsOf(b)).toBe(bBefore);
+    // a command that changes nothing for anyone sends nothing
+    const aAfter = viewsOf(a);
+    await a.cmd({ t: 'unend' });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(viewsOf(a)).toBe(aAfter);
+    expect(viewsOf(b)).toBe(bBefore);
+    // a returning player always gets a full view
+    const token = b.room!.you.token;
+    const code = b.room!.code;
+    b.ws.close();
+    const b2 = new Client();
+    await b2.open();
+    b2.send({ t: 'join', code, name: 'Bob', token });
+    await b2.until(() => !!b2.view);
+    expect(b2.view!.units.length).toBeGreaterThan(0);
+    a.ws.close();
+    b2.ws.close();
+  });
 });

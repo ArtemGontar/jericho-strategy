@@ -546,6 +546,16 @@ const unitMatCache = new Map<string, MeshStandardMaterial>();
 
 const protos = new Map<UnitTypeId, Rig>();
 
+/**
+ * Release what the shared figures hold on the GPU. Their geometry outlives any one renderer, and three keeps each
+ * buffer in a WeakMap keyed by that geometry, so without this the first renderer's canvas, context and everything its
+ * listeners reach would stay in memory for as long as the page lives.
+ */
+export function releaseSharedFigures(): void {
+  for (const r of protos.values()) r.root.traverse((o) => { (o as Mesh).geometry?.dispose(); });
+  for (const m of unitMatCache.values()) m.dispose();
+}
+
 function protoRig(type: UnitTypeId): Rig {
   let proto = protos.get(type);
   if (proto) return proto;

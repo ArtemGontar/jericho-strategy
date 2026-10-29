@@ -3,7 +3,7 @@ import type { TechDef } from '../../shared/data';
 import type { GameScreen } from '../gamescreen';
 import { LEVELS, getLevel, isMuted, setLevel, setMuted, sfx } from '../audio';
 import { animSpeed, setAnimSpeed, type AnimSpeed } from '../anim';
-import { GRAPHICS_LABEL, graphicsPref, setGraphicsPref, type Graphics } from '../gl/glrenderer';
+import { GRAPHICS_LABEL, graphicsPref, setGraphicsPref, type Graphics } from '../gl/prefs';
 import { icon } from '../icons';
 import { askConfirm, btn, clear, h, put, turnsLeft } from './dom';
 import { currentEra, emblem } from './hud';

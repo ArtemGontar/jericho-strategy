@@ -11,26 +11,19 @@ import { Particles, Projectiles } from './fx';
 import { Overlay } from './overlay';
 import { tileXZ } from './terrain';
 import { Sky } from './sky';
+import { releaseSharedFigures } from './models';
+import { releaseSharedMaterials } from './geo';
+import { PITCH, glSupported, graphicsPref } from './prefs';
 
 const HEX = 48;
-export const PITCH = 52;
 
-export type Graphics = 'auto' | 'high' | 'medium' | 'low' | 'flat';
-export const GRAPHICS_LABEL: Record<Graphics, string> = { auto: 'Automatic', high: 'High', medium: 'Medium', low: 'Low', flat: 'Flat 2D' };
-export function graphicsPref(): Graphics {
-  try {
-    const v = localStorage.getItem('jericho.gfx');
-    if (v === 'high' || v === 'medium' || v === 'low' || v === 'flat') return v;
-  } catch { /* ignore */ }
-  return 'auto';
-}
-export function setGraphicsPref(g: Graphics): void {
-  try { localStorage.setItem('jericho.gfx', g); } catch { /* ignore */ }
-}
+export { GRAPHICS_LABEL, graphicsPref, setGraphicsPref, type Graphics } from './prefs';
 
 /** The 3D map: a tilted orthographic view of lit, shadowed terrain, with the 2D overlay drawn on top. */
 export class GLRenderer implements MapDrawer {
   readonly continuous = true;
+  /** With nothing but water and foliage moving, 30 frames a second look the same as 60 and cost half. */
+  readonly idleMs = 30;
   readonly gl: WebGLRenderer;
   readonly scene = new Scene();
   readonly camera = new OrthographicCamera(-10, 10, 10, -10, 1, 600);
@@ -50,22 +43,7 @@ export class GLRenderer implements MapDrawer {
 
   /** WebGL2 present, not switched off, and not a software rasteriser (which would crawl). `?gl` forces it on. */
   static supported(): boolean {
-    try {
-      const q = new URLSearchParams(location.search);
-      if (q.has('flat') || localStorage.getItem('jericho.flat') === '1' || graphicsPref() === 'flat') return false;
-      const c = document.createElement('canvas');
-      const gl = c.getContext('webgl2') as WebGL2RenderingContext | null;
-      if (!gl) return false;
-      if (!q.has('gl') && localStorage.getItem('jericho.gl') !== '1' && graphicsPref() === 'auto') {
-        const ext = gl.getExtension('WEBGL_debug_renderer_info');
-        const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : '';
-        if (/swiftshader|llvmpipe|software|softpipe/i.test(name)) return false;
-      }
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
-      return true;
-    } catch {
-      return false;
-    }
+    return glSupported();
   }
 
   /** 2 = full effects, 1 = no shadows, 0 = also lower resolution. Drops by itself when frames take too long. */
@@ -125,12 +103,14 @@ export class GLRenderer implements MapDrawer {
   }
 
   constructor(public glCanvas: HTMLCanvasElement, public canvas: HTMLCanvasElement, public cam: Camera, public anim: Animator) {
-    this.gl = new WebGLRenderer({ canvas: glCanvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+    this.gl = new WebGLRenderer({ canvas: glCanvas, antialias: (window.devicePixelRatio || 1) < 1.75, alpha: false, powerPreference: 'high-performance' });
     this.gl.setClearColor(new Color(0x0a1120));
     this.gl.toneMapping = ACESFilmicToneMapping;
     this.gl.toneMappingExposure = 1.05;
     this.gl.shadowMap.enabled = true;
     this.gl.shadowMap.type = PCFSoftShadowMap;
+    // the shadow map is refreshed on demand (see refreshShadows), not on every frame
+    this.gl.shadowMap.autoUpdate = false;
     cam.setPitch(PITCH);
     const pref = graphicsPref();
     if (pref !== 'auto') {
@@ -181,8 +161,27 @@ export class GLRenderer implements MapDrawer {
 
   dispose(): void {
     this.units.dispose_all();
+    releaseSharedFigures();
+    releaseSharedMaterials();
     this.gl.dispose();
     this.gl.forceContextLoss();
+  }
+
+  private shadowAt = -1e9;
+  private shadowKey = '';
+
+  /**
+   * Drawing the shadow map costs as much as drawing the scene. It has to keep up while the view or any figure moves, but
+   * when only idle animation is running, 15 refreshes a second are indistinguishable from 60.
+   */
+  private refreshShadows(now: number): void {
+    const key = `${this.target.x.toFixed(2)}:${this.target.z.toFixed(2)}:${this.cam.zoom.toFixed(3)}:${this.cam.w}:${this.quality}:${this.sunDir.x.toFixed(3)}`;
+    const busy = this.units.motion || this.projectiles.active;
+    if (key !== this.shadowKey || busy || now - this.shadowAt > 66) {
+      this.shadowKey = key;
+      this.shadowAt = now;
+      this.gl.shadowMap.needsUpdate = true;
+    }
   }
 
   private syncCamera(): void {
@@ -245,6 +244,7 @@ export class GLRenderer implements MapDrawer {
     this.terrain.setTime(t);
     this.sky.update(t, Math.min(0.1, (st.now - (this.lastNow || st.now)) / 1000), this.terrain.extX, this.cam.zoom, this.terrain.extZ, (x, z) => this.terrain.fogAt(x, z));
     this.syncCamera();
+    this.refreshShadows(st.now);
     this.gl.render(this.scene, this.camera);
     const ctx = this.canvas.getContext('2d')!;
     const dpr = this.canvas.width / this.cam.w;

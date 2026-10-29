@@ -67,6 +67,8 @@ interface Member {
   slot: number;
   token: string;
   ws: WebSocket | null;
+  /** The last view sent (timer left out), so a command that changed nothing for this player sends nothing. */
+  lastView?: string;
 }
 
 class Room {
@@ -113,10 +115,17 @@ class Room {
 
   sendViews(events: ReturnType<Game['events']['slice']> = []): void {
     if (!this.game) return;
+    const left = this.timerEnds ? Math.max(0, this.timerEnds - Date.now()) : 0;
     for (const m of this.members) {
       const pid = this.playerIndexOf(m.slot);
-      if (pid < 0) continue;
-      this.send(m.ws, { t: 'view', view: buildView(this.game, pid, this.timerEnds ? Math.max(0, this.timerEnds - Date.now()) : 0), events: filterEvents(events, pid) });
+      if (pid < 0 || !m.ws || m.ws.readyState !== WebSocket.OPEN) continue;
+      const mine = filterEvents(events, pid);
+      const view = buildView(this.game, pid, 0);
+      const body = JSON.stringify(view);
+      if (!mine.length && body === m.lastView) continue;
+      m.lastView = body;
+      if (left > 0) view.timerEnds = left;
+      m.ws.send(`{"t":"view","view":${left > 0 ? JSON.stringify(view) : body},"events":${JSON.stringify(mine)}}`);
     }
   }
 
@@ -289,6 +298,7 @@ wss.on('connection', (ws, req) => {
     member = m;
     if (m.ws && m.ws !== ws) try { m.ws.close(4000, 'replaced'); } catch { /* ignore */ }
     m.ws = ws;
+    m.lastView = undefined;
     r.slots[m.slot].connected = true;
     if (r.game) {
       const pid = r.playerIndexOf(m.slot);
@@ -534,7 +544,11 @@ export function startServer(opts: ServerOptions = {}): Promise<{ port: number; c
   abuse.clear();
   rooms = new Map();
   const server = createServer(serveStatic);
-  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
+  const wss = new WebSocketServer({
+    server, path: '/ws', maxPayload: 16 * 1024,
+    // views are large, repetitive JSON: compress them, without keeping a zlib window per connection
+    perMessageDeflate: { threshold: 1024, serverNoContextTakeover: true, clientNoContextTakeover: true, zlibDeflateOptions: { level: 3 }, concurrencyLimit: 8 },
+  });
   wss.on('error', (e) => console.error('websocket server error', e));
   server.on('clientError', (_e, socket) => socket.destroy());
   attachSockets(wss);

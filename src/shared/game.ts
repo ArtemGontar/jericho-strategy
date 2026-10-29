@@ -1,4 +1,4 @@
-import { hexDistance, neighborsOf, tilesWithin, type Pos } from './hex';
+import { rangeOffsets, hexDistance, neighborsOf, tilesWithin, type Pos } from './hex';
 import { Rng } from './rng';
 import { generateMap } from './mapgen';
 import {
@@ -375,24 +375,24 @@ export class Game {
   updateVisibility(): void {
     const w = this.width;
     const h = this.height;
-    for (const t of this.s.tiles) t.visible = 0;
+    const tiles = this.s.tiles;
+    for (const t of tiles) t.visible = 0;
+    const reveal = (x: number, y: number, r: number, bit: number) => {
+      const off = rangeOffsets(y, r);
+      for (let i = 0; i < off.length; i += 2) {
+        const nx = x + off[i];
+        const ny = y + off[i + 1];
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const t = tiles[ny * w + nx];
+        t.visible |= bit;
+        t.explored |= bit;
+      }
+    };
     for (const u of this.s.units) {
       const r = UNITS[u.type].vision + (this.s.players[u.owner].policies.includes('exploration') ? 1 : 0);
-      const bit = 1 << u.owner;
-      for (const p of tilesWithin(u.x, u.y, r, w, h)) {
-        const t = this.s.tiles[p.y * w + p.x];
-        t.visible |= bit;
-        t.explored |= bit;
-      }
+      reveal(u.x, u.y, r, 1 << u.owner);
     }
-    for (const c of this.s.cities) {
-      const bit = 1 << c.owner;
-      for (const p of tilesWithin(c.x, c.y, c.radius + 1, w, h)) {
-        const t = this.s.tiles[p.y * w + p.x];
-        t.visible |= bit;
-        t.explored |= bit;
-      }
-    }
+    for (const c of this.s.cities) reveal(c.x, c.y, c.radius + 1, 1 << c.owner);
     // first contact
     const check = (owner: number, x: number, y: number) => {
       const mask = this.tile(x, y).visible & ~(1 << owner);

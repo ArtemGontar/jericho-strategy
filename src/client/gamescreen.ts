@@ -7,7 +7,7 @@ import type { AttackPreview } from '../shared/combat';
 import type { WorkKind } from '../shared/types';
 import { Animator } from './anim';
 import { Camera, MapRenderer, civColor, type MapDrawer, type RenderState } from './render';
-import { GLRenderer } from './gl/glrenderer';
+import { PITCH, glSupported } from './gl/prefs';
 import { renderGuide } from './ui/guide';
 import { HEX, HEX_W } from './sprites';
 import { sfx, isMuted, setMuted } from './audio';
@@ -52,6 +52,7 @@ export class GameScreen {
   showYields = false;
   showGrid = false;
   private lastAmbient = 0;
+  private lastDrawAt = 0;
   private drawFailures = 0;
   busy = false;
   noteHistory: Array<{ id: number; turn: number; text: string; kind: string; at?: Pos }> = [];
@@ -107,14 +108,19 @@ export class GameScreen {
     this.drawer = h('div', { class: 'drawer hidden' });
     this.tooltip = h('div', { class: 'tooltip hidden' });
     this.connBanner = h('div', { class: 'conn hidden' }, 'Reconnecting…');
-    const useGL = GLRenderer.supported();
+    const useGL = glSupported();
     if (useGL) this.glCanvas = h('canvas', { class: 'mapgl' });
     this.root.append(
       ...(this.glCanvas ? [this.glCanvas] : []), this.canvas, this.topbar, this.medallions, this.notes, this.tileinfo,
       h('div', { class: 'mapdock' }, h('div', { class: 'minimap-wrap' }, this.mini), this.lenses),
       this.unitbar, this.turncontrol, this.guide, this.drawer, this.tooltip, this.connBanner);
     parent.append(this.root);
-    this.renderer = this.glCanvas ? new GLRenderer(this.glCanvas, this.canvas, this.cam, this.anim) : new MapRenderer(this.canvas, this.cam, this.anim);
+    // the 3D renderer (and three.js with it) is a separate download: the map stays blank for the instant it takes to arrive
+    this.renderer = this.glCanvas ? { resize() {}, draw() {} } : new MapRenderer(this.canvas, this.cam, this.anim);
+    if (this.glCanvas) {
+      this.cam.setPitch(PITCH);
+      this.loadGL(this.glCanvas);
+    }
 
     transport.onView = (v, ev) => this.onView(v, ev);
     transport.onStatus = (ok) => this.connBanner.classList.toggle('hidden', ok);
@@ -368,8 +374,10 @@ export class GameScreen {
     }
     const animating = this.anim.update(now, sfx);
     const selected = this.selUnit || this.attackTargets.size > 0;
-    const ambient = (this.renderer.continuous || now - this.lastAmbient > 48) && !document.hidden;
+    const ambient = (this.renderer.continuous ? now - this.lastAmbient > (this.renderer.idleMs ?? 0) : now - this.lastAmbient > 48) && !document.hidden;
     if (!this.dirty && !animating && !selected && !ambient) return;
+    if (now - this.lastDrawAt < 12) return; // a 144 Hz screen does not need 144 maps a second
+    this.lastDrawAt = now;
     if (ambient) this.lastAmbient = now;
     this.dirty = false;
     const city = this.openCity;
@@ -398,6 +406,18 @@ export class GameScreen {
       if (++this.drawFailures >= 3 && this.glCanvas) this.fallBackToFlat();
     }
     this.drawMinimap();
+  }
+
+  private loadGL(canvas: HTMLCanvasElement): void {
+    import('./gl/glrenderer').then(({ GLRenderer }) => {
+      if (!this.root.isConnected || this.glCanvas !== canvas) return;
+      this.renderer = new GLRenderer(canvas, this.canvas, this.cam, this.anim);
+      this.renderer.resize();
+      this.dirty = true;
+    }).catch((e) => {
+      console.error('3D renderer failed to load', e);
+      if (this.glCanvas === canvas) this.fallBackToFlat();
+    });
   }
 
   private fallBackToFlat(): void {
