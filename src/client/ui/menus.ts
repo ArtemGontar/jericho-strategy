@@ -7,6 +7,8 @@ import type { RoomInfo, RoomSettings, RoomSlot } from '../../shared/protocol';
 import { Animator } from '../anim';
 import { Camera, MapRenderer } from '../render';
 import { glSupported } from '../gl/prefs';
+import { icon } from '../icons';
+import { isMuted, setMuted } from '../audio';
 import { btn, clear, h, put } from './dom';
 import { emblem } from './hud';
 import type { RemoteTransport } from '../transport';
@@ -147,8 +149,27 @@ export function screen(withBackdrop = true): { el: HTMLElement; content: HTMLEle
     el.append(c);
     setTimeout(() => paintBackdrop(c), 30);
   }
-  el.append(content);
+  el.append(content, soundToggle());
   return { el, content };
+}
+
+/** Round button in the corner of every menu screen that mutes or restores all sound. */
+function soundToggle(): HTMLButtonElement {
+  const b = h('button', { class: 'round sound-toggle', type: 'button' });
+  const draw = () => {
+    const on = !isMuted();
+    b.title = on ? 'Sound on' : 'Sound off';
+    b.setAttribute('aria-label', b.title);
+    b.setAttribute('aria-pressed', String(on));
+    clear(b);
+    b.append(icon(on ? 'sound' : 'mute', 20));
+  };
+  b.addEventListener('click', () => {
+    setMuted(!isMuted());
+    draw();
+  });
+  draw();
+  return b;
 }
 
 /** Joined button group where exactly one option is active. */
@@ -224,13 +245,67 @@ export function titleScreen(hd: TitleHandlers): HTMLElement {
 }
 
 // ------------------------------------------------------------------ setup (solo / hot-seat)
+/** Horizontal, snap-scrolling picker of large civilisation cards; the first card is "Random". */
+function civCarousel(onPick: (civ: string | null) => void): HTMLElement {
+  const options: Array<{ id: string | null; card: HTMLButtonElement }> = [];
+  const track = h('div', { class: 'civ-track', role: 'radiogroup', 'aria-label': 'Civilisation' });
+  const add = (id: string | null, face: HTMLElement, name: string, leader: string, bonus: string, color: string) => {
+    const card = h('button', { class: 'civ-card', type: 'button', role: 'radio', style: `--civ:${color}` }, face, h('b', null, name), h('em', null, leader), h('small', null, bonus));
+    card.addEventListener('click', () => pick(options.findIndex((o) => o.id === id)));
+    track.append(card);
+    options.push({ id, card });
+  };
+  add(null, h('span', { class: 'emblem', style: { width: '88px', height: '88px', background: '#3a4556', color: '#e9e1cc', fontSize: '40px' } }, '?'), 'Random', 'Let fate decide', 'Any civilisation, drawn at the start', '#8f9aab');
+  for (const c of CIVS) add(c.id, emblem(c.id, 88), c.name, c.leader, c.bonus, c.color);
+
+  const centre = (i: number, smooth: boolean) => {
+    const c = options[i].card;
+    track.scrollTo({ left: c.offsetLeft - (track.clientWidth - c.offsetWidth) / 2, behavior: smooth ? 'smooth' : 'auto' });
+  };
+  let at = 0;
+  const pick = (i: number, smooth = true) => {
+    at = Math.min(options.length - 1, Math.max(0, i));
+    options.forEach((o, k) => {
+      o.card.classList.toggle('on', k === at);
+      o.card.setAttribute('aria-checked', String(k === at));
+      o.card.tabIndex = k === at ? 0 : -1;
+    });
+    centre(at, smooth);
+    onPick(options[at].id);
+  };
+  const step = (d: number) => {
+    pick(at + d);
+    options[at].card.focus({ preventScroll: true });
+  };
+  track.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    step(e.key === 'ArrowRight' ? 1 : -1);
+    e.preventDefault();
+  });
+  const arrow = (dir: -1 | 1) => {
+    const label = dir < 0 ? 'Previous civilisation' : 'Next civilisation';
+    const b = h('button', { class: `round civ-arrow ${dir < 0 ? 'prev' : 'next'}`, type: 'button', title: label, 'aria-label': label }, icon('chevron', 20));
+    b.addEventListener('click', () => step(dir));
+    return b;
+  };
+  pick(0, false);
+  // the first centring needs the laid-out widths, so it repeats once the screen is in the page
+  requestAnimationFrame(() => centre(at, false));
+  return h('div', { class: 'civ-carousel' }, arrow(-1), track, arrow(1));
+}
+
 export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) => void, onBack: () => void): HTMLElement {
   const { el, content } = screen();
   let civ: string | null = null;
   const nameIn = h('input', { value: savedName(), placeholder: 'Your name', maxLength: 20 });
   const opp = h('input', { type: 'range', min: '1', max: mode === 'solo' ? '7' : '6', value: mode === 'solo' ? '3' : '1' });
-  const oppLabel = h('b', { class: 'num' }, opp.value);
-  opp.addEventListener('input', () => { oppLabel.textContent = opp.value; });
+  const oppLabel = h('b', { class: 'num range-val' }, opp.value);
+  const fillRange = () => {
+    oppLabel.textContent = opp.value;
+    opp.style.setProperty('--p', `${((Number(opp.value) - Number(opp.min)) / (Number(opp.max) - Number(opp.min))) * 100}%`);
+  };
+  opp.addEventListener('input', fillRange);
+  fillRange();
   const level = segmented<AiLevel>([['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']], 'normal');
   const speed = segmented<'standard' | 'quick'>([['standard', 'Standard · 200'], ['quick', 'Quick · 120']], 'standard');
   const stance = segmented<'peace' | 'war'>([['peace', 'Peace'], ['war', 'War']], 'peace');
@@ -241,24 +316,30 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
   const seed = h('input', { placeholder: 'Random', inputMode: 'numeric' });
   const friendCount = h('select', null, h('option', { value: '1' }, '2 humans'), h('option', { value: '2' }, '3 humans'), h('option', { value: '3' }, '4 humans'));
   const friendInputs = [1, 2, 3].map((i) => h('input', { placeholder: `Player ${i + 1} name`, maxLength: 20 }));
-  const friendsBox = h('div', { style: { display: 'grid', gap: '2px' } }, ...friendInputs);
-  const syncFriends = () => friendInputs.forEach((f, i) => f.classList.toggle('hidden', i >= Number(friendCount.value)));
-  friendCount.addEventListener('change', syncFriends);
-  syncFriends();
+  const friendFields = friendInputs.map((f, i) => field(`Player ${i + 2}`, f));
 
-  const civList = h('div', { class: 'civ-list' });
-  const draw = () => {
-    clear(civList);
-    const rand = h('button', { class: `civ-row ${civ === null ? 'on' : ''}`, type: 'button' }, h('span', { class: 'emblem', style: { width: '34px', height: '34px', background: '#3a4556', color: '#e9e1cc' } }, '?'), h('div', null, h('b', null, 'Random'), h('small', null, 'Let fate decide')));
-    rand.addEventListener('click', () => { civ = null; draw(); });
-    civList.append(rand);
-    for (const c of CIVS) {
-      const row = h('button', { class: `civ-row ${civ === c.id ? 'on' : ''}`, type: 'button', style: `--civ:${c.color}` }, emblem(c.id, 34), h('div', null, h('b', null, c.name), h('small', null, `${c.leader} · ${c.bonus}`)));
-      row.addEventListener('click', () => { civ = c.id; draw(); });
-      civList.append(row);
-    }
+  const fields = [
+    field(mode === 'solo' ? 'Name' : 'Player 1', nameIn),
+    ...(mode === 'hotseat' ? [field('Humans', friendCount), ...friendFields] : []),
+    field('Opponents', h('span', { class: 'range' }, opp, oppLabel)),
+    field('Difficulty', level.el),
+    field('Computers', aggr.el),
+    field('Map', size),
+    field('Land', land.el),
+    field('Speed', speed.el),
+    field('Diplomacy', stance.el),
+    field('Victory', victories.el),
+    field('Seed', seed),
+  ];
+  // two even columns: when the visible count is odd the last setting spans both, so no cell is left empty
+  const layout = () => {
+    friendFields.forEach((f, i) => f.classList.toggle('hidden', i >= Number(friendCount.value)));
+    const shown = fields.filter((f) => !f.classList.contains('hidden'));
+    fields.forEach((f) => f.classList.remove('wide'));
+    if (shown.length % 2) shown[shown.length - 1].classList.add('wide');
   };
-  draw();
+  friendCount.addEventListener('change', layout);
+  layout();
 
   const start = () => {
     const name = nameIn.value.trim() || 'Player';
@@ -272,29 +353,13 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
     });
   };
 
-  const sheetEl = h('div', { class: 'sheet' },
+  put(content, h('div', { class: 'sheet setup' },
     h('header', null, h('h2', null, mode === 'solo' ? 'New game' : 'Hot-seat game')),
     h('hr', { class: 'rule' }),
     h('div', { class: 'body' },
-      h('div', { class: 'cols' },
-        h('div', null, h('div', { class: 'eyebrow', style: { padding: '4px 0 8px' } }, mode === 'solo' ? 'Choose your civilisation' : 'Player 1’s civilisation'), civList),
-        h('div', null,
-          h('div', { class: 'eyebrow', style: { padding: '4px 0 2px' } }, 'Players'),
-          field(mode === 'solo' ? 'Name' : 'Player 1', nameIn),
-          mode === 'hotseat' ? field('Humans', friendCount) : null,
-          mode === 'hotseat' ? field('Names', friendsBox) : null,
-          field('Opponents', h('span', { style: { display: 'flex', gap: '12px', alignItems: 'center' } }, opp, oppLabel)),
-          field('Difficulty', level.el),
-          h('div', { class: 'eyebrow', style: { padding: '18px 0 2px' } }, 'World'),
-          field('Map', size),
-          field('Land', land.el),
-          field('Speed', speed.el),
-          field('Diplomacy', stance.el),
-          field('Computers', aggr.el),
-          field('Victory', victories.el),
-          field('Seed', seed)))),
-    h('footer', null, btn('Back', onBack), h('span', { style: { flex: '1' } }), btn('Begin', start, 'primary big')));
-  put(content, sheetEl);
+      h('section', null, h('div', { class: 'eyebrow' }, mode === 'solo' ? 'Choose your civilisation' : 'Player 1’s civilisation'), civCarousel((id) => { civ = id; })),
+      h('section', null, h('div', { class: 'eyebrow' }, 'Settings'), h('div', { class: 'setup-grid' }, ...fields))),
+    h('footer', null, btn('Back', onBack, 'big'), btn('Begin', start, 'primary big'))));
   return el;
 }
 
