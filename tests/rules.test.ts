@@ -242,3 +242,11 @@ describe('exploration, promotion, policies and upgrades', () => {
     expect(g.players[0].gold).toBeLessThan(1000);
   });
 });
+
+describe('movement regressions', () => {
+  it('a settler is not stranded behind its own worker (seed 1005)', () => {
+    const game = Game.create({ seed: 1005, players: Array.from({ length: 4 }, (_, i) => ({ name: `AI${i}`, ai: true, aiLevel: 'normal' as const })), turnLimit: 200 });
+    for (let t = 0; t < 12; t++) game.processTurn();
+    for (const p of game.players) expect(game.playerCities(p.id).length, `${p.name} founded a city`).toBeGreaterThan(0);
+  });
+});

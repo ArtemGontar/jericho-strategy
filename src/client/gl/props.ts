@@ -101,7 +101,8 @@ export class Props {
     this.fishes = [];
   }
 
-  update(view: GameView, cityKeys: Set<number>): void {
+  /** A cheap fingerprint of everything the props are placed from. */
+  signature(view: GameView, cityKeys: Set<number>): string {
     const W = view.settings.width;
     const H = view.settings.height;
     let acc = 0;
@@ -109,7 +110,16 @@ export class Props {
       acc = (Math.imul(acc, 31) + (view.state[i] > 0 ? 1 : 0) + view.terrain[i] * 5 + view.resource[i] * 17 + view.improvement[i] * 29 + view.hut[i] * 41) | 0;
     }
     for (const k of cityKeys) acc = (Math.imul(acc, 19) + k) | 0;
-    const sig = `${W}:${acc}:${this.terrain.gx}`;
+    return `${W}:${acc}:${this.terrain.gx}`;
+  }
+
+  get currentSig(): string {
+    return this.sig;
+  }
+
+  update(view: GameView, cityKeys: Set<number>, sig = this.signature(view, cityKeys)): void {
+    const W = view.settings.width;
+    const H = view.settings.height;
     if (sig === this.sig) return;
     this.sig = sig;
     this.clear();

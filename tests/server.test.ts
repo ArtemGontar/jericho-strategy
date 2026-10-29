@@ -151,6 +151,39 @@ describe('multiplayer server', () => {
   });
 });
 
+describe('hostile input', () => {
+  it('survives a malformed address', async () => {
+    const res = await fetch(`http://localhost:${port}/%E0%A4%A`);
+    expect(res.status).toBe(400);
+    const health = await fetch(`http://localhost:${port}/healthz`);
+    expect(await health.text()).toBe('ok');
+  });
+
+  it('survives an oversized websocket frame and keeps serving others', async () => {
+    const bad = new WebSocket(`ws://localhost:${port}/ws`);
+    await new Promise((r) => bad.on('open', r));
+    const closed = new Promise((r) => bad.on('close', r));
+    bad.send('x'.repeat(40000));
+    await closed;
+    const good = new Client();
+    await good.open();
+    good.send({ t: 'create', name: 'Fine' });
+    await good.until(() => !!good.room);
+    expect(good.room?.code).toHaveLength(4);
+  });
+
+  it('answers garbage and wrongly typed messages without crashing', async () => {
+    const c = new Client();
+    await c.open();
+    c.ws.send('not json');
+    c.ws.send('null');
+    c.ws.send(JSON.stringify({ t: 'join', code: 12 }));
+    c.ws.send(JSON.stringify({ t: 'create', name: { a: 1 } }));
+    c.send({ t: 'ping' });
+    await c.until(() => c.msgs.some((m) => m.t === 'pong'));
+  });
+});
+
 describe('persistence', () => {
   it('restores running games after a server restart', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'jericho-'));

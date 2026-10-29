@@ -61,7 +61,8 @@ interface Node {
  * A* over move-point costs. Returns the list of steps (excluding the start) or null.
  * Only tiles the player has explored may be planned through (stops path-finding from leaking fog).
  */
-export function findPath(game: Game, unit: Unit, to: Pos, opts: { maxCost?: number } = {}): Pos[] | null {
+/** `avoid` lists tile indices (y * width + x) the route must not step on, e.g. a friendly unit that blocks the way. */
+export function findPath(game: Game, unit: Unit, to: Pos, opts: { maxCost?: number; avoid?: Set<number> } = {}): Pos[] | null {
   const w = game.width;
   const h = game.height;
   if (unit.x === to.x && unit.y === to.y) return [];
@@ -94,6 +95,7 @@ export function findPath(game: Game, unit: Unit, to: Pos, opts: { maxCost?: numb
       const t = game.tile(nb.x, nb.y);
       if (!(t.explored & bit)) continue;
       const isGoal = nb.x === to.x && nb.y === to.y;
+      if (opts.avoid?.has(nb.y * w + nb.x) && !isGoal) continue;
       if (tileBlockedFor(game, unit, nb.x, nb.y, isGoal)) continue;
       // cost: use real movement cost, but add a small constant so shorter step counts win ties
       let c = stepCost(game, unit, cur.x, cur.y, nb.x, nb.y);

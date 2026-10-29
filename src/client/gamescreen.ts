@@ -48,6 +48,7 @@ export class GameScreen {
   showYields = false;
   showGrid = false;
   private lastAmbient = 0;
+  private drawFailures = 0;
   busy = false;
   noteHistory: Array<{ id: number; turn: number; text: string; kind: string; at?: Pos }> = [];
   private lastNoteId = -1;
@@ -345,8 +346,27 @@ export class GameScreen {
       lockedTiles: city?.locked ? new Set(city.locked) : null,
       now,
     };
-    this.renderer.draw(st);
+    try {
+      this.renderer.draw(st);
+      this.drawFailures = 0;
+    } catch (e) {
+      console.error('map draw failed', e);
+      // a 3D renderer that keeps failing (driver bug, lost context) must not leave the player with a dead map
+      if (++this.drawFailures >= 3 && this.glCanvas) this.fallBackToFlat();
+    }
     this.drawMinimap();
+  }
+
+  private fallBackToFlat(): void {
+    try { this.renderer.dispose?.(); } catch { /* ignore */ }
+    this.glCanvas?.remove();
+    this.glCanvas = null;
+    this.cam.setPitch(90);
+    this.renderer = new MapRenderer(this.canvas, this.cam, this.anim);
+    this.renderer.resize();
+    this.drawFailures = 0;
+    this.dirty = true;
+    this.toast('The 3D map had a problem, so the flat map is shown instead. Pick Graphics in the menu to change it.', 'bad');
   }
 
   private pathToDraw(): Array<Pos & { cost: number }> | null {

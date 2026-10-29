@@ -344,8 +344,12 @@ function runSettler(game: Game, u: Unit): void {
     exec(game, u.owner, { t: 'found', unit: u.id });
     return;
   }
+  const sx = u.x;
+  const sy = u.y;
   exec(game, u.owner, { t: 'move', unit: u.id, to: site });
   if (game.unit(u.id) && u.x === site.x && u.y === site.y && u.mp > 0) exec(game, u.owner, { t: 'found', unit: u.id });
+  // could not get anywhere (boxed in): do not wait forever, found where we stand if that is legal and the first city is still missing
+  else if (game.unit(u.id) && u.x === sx && u.y === sy && u.mp > 0 && game.playerCities(u.owner).length === 0) exec(game, u.owner, { t: 'found', unit: u.id });
 }
 
 // ---------------------------------------------------------------------------------------------

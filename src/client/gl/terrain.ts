@@ -293,16 +293,23 @@ export class Terrain {
   }
 
   /** Re-derive the ground mesh when the known world changed. */
-  setView(view: GameView, cityKeys: Set<number>): boolean {
+  /** A cheap fingerprint of everything the ground mesh is built from. */
+  signature(view: GameView, cityKeys: Set<number>): string {
     const W = view.settings.width;
     const H = view.settings.height;
-    let sig = `${W}x${H}:`;
     let acc = 0;
     for (let i = 0; i < W * H; i++) {
       acc = (Math.imul(acc, 31) + view.terrain[i] * 3 + (view.state[i] > 0 ? 1 : 0) + (view.improvement[i] === 1 ? 7 : 0)) | 0;
     }
     for (const k of cityKeys) acc = (Math.imul(acc, 17) + k) | 0;
-    sig += acc;
+    return `${W}x${H}:${acc}`;
+  }
+
+  get currentSig(): string {
+    return this.sig;
+  }
+
+  setView(view: GameView, cityKeys: Set<number>, sig = this.signature(view, cityKeys)): boolean {
     if (sig === this.sig) return false;
     this.sig = sig;
     this.build(view, cityKeys);

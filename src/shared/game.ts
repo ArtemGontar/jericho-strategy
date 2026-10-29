@@ -501,12 +501,13 @@ export class Game {
     const trail: Pos[] = [];
     const origin = { x: u.x, y: u.y };
     let replans = 0;
+    const avoid = new Set<number>();
     while (u.mp > 0 && u.order && u.order.kind === 'goto') {
       if (u.x === target.x && u.y === target.y) {
         u.order = null;
         break;
       }
-      const path = findPath(this, u, target);
+      const path = findPath(this, u, target, { avoid });
       if (!path || path.length === 0) {
         if (replans++ > 1) { u.order = null; break; }
         u.order = null;
@@ -516,6 +517,11 @@ export class Game {
       if (this.dist(u.x, u.y, step.x, step.y) !== 1) { u.order = null; break; }
       const isDest = step.x === target.x && step.y === target.y;
       if (!this.stepUnit(u, step.x, step.y, isDest)) {
+        // a friendly unit we cannot stop next to (this step would use up our movement): route around it
+        if (!isDest && u.mp > 0 && avoid.size < 4) {
+          avoid.add(step.y * this.width + step.x);
+          continue;
+        }
         u.order = null;
         break;
       }

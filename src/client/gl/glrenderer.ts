@@ -87,6 +87,29 @@ export class GLRenderer implements MapDrawer {
     });
   }
 
+  private pending = new Map<string, { sig: string; since: number; changed: number }>();
+
+  /** True when `sig` differs from what is built and has stopped changing for a moment (or the first build is due). */
+  private settled(key: string, sig: string, built: string, now: number): boolean {
+    if (sig === built) {
+      this.pending.delete(key);
+      return false;
+    }
+    if (!built) return true;
+    const p = this.pending.get(key);
+    if (!p) {
+      this.pending.set(key, { sig, since: now, changed: now });
+      return false;
+    }
+    if (p.sig !== sig) {
+      p.sig = sig;
+      p.changed = now;
+    }
+    const ready = now - p.changed > 220 || now - p.since > 1200;
+    if (ready) this.pending.delete(key);
+    return ready;
+  }
+
   private watchFrameRate(now: number): void {
     if (this.lastNow) {
       const dt = now - this.lastNow;
@@ -203,10 +226,16 @@ export class GLRenderer implements MapDrawer {
     const t = st.now / 1000;
     const cityKeys = new Set<number>();
     for (const c of v.cities) cityKeys.add(c.y * W + c.x);
-    this.terrain.setView(v, cityKeys);
-    this.terrain.updateFog(v);
-    this.terrain.updateDecal(v, (o) => civColor(v, o), cityKeys);
-    this.props.update(v, cityKeys);
+    // rebuilding the ground and its props takes tens of milliseconds, so while the player is still uncovering map
+    // (every step of a scout) wait until the changes settle instead of hitching on each one
+    const tSig = this.terrain.signature(v, cityKeys);
+    const pSig = this.props.signature(v, cityKeys);
+    if (this.settled('terrain', tSig, this.terrain.currentSig, st.now)) this.terrain.setView(v, cityKeys, tSig);
+    if (this.terrain.mesh) {
+      this.terrain.updateFog(v);
+      this.terrain.updateDecal(v, (o) => civColor(v, o), cityKeys);
+      if (this.settled('props', pSig, this.props.currentSig, st.now)) this.props.update(v, cityKeys, pSig);
+    }
     this.props.tick(t);
     this.cities.update(v, st.now);
     this.units.update(st, st.now, cityKeys);

@@ -200,6 +200,16 @@ function loadRooms(): void {
 
 // ----------------------------------------------------------------------------- http
 function serveStatic(req: IncomingMessage, res: ServerResponse): void {
+  try {
+    serveFile(req, res);
+  } catch {
+    // a malformed address (bad percent-encoding, a vanished file) must never take the whole server down
+    if (!res.headersSent) res.writeHead(400, { 'content-type': 'text/plain' });
+    res.end('Bad request');
+  }
+}
+
+function serveFile(req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname === '/healthz') {
     res.writeHead(200, { 'content-type': 'text/plain' });
@@ -432,6 +442,8 @@ wss.on('connection', (ws) => {
     }
   }
 
+  // an oversized or malformed frame makes ws emit 'error'; without a listener that would crash the process
+  ws.on('error', () => ws.terminate());
   ws.on('close', () => {
     clearInterval(refill);
     if (room && member) {
@@ -466,6 +478,8 @@ export function startServer(opts: ServerOptions = {}): Promise<{ port: number; c
   rooms = new Map();
   const server = createServer(serveStatic);
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
+  wss.on('error', (e) => console.error('websocket server error', e));
+  server.on('clientError', (_e, socket) => socket.destroy());
   attachSockets(wss);
   const sweep = setInterval(() => {
     const now = Date.now();
