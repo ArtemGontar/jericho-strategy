@@ -145,7 +145,7 @@ export class Overlay {
       const s = this.tileAt(x, y);
       const left = (until - st.now) / 260;
       hexPath(ctx, s.x, s.y, HEX * z * 0.95);
-      ctx.fillStyle = `rgba(255,255,255,${Math.max(0, Math.min(0.5, left * 0.5))})`;
+      ctx.fillStyle = `rgba(255,255,255,${Math.max(0, Math.min(0.26, left * 0.26))})`;
       ctx.fill();
     }
     for (const rg of this.r.anim.rings) {

@@ -213,7 +213,7 @@ export class Props {
               for (let k = 0; k < 2; k++) rock(0.65, [0.8, 1.4]);
               break;
             case 'mountain':
-              for (let k = 0; k < 3; k++) rock(0.6, [1.0, 2.2]);
+              for (let k = 0; k < 3; k++) rock(0.6, [0.5, 1.2]);
               break;
             default:
           }

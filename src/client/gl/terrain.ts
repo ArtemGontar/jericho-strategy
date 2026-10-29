@@ -24,7 +24,7 @@ export function tileXZf(tx: number, ty: number): [number, number] {
 }
 
 const TERRAIN_H: Record<TerrainId, number> = {
-  ocean: -0.5, coast: -0.17, grass: 0.06, plains: 0.045, desert: 0.03, tundra: 0.06, forest: 0.08, hills: 0.4, mountain: 1.0,
+  ocean: -0.5, coast: -0.17, grass: 0.06, plains: 0.045, desert: 0.03, tundra: 0.06, forest: 0.08, hills: 0.34, mountain: 0.78,
 };
 const TERRAIN_COLOR: Record<TerrainId, string> = {
   ocean: '#1f4d6e', coast: '#d3c18d', grass: '#5f9a35', plains: '#bba85a', desert: '#dcc185', tundra: '#c4cfd1',
@@ -163,13 +163,13 @@ export class Terrain {
             c = mix(c, c * vec3(1.1, 1.06, 0.94), vMask.y * dune * 0.55);
             c = mix(c, c * vec3(0.86, 0.78, 0.64), vMask.y * (1.0 - dune) * 0.35);
             // rock on steep ground
-            float rock = smoothstep(0.2, 0.5, slope + (n2 - 0.5) * 0.35);
-            vec3 rockCol = mix(vec3(0.17, 0.155, 0.14), vec3(0.34, 0.31, 0.27), n2 * 0.7 + n3 * 0.3);
+            float rock = smoothstep(0.1, 0.34, slope + (n2 - 0.5) * 0.3 + vMask.w * 0.12);
+            vec3 rockCol = mix(vec3(0.15, 0.135, 0.12), vec3(0.36, 0.32, 0.27), n2 * 0.7 + n3 * 0.3);
             float strata = sin(wp.y * 38.0 + n1 * 5.0) * 0.5 + 0.5;
             rockCol *= 0.88 + 0.22 * strata;
             c = mix(c, rockCol, rock * clamp(0.25 + vMask.w * 1.1, 0.0, 1.0));
             // snow high up and on the tundra
-            float snowLine = 1.02 + (n1 - 0.5) * 0.35 - slope * 0.9;
+            float snowLine = 1.3 + (n1 - 0.5) * 0.3 - slope * 0.5;
             float snow = smoothstep(snowLine, snowLine + 0.09, wp.y);
             c = mix(c, vec3(0.88, 0.92, 0.98) * (0.94 + 0.08 * n2), snow);
             c = mix(c, vec3(0.62, 0.7, 0.74) * (0.9 + 0.2 * n2), vMask.z * 0.7 * (1.0 - rock));
@@ -520,8 +520,8 @@ export class Terrain {
         const nA = fbm(X * 1.9, Z * 1.9, 3, 3);
         const ridge = 1 - Math.abs(2 * fbm(X * 3.1 + 11, Z * 3.1 + 7, 9, 4) - 1);
         h += (nA - 0.5) * 0.3 * hill * rough;
-        h += (ridge * ridge * 1.05 + (nA - 0.5) * 0.3) * mount * rough;
-        h += mount * mount * 0.3;
+        h += (ridge * ridge * 0.85 + (nA - 0.5) * 0.25) * mount * rough;
+        h += mount * mount * 0.14;
         if (h > -0.02) h += (fbm(X * 5, Z * 5, 21, 2) - 0.5) * 0.035 * rough;
         const k = j * gx + i;
         heights[k] = h;
