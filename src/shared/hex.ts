@@ -54,15 +54,9 @@ function offsetsFor(parity: number, radius: number): Int16Array {
   return t;
 }
 
-/** Calls `fn(x, y)` for every tile within `radius` of (x,y), nearest first, clipped to the map. Allocation-free. */
-export function forTilesWithin(x: number, y: number, radius: number, w: number, h: number, fn: (x: number, y: number) => void): void {
-  const t = offsetsFor(y & 1, radius);
-  for (let i = 0; i < t.length; i += 2) {
-    const nx = x + t[i];
-    const ny = y + t[i + 1];
-    if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-    fn(nx, ny);
-  }
+/** The clipped-offset table for direct loops: `table[i], table[i + 1]` are (dx, dy), nearest first. */
+export function rangeOffsets(y: number, radius: number): Int16Array {
+  return offsetsFor(y & 1, radius);
 }
 
 /** All tiles within `radius` of (x,y), nearest first, clipped to the map. */
