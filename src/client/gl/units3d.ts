@@ -43,6 +43,7 @@ interface Slot {
   oz: number;
 }
 
+const EMISSIVE = new Color();
 const MIL_SLOTS: Array<[number, number]> = [[0, 0.1], [0.5, 0.2], [-0.5, 0.2], [0, -0.4], [0.45, -0.35], [-0.45, -0.35]];
 const CIV_SLOTS: Array<[number, number]> = [[-0.45, -0.22], [0.45, -0.25], [0, -0.5]];
 const CITY_SLOTS: Array<[number, number]> = [[0.62, 0.5], [-0.62, 0.5], [0.0, 0.78], [0.88, 0.0], [-0.88, 0.0]];
@@ -319,10 +320,11 @@ export class UnitLayer {
   }
 
   private tint(s: Slot, flash: number, selected: boolean): void {
-    const [um] = s.rig.mats;
-    const e = flash > 0 ? new Color(0.9 * flash, 0.12 * flash, 0.08 * flash) : selected ? new Color(0.05, 0.045, 0.02) : new Color(0, 0, 0);
+    const e = EMISSIVE;
+    if (flash > 0) e.setRGB(0.9 * flash, 0.12 * flash, 0.08 * flash);
+    else if (selected) e.setRGB(0.05, 0.045, 0.02);
+    else e.setRGB(0, 0, 0);
     for (const m of s.rig.mats as MeshStandardMaterial[]) m.emissive.copy(e);
-    void um;
   }
 
   /** Scene-space head position of a unit for floating labels; null when it is not drawn. */

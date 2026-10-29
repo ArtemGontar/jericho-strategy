@@ -118,6 +118,10 @@ export class Builder {
 }
 
 const matCache = new Map<string, MeshStandardMaterial>();
+/** See releaseSharedFigures: shared materials keep a dead renderer reachable through three's per-material records. */
+export function releaseSharedMaterials(): void {
+  for (const m of matCache.values()) m.dispose();
+}
 /** Shared vertex-coloured material; `team` variants take their colour from a uniform tint instead. */
 export function litMaterial(opts: { roughness?: number; metalness?: number; emissive?: number; double?: boolean; flat?: boolean } = {}): MeshStandardMaterial {
   const key = JSON.stringify(opts);

@@ -11,6 +11,8 @@ import { Particles, Projectiles } from './fx';
 import { Overlay } from './overlay';
 import { tileXZ } from './terrain';
 import { Sky } from './sky';
+import { releaseSharedFigures } from './models';
+import { releaseSharedMaterials } from './geo';
 import { PITCH, glSupported, graphicsPref } from './prefs';
 
 const HEX = 48;
@@ -159,6 +161,8 @@ export class GLRenderer implements MapDrawer {
 
   dispose(): void {
     this.units.dispose_all();
+    releaseSharedFigures();
+    releaseSharedMaterials();
     this.gl.dispose();
     this.gl.forceContextLoss();
   }
