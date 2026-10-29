@@ -803,7 +803,8 @@ export class GameScreen {
         else this.selectUnit(null);
         return;
       }
-      if (own.length && !this.attackTargets.has(key)) {
+      // a tile with my units is a move target when the selected unit may stack there; otherwise the click picks that unit
+      if (own.length && !this.attackTargets.has(key) && !(this.view.state[key] > 0 && this.vm.path(sel, t)?.length)) {
         this.selectUnit((own.find((u) => this.needsOrders(u)) ?? own[0]).id);
         return;
       }
