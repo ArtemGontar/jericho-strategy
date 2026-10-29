@@ -247,6 +247,17 @@ export class Overlay {
     ctx.stroke();
     const ink = lum(col) > 0.62 ? '#161b26' : '#ffffff';
     drawIcon(ctx, u.type, x, y - h * 0.05, 15 * k, ink, ink, 1.8);
+    if (u.cargo?.length) {
+      // how many are aboard
+      ctx.font = `800 ${Math.round(10 * k + 2)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      ctx.strokeText(String(u.cargo.length), x + w / 2 + 1, y + h / 2 - 2);
+      ctx.fillStyle = '#ffe08a';
+      ctx.fillText(String(u.cargo.length), x + w / 2 + 1, y + h / 2 - 2);
+    }
     if (u.hp < 100) {
       const bw = w * 1.15;
       ctx.fillStyle = 'rgba(0,0,0,0.8)';

@@ -9,9 +9,11 @@ import { civColor } from '../render';
 import type { Particles } from './fx';
 import { animateRig, buildRig, type Pose, type Rig } from './models';
 import { tileXZ, tileXZf, type Terrain } from './terrain';
+import { EDGE_NEIGHBOR_EVEN, EDGE_NEIGHBOR_ODD } from './hexmath';
+import { TERRAIN_LIST } from '../../shared/view';
 
-const SCALE: Record<string, number> = { biped: 1.6, mounted: 1.45, cart: 1.25, siege: 1.4, cannon: 1.5 };
-const RANGED = new Set(['archer', 'crossbowman', 'musketman', 'catapult', 'cannon']);
+const SCALE: Record<string, number> = { biped: 1.6, mounted: 1.45, cart: 1.25, siege: 1.4, cannon: 1.5, ship: 1.35 };
+const RANGED = new Set(['archer', 'crossbowman', 'musketman', 'catapult', 'cannon', 'frigate']);
 
 interface Slot {
   id: number;
@@ -73,6 +75,9 @@ export class UnitLayer {
     const selRing = new Mesh(this.selGeo, new MeshBasicMaterial({ color: 0xffdf80, transparent: true, opacity: 0.95, depthWrite: false }));
     selRing.position.y = 0.016;
     selRing.visible = false;
+    if (UNITS[u.type as ViewUnit['type']].naval) {
+      for (const m of [ring, base, selRing]) m.scale.setScalar(1.6);
+    }
     holder.add(ring, base, selRing);
     this.scene.add(holder);
     return {
@@ -117,6 +122,12 @@ export class UnitLayer {
         s.z = pz;
         this.slots.set(u.id, s);
       }
+      if (u.carriedBy != null) {
+        // passengers ride below deck: the ship's flag shows how many are aboard
+        s.holder.visible = false;
+        this.anchors.delete(u.id);
+        continue;
+      }
       const def = UNITS[u.type];
       const civ = !!def.civilian;
       const ranged = RANGED.has(u.type);
@@ -125,7 +136,23 @@ export class UnitLayer {
       stacks.set(key, stack);
       const onCity = cityAt.has(key);
       let off: [number, number];
-      if (onCity) off = CITY_SLOTS[(stack.mil + stack.civ) % CITY_SLOTS.length];
+      if (onCity && def.naval) {
+        // a ship in port lies in the water beside the city
+        const nbs = u.y & 1 ? EDGE_NEIGHBOR_ODD : EDGE_NEIGHBOR_EVEN;
+        off = [0.0, 0.7];
+        for (const [dx, dy] of nbs) {
+          const nx = u.x + dx;
+          const ny = u.y + dy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= v.settings.height) continue;
+          const t = TERRAIN_LIST[v.terrain[ny * W + nx]];
+          if (t === 'coast' || t === 'ocean') {
+            const [cx, cz] = tileXZ(u.x, u.y);
+            const [wx, wz] = tileXZ(nx, ny);
+            off = [(wx - cx) * 0.62, (wz - cz) * 0.62];
+            break;
+          }
+        }
+      } else if (onCity) off = CITY_SLOTS[(stack.mil + stack.civ) % CITY_SLOTS.length];
       else if (civ) off = CIV_SLOTS[stack.civ % CIV_SLOTS.length];
       else off = MIL_SLOTS[stack.mil % MIL_SLOTS.length];
       if (civ) stack.civ++;
@@ -210,9 +237,14 @@ export class UnitLayer {
       const mine = u.owner === v.me;
       (s.ring.material as MeshBasicMaterial).opacity = mine ? 0.95 : 0.8;
       // footsteps
-      if (s.walk > 0.5 && now - s.lastDust > 150) {
+      if (s.walk > 0.5 && now - s.lastDust > (def.naval ? 70 : 150)) {
         s.lastDust = now;
-        this.fx.dust(X, gy0 + 0.02, Z);
+        if (def.naval) {
+          // foam in the wake, a little behind the stern
+          const bx = X - Math.cos(s.heading) * 0.5;
+          const bz = Z + Math.sin(s.heading) * 0.5;
+          this.fx.dust(bx, 0.03, bz, [0.92, 0.98, 1.0]);
+        } else this.fx.dust(X, gy0 + 0.02, Z);
       }
       if (u.workProgress && pose.work && now - s.lastDust > 420) {
         s.lastDust = now;
@@ -264,7 +296,7 @@ export class UnitLayer {
     const gy = this.terrain.heightAt(s.x, s.z);
     const dirx = Math.cos(s.heading);
     const dirz = -Math.sin(s.heading);
-    if (type === 'cannon') {
+    if (type === 'cannon' || type === 'frigate') {
       const mx = s.x + dirx * 0.35;
       const mz = s.z + dirz * 0.35;
       this.fx.flash(mx, gy + 0.3, mz, 0.7);

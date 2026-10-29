@@ -170,6 +170,8 @@ export function renderUnitBar(gs: GameScreen, el: HTMLElement): void {
     });
     act('auto', 'Automate (A)', () => void gs.autoUnit(u), { extra: 'the worker improves land on its own' });
   }
+  const boat = gs.shipFor(u);
+  if (boat && (u.mp ?? 0) > 0) act('trireme', `Board the ${UNITS[boat.type].name}`, () => void gs.cmd({ t: 'board', unit: u.id, ship: boat.id }).then(() => gs.afterUnitAction()), { primary: true, extra: 'the unit sails with the ship' });
   if (!def.civilian) {
     act('fortify', 'Fortify (F)', () => void gs.cmd({ t: 'order', unit: u.id, order: 'fortify' }).then(() => gs.afterUnitAction()), { extra: '+25% defence and faster healing' });
     act('explore', 'Explore (A)', () => void gs.autoUnit(u), { extra: 'move automatically to reveal the map' });
@@ -203,13 +205,23 @@ export function renderUnitBar(gs: GameScreen, el: HTMLElement): void {
     u.order?.kind === 'goto' ? h('span', null, icon('chevron', 14), 'On the way') : null,
     u.order?.kind === 'build' && u.workProgress ? h('span', null, icon(u.workProgress.kind, 14), `${Math.floor(u.workProgress.progress)}/${IMPROVEMENTS[u.workProgress.kind].turns}`) : null,
     u.auto ? h('span', null, icon('auto', 14), u.auto === 'work' ? 'Automated' : 'Exploring') : null,
+    def.naval && (def.capacity ?? 0) > 0 ? h('span', null, 'Aboard ', h('b', { class: 'num' }, `${u.cargo?.length ?? 0}/${def.capacity}`)) : null,
+    u.carriedBy != null ? h('span', null, icon('trireme', 14), 'Aboard a ship: click the shore to land') : null,
   );
+  // passengers: a click picks one to give it orders
+  const passengers = (u.cargo ?? []).map((id) => v.units.find((x) => x.id === id)).filter((x): x is NonNullable<typeof x> => !!x);
+  const roster = passengers.length ? h('div', { class: 'passengers' }, ...passengers.map((p) => {
+    const b = h('button', { class: 'round', type: 'button', title: `${UNITS[p.type].name} — give orders`, 'aria-label': UNITS[p.type].name }, icon(p.type, 18));
+    b.addEventListener('click', (e) => { e.stopPropagation(); gs.selectUnit(p.id); });
+    return b;
+  })) : null;
   put(el,
     h('div', { class: 'head' },
       h('div', { class: 'flag' }, flag, icon(def.id, 24)),
       h('div', { style: { flex: '1', minWidth: '0' } }, h('h3', null, def.name), stats),
       hint),
     !def.civilian ? h('div', { class: 'bar hp' }, h('i', { style: { width: `${u.hp}%`, background: u.hp > 60 ? 'var(--good)' : u.hp > 30 ? '#e8c14a' : 'var(--bad)' } })) : null,
+    roster,
     actions);
 }
 

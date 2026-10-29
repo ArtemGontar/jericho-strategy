@@ -1,5 +1,6 @@
 import { Color, Group, Mesh, MeshStandardMaterial, Object3D, TorusGeometry, CylinderGeometry, type BufferGeometry } from 'three';
 import type { UnitTypeId } from '../../shared/types';
+import { UNITS } from '../../shared/data';
 import { Builder } from './geo';
 import { patchMaterial, type SharedUniforms } from './fog';
 
@@ -26,7 +27,7 @@ interface Part {
 
 export interface Rig {
   type: UnitTypeId;
-  kind: 'biped' | 'mounted' | 'cart' | 'siege' | 'cannon';
+  kind: 'biped' | 'mounted' | 'cart' | 'siege' | 'cannon' | 'ship';
   root: Group;
   /** upright height in scene units, used to place health bars and banners */
   height: number;
@@ -47,6 +48,8 @@ export interface Rig {
   throwArm?: Object3D;
   barrel?: Object3D;
   flag?: Object3D;
+  oars: Object3D[];
+  sails: Object3D[];
   /** set when a shot is released so effects can spawn once */
   fired?: boolean;
 }
@@ -411,6 +414,57 @@ const BUILDERS: Record<UnitTypeId, (rb: RigBuild, rig: Rig) => void> = {
     rig.rider = r.body.pivot;
     rig.weapon = r.armR.pivot;
   },
+  trireme(rb, rig) {
+    const b = rb.pivot(null, 0, 0.0, 0);
+    const len = 0.95;
+    const beam = 0.26;
+    hull(rb, b, len, beam, '#8a5a35', '#6e4426');
+    // row of shields along the rail
+    for (const side of [-1, 1]) for (let i = 0; i < 6; i++) b.t.cyl(0.045, 0.045, 0.012, 'white', { x: (i - 2.5) * 0.11, y: 0.14, z: side * beam * 0.34, rx: Math.PI / 2 }, 8);
+    mast(b, 0.05, 0.5);
+    squareSail(rb, rig, b, 0.05, 0.28, 0.3, 0.26);
+    oarRow(rb, rig, b, 6, len, beam);
+    b.n.cone(0.03, 0.12, '#b9a05a', { x: len * 0.54, y: 0.0, rz: -Math.PI / 2 }, 5);
+    rig.height = 0.55;
+  },
+  caravel(rb, rig) {
+    const b = rb.pivot(null, 0, 0.0, 0);
+    const len = 1.0;
+    const beam = 0.3;
+    hull(rb, b, len, beam, '#7a4c2a', '#5d3a20');
+    b.n.box(0.3, 0.1, beam * 0.8, '#6e4426', { x: len * 0.3, y: 0.17 });
+    mast(b, -0.12, 0.7);
+    mast(b, 0.2, 0.55);
+    squareSail(rb, rig, b, -0.12, 0.3, 0.34, 0.38);
+    squareSail(rb, rig, b, 0.2, 0.3, 0.28, 0.3);
+    b.t.box(0.012, 0.012, 0.3, 'white', { x: -0.12, y: 0.52 });
+    const fl = rb.pivot(b.pivot, -0.12, 0.82, 0);
+    fl.t.box(0.14, 0.07, 0.004, 'white', { x: 0.07, y: -0.03 });
+    rig.flag = fl.pivot;
+    rig.height = 0.75;
+  },
+  frigate(rb, rig) {
+    const b = rb.pivot(null, 0, 0.0, 0);
+    const len = 1.15;
+    const beam = 0.34;
+    hull(rb, b, len, beam, '#4a3a30', '#33271f');
+    // gun ports and cannon muzzles
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 5; i++) {
+        b.n.box(0.05, 0.035, 0.012, '#15100c', { x: (i - 2) * 0.15, y: 0.08, z: side * beam * 0.46 });
+        b.n.cyl(0.014, 0.016, 0.06, '#2a2c30', { x: (i - 2) * 0.15, y: 0.075, z: side * beam * 0.52, rx: Math.PI / 2 }, 6);
+      }
+    }
+    b.t.box(len * 0.8, 0.03, beam * 0.9, 'white', { y: 0.104 });
+    for (const x of [-0.28, 0.05, 0.36]) {
+      mast(b, x, x === 0.05 ? 0.85 : 0.65);
+      squareSail(rb, rig, b, x, 0.3, 0.3, x === 0.05 ? 0.46 : 0.36, false);
+    }
+    const fl = rb.pivot(b.pivot, 0.05, 0.98, 0);
+    fl.t.box(0.16, 0.08, 0.004, 'white', { x: 0.08, y: -0.04 });
+    rig.flag = fl.pivot;
+    rig.height = 0.95;
+  },
   catapult(rb, rig) {
     const frame = rb.pivot(null, 0, 0.12, 0);
     frame.n.box(0.4, 0.04, 0.22, '#7a5530', { y: 0.0 });
@@ -447,6 +501,44 @@ const BUILDERS: Record<UnitTypeId, (rb: RigBuild, rig: Rig) => void> = {
   },
 };
 
+function hull(rb: RigBuild, b: Part, len: number, beam: number, wood: string, trim: string): void {
+  // a tapered hull: a long ellipsoid for the bottom, a flatter one for the deck, a pointed bow and a raised stern
+  b.n.sphere(0.5, wood, { x: 0, y: 0.03, sx: len, sy: 0.2, sz: beam }, 14);
+  b.n.sphere(0.5, shadeW(wood, -0.18), { x: 0, y: -0.01, sx: len * 0.96, sy: 0.14, sz: beam * 0.8 }, 12);
+  b.n.box(len * 0.82, 0.015, beam * 0.62, '#b08a5a', { x: 0, y: 0.115 });
+  b.n.cone(beam * 0.34, len * 0.2, wood, { x: len * 0.5, y: 0.06, rz: -Math.PI / 2 }, 6);
+  b.n.box(len * 0.2, 0.09, beam * 0.7, trim, { x: -len * 0.42, y: 0.15 });
+  b.n.cyl(0.03, 0.05, 0.1, trim, { x: -len * 0.52, y: 0.1, rz: 0.5 }, 6);
+  void rb;
+}
+function shadeW(hex: string, k: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const f = (c: number) => Math.max(0, Math.min(255, Math.round(k >= 0 ? c + (255 - c) * k : c * (1 + k))));
+  return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+function oarRow(rb: RigBuild, rig: Rig, hullPart: Part, count: number, len: number, beam: number): void {
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < count; i++) {
+      const x = (i - (count - 1) / 2) * (len * 0.78 / count);
+      const o = rb.pivot(hullPart.pivot, x, 0.1, side * beam * 0.3);
+      o.n.cyl(0.009, 0.009, 0.34, '#caa46a', { rx: side * 1.15, z: side * 0.04 }, 4);
+      o.n.box(0.04, 0.006, 0.05, '#caa46a', { y: 0.0, z: side * 0.33, x: 0, rx: 0 });
+      o.pivot.userData.side = side;
+      rig.oars.push(o.pivot);
+    }
+  }
+}
+function squareSail(rb: RigBuild, rig: Rig, parent: Part, x: number, y: number, w: number, h: number, stripe = true): void {
+  const s = rb.pivot(parent.pivot, x, y, 0);
+  s.n.box(0.012, h, w, '#efe6cc', { y: h / 2 });
+  if (stripe) s.t.box(0.016, h * 0.22, w * 1.0, 'white', { y: h * 0.55 });
+  s.n.cyl(0.012, 0.012, w * 1.1, '#5a4630', { y: h, rx: Math.PI / 2 }, 5);
+  rig.sails.push(s.pivot);
+}
+function mast(b: Part, x: number, h: number): void {
+  b.n.cyl(0.014, 0.02, h, '#6a4a2a', { x, y: 0.12 }, 6);
+}
+
 const mounts: UnitTypeId[] = ['horseman', 'knight'];
 const heights: Partial<Record<UnitTypeId, number>> = { pikeman: 0.82, spearman: 0.78, horseman: 0.8, knight: 0.82, catapult: 0.5, cannon: 0.4, settler: 0.55 };
 
@@ -459,13 +551,15 @@ function protoRig(type: UnitTypeId): Rig {
   if (proto) return proto;
   const rig: Rig = {
     type,
-    kind: mounts.includes(type) ? 'mounted' : type === 'settler' ? 'cart' : type === 'catapult' ? 'siege' : type === 'cannon' ? 'cannon' : 'biped',
+    kind: UNITS[type].naval ? 'ship' : mounts.includes(type) ? 'mounted' : type === 'settler' ? 'cart' : type === 'catapult' ? 'siege' : type === 'cannon' ? 'cannon' : 'biped',
     root: new Group(),
     height: heights[type] ?? 0.62,
     mats: [],
     horseLegs: [],
     oxLegs: [],
     wheels: [],
+    oars: [],
+    sails: [],
   };
   const rb = new RigBuild();
   rb.root = rig.root;
@@ -515,6 +609,8 @@ export function buildRig(type: UnitTypeId, team: string, u: SharedUniforms): Rig
     throwArm: map(proto.throwArm),
     barrel: map(proto.barrel),
     flag: map(proto.flag),
+    oars: proto.oars.map((o) => map(o)!),
+    sails: proto.sails.map((o) => map(o)!),
   };
 }
 
@@ -623,6 +719,26 @@ export function animateRig(r: Rig, p: Pose): void {
         arm.rotation.z = atk < 0.45 ? lerp(0, 0.9, ease(atk / 0.45)) : atk < 0.55 ? lerp(0.9, -1.4, ease((atk - 0.45) / 0.1)) : lerp(-1.4, 0, ease((atk - 0.55) / 0.45));
       } else arm.rotation.z = Math.sin(p.t * 1.2 + p.seed) * 0.02;
       r.flag!.rotation.y = Math.sin(p.t * 3 + p.seed) * 0.35;
+      break;
+    }
+    case 'ship': {
+      // gentle heave and roll; oars and sails work while under way
+      const swell = Math.sin(p.t * 1.5 + p.seed);
+      r.root.position.y = swell * 0.012 + Math.abs(Math.sin(p.phase * 0.6)) * 0.01 * w;
+      r.root.rotation.z = Math.sin(p.t * 1.1 + p.seed * 2) * 0.03 + Math.sin(p.phase * 0.6) * 0.02 * w;
+      r.root.rotation.x = Math.sin(p.t * 1.3 + p.seed) * 0.025;
+      r.oars.forEach((o, i) => {
+        const side = (o.userData.side as number) ?? 1;
+        o.rotation.z = Math.sin(p.phase * 1.5 + i * 0.5) * 0.55 * w + (w < 0.1 ? 0.15 : 0);
+        o.rotation.y = side * (0.25 + Math.sin(p.phase * 1.5 + i * 0.5) * 0.1 * w);
+      });
+      r.sails.forEach((sl, i) => {
+        sl.rotation.y = Math.sin(p.t * 1.2 + p.seed + i) * 0.06 + w * 0.05;
+        sl.scale.z = 1 + Math.sin(p.t * 2 + i) * 0.03 + w * 0.05;
+      });
+      if (r.flag) r.flag.rotation.y = Math.sin(p.t * 3 + p.seed) * 0.4;
+      // an attack makes the guns kick the whole hull
+      if (atk >= 0) r.root.rotation.z += (atk > 0.5 ? Math.max(0, 1 - (atk - 0.5) * 4) : 0) * 0.07;
       break;
     }
     case 'cannon': {

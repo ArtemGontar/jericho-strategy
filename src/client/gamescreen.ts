@@ -147,9 +147,22 @@ export class GameScreen {
     return this.openCityId === null ? null : this.view.cities.find((c) => c.id === this.openCityId && c.mine) ?? null;
   }
   myUnits(): ViewUnit[] { return this.view.units.filter((u) => u.owner === this.me); }
+  /** An own ship with room aboard that a free land unit can climb onto from where it stands. */
+  shipFor(u: ViewUnit): ViewUnit | null {
+    if (UNITS[u.type].naval || u.carriedBy != null) return null;
+    return this.myUnits().find((s) => {
+      const d = UNITS[s.type];
+      return d.naval && (d.capacity ?? 0) > (s.cargo?.length ?? 0) && hexDistance(u.x, u.y, s.x, s.y) <= 1;
+    }) ?? null;
+  }
+  /** The ship on tile `t` that `u` could board, if any. */
+  boardableShipAt(u: ViewUnit, t: Pos): ViewUnit | null {
+    const ship = this.shipFor(u);
+    return ship && ship.x === t.x && ship.y === t.y && (u.x !== t.x || u.y !== t.y) ? ship : null;
+  }
   myCities(): ViewCity[] { return this.view.cities.filter((c) => c.mine); }
   needsOrders(u: ViewUnit): boolean {
-    return u.owner === this.me && (u.mp ?? 0) > 0 && !u.order && !u.auto && !u.fortified && !u.skipped;
+    return u.owner === this.me && (u.mp ?? 0) > 0 && !u.order && !u.auto && !u.fortified && !u.skipped && u.carriedBy == null;
   }
   cityNeedsProduction(c: ViewCity): boolean { return !!c.mine && (c.queue?.length ?? 0) === 0; }
 
@@ -287,6 +300,19 @@ export class GameScreen {
     if (!u) return;
     const def = UNITS[u.type];
     if ((u.mp ?? 0) > 0 && !u.attacked) this.reach = this.vm.reachable(u);
+    if (this.reach && u.carriedBy != null) {
+      // a passenger can only step ashore; it cannot go further this turn
+      for (const k of [...this.reach.keys()]) {
+        const kx = k % this.view.settings.width;
+        const ky = Math.floor(k / this.view.settings.width);
+        if (hexDistance(u.x, u.y, kx, ky) > 1) this.reach.delete(k);
+      }
+    }
+    const boat = (u.mp ?? 0) > 0 ? this.shipFor(u) : null;
+    if (boat) {
+      this.reach ??= new Map();
+      this.reach.set(boat.y * this.view.settings.width + boat.x, 0);
+    }
     // attack targets
     if (!def.civilian && !u.attacked && (u.mp ?? 0) > 0) {
       const range = def.ranged > 0 ? def.range : 1;
@@ -697,6 +723,20 @@ export class GameScreen {
   }
 
   private async commandUnit(u: ViewUnit, t: Pos, mode: 'left' | 'touch'): Promise<void> {
+    const boat = this.boardableShipAt(u, t);
+    if (boat) {
+      if (mode === 'touch' && (!this.pending || this.pending.x !== t.x || this.pending.y !== t.y)) {
+        this.pending = { x: t.x, y: t.y };
+        this.toast('Tap again to board the ship');
+        this.dirty = true;
+        return;
+      }
+      this.pending = null;
+      const ok = await this.cmd({ t: 'board', unit: u.id, ship: boat.id });
+      if (ok) sfx('move');
+      this.afterUnitAction();
+      return;
+    }
     const W = this.view.settings.width;
     const key = t.y * W + t.x;
     const isAttack = this.attackTargets.has(key);

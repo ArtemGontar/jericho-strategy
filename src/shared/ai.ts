@@ -1,7 +1,7 @@
 import { tilesWithin, type Pos } from './hex';
 import { BUILDINGS, FINAL_TECH, IMPROVEMENTS, MIN_CITY_DISTANCE, PEACE_MIN_TURNS, RESOURCES, TECHS, TECH_BY_ID, TERRAIN, UNITS } from './data';
 import { availableTechs, canBuildBuilding, canBuildUnit, itemCost, tileYield } from './economy';
-import { findPath, tileBlockedFor } from './path';
+import { canEnterTerrain, findPath, tileBlockedFor } from './path';
 import { previewAttack } from './combat';
 import type { BuildingId, City, Player, Tile, Unit, UnitTypeId, WorkKind } from './types';
 import type { Game } from './game';
@@ -28,6 +28,7 @@ const TECH_WEIGHT: Record<string, number> = {
   ironworking: 3, mathematics: 2, currency: 5, philosophy: 5, construction: 4,
   education: 6, engineering: 3, feudalism: 3, chivalry: 2, banking: 5,
   gunpowder: 4, metallurgy: 2, astronomy: 5, enlightenment: 10,
+  sailing: 4, navigation: 3,
 };
 
 export function aiChooseResearch(game: Game, p: Player): string | null {
@@ -41,6 +42,7 @@ export function aiChooseResearch(game: Game, p: Player): string | null {
     let s = (TECH_WEIGHT[id] ?? 2) - t.cost / 60 + (closure.has(id) ? 2.5 : 0);
     if (p.personality === 'warlord' && ['bronze', 'archery', 'husbandry', 'ironworking', 'mathematics', 'feudalism', 'chivalry', 'gunpowder', 'metallurgy'].includes(id)) s += 4;
     if (p.personality === 'builder' && ['pottery', 'writing', 'currency', 'philosophy', 'education', 'construction'].includes(id)) s += 2;
+    if ((id === 'sailing' || id === 'navigation') && game.cities.some((c) => c.owner === p.id && game.isCoastal(c.x, c.y))) s += 1.5;
     if (game.rng.chance(0.15)) s += 1.5;
     if (s > bestScore) {
       bestScore = s;
@@ -65,7 +67,11 @@ function exec(game: Game, pid: number, cmd: Parameters<Game['exec']>[1]) {
 }
 
 function military(game: Game, pid: number): Unit[] {
-  return game.units.filter((u) => u.owner === pid && !UNITS[u.type].civilian);
+  return game.units.filter((u) => u.owner === pid && !UNITS[u.type].civilian && !UNITS[u.type].naval);
+}
+
+function ships(game: Game, pid: number): Unit[] {
+  return game.units.filter((u) => u.owner === pid && UNITS[u.type].naval);
 }
 
 function enemiesOf(game: Game, pid: number): number[] {
@@ -130,7 +136,7 @@ export function aiAutoExplore(game: Game, u: Unit): void {
         seen.add(k);
         const t = game.tile(nb.x, nb.y);
         if (!(t.explored & bit)) continue;
-        if (!TERRAIN[t.terrain].passable) continue;
+        if (!canEnterTerrain(game, u, nb.x, nb.y)) continue;
         if (tileBlockedFor(game, u, nb.x, nb.y, false)) continue;
         // wary of enemy cities
         let touchesUnknown = false;
@@ -178,7 +184,7 @@ function aiExploreStep(game: Game, u: Unit): void {
         if (seen.has(k)) continue;
         seen.add(k);
         const t = game.tile(nb.x, nb.y);
-        if (!(t.explored & bit) || !TERRAIN[t.terrain].passable || tileBlockedFor(game, u, nb.x, nb.y, false)) continue;
+        if (!(t.explored & bit) || !canEnterTerrain(game, u, nb.x, nb.y) || tileBlockedFor(game, u, nb.x, nb.y, false)) continue;
         for (const nn of game.nb(nb.x, nb.y)) {
           if (!(game.tile(nn.x, nn.y).explored & bit)) {
             exec(game, u.owner, { t: 'move', unit: u.id, to: nb });
@@ -576,7 +582,7 @@ function bestMilitary(game: Game, p: Player, city: City, role: 'melee' | 'ranged
   let bs = -1;
   for (const id of Object.keys(UNITS) as UnitTypeId[]) {
     const d = UNITS[id];
-    if (d.civilian || d.scout) continue;
+    if (d.civilian || d.scout || d.naval) continue;
     if (!canBuildUnit(game, p.id, city, id)) continue;
     const power = Math.max(d.strength, d.ranged * 0.85);
     if (role === 'melee' && d.ranged > 0) continue;
@@ -636,6 +642,18 @@ export function aiPlanCity(game: Game, p: Player, city: City): void {
       if (queuedIn(game, p.id, 'building', b.id) > 0) continue;
       add('building', b.id, 5.6);
     }
+  }
+  // the sea: a ship or two to explore, and a harbour where the water feeds us
+  if (game.isCoastal(city.x, city.y)) {
+    const coastal = myCities.filter((c) => game.isCoastal(c.x, c.y)).length;
+    const afloat = ships(game, p.id).length + (['trireme', 'caravel'] as const).reduce((n, s) => n + queuedIn(game, p.id, 'unit', s), 0);
+    const wantShips = Math.min(2, Math.ceil(coastal / 3));
+    if (afloat < wantShips && !warNow && myCities.length >= 2) {
+      const ship = (['caravel', 'trireme'] as const).find((s) => canBuildUnit(game, p.id, city, s));
+      if (ship) add('unit', ship, 4.4);
+    }
+    const water = city.worked.filter((i) => !TERRAIN[game.tiles[i].terrain].land).length;
+    if (water >= 2) add('building', 'harbor', 3.2 + water * 0.5);
   }
   // military
   const wantArmy = p.personality === 'warlord' ? 3 + myCities.length * 2 : 2 + myCities.length * 1.2;
@@ -764,6 +782,11 @@ export function aiTakeTurn(game: Game, pid: number): void {
     if (!game.unit(u.id)) continue;
     if (u.auto !== 'work') u.auto = 'work';
     if (!u.order) aiAutoWorker(game, u);
+  }
+  for (const u of ships(game, pid)) {
+    if (!game.unit(u.id)) continue;
+    if (u.auto !== 'explore' && !u.order) u.auto = 'explore';
+    if (!u.order && u.auto === 'explore') aiAutoExplore(game, u);
   }
   for (const u of game.units.filter((x) => x.owner === pid && x.type === 'scout')) {
     if (!game.unit(u.id)) continue;
