@@ -1,9 +1,9 @@
 import { BUILDINGS, CIV_BY_ID, ERA_NAMES, IMPROVEMENT_YIELD, TECHS, UNITS, XP_LEVELS } from './data';
 import {
-  availableTechs, canBuildBuilding, canBuildUnit, cityYield, foodNeeded, itemCost, maxPop, techCost, type CityYield,
+  availableTechs, buildingSlots, canBuildBuilding, canBuildUnit, cityYield, foodNeeded, itemCost, maxPop, slotsUsed, techCost, type CityYield,
 } from './economy';
 import { cityStrength } from './combat';
-import { MAX_DEALS, contentment, dealIncome, dealPartners, luxuryAccess, ownLuxuries, type Contentment } from './civ';
+import { contentment, dealIncome, dealPartners, dealSlots, luxuryAccess, ownLuxuries, type Contentment } from './civ';
 import type { Game, GameEvent } from './game';
 import type {
   BuildingId, Focus, GameSettings, Note, Proposal, Relation, ResourceId, TerrainId, UnitOrder, UnitTypeId, WorkKind,
@@ -95,6 +95,8 @@ export interface ViewCity {
   options?: BuildOption[];
   buyPrice?: number | null;
   maxPop?: number;
+  /** building slots used and available */
+  slots?: { used: number; max: number };
   radius?: number;
 }
 
@@ -260,6 +262,7 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
       vc.locked = c.locked.slice();
       vc.buyPrice = game.buyPrice(c);
       vc.maxPop = maxPop(c);
+      vc.slots = { used: slotsUsed(c), max: buildingSlots(c) };
       vc.radius = c.radius;
       const opts: BuildOption[] = [];
       const prodRate = Math.max(1, vc.yield.prod);
@@ -306,7 +309,7 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
     content: contentment(game, me),
     luxuries: luxuryAccess(game, me),
     dealIncome: dealIncome(game, me),
-    dealsLeft: Math.max(0, MAX_DEALS - dealPartners(game, me).length),
+    dealsLeft: Math.max(0, dealSlots(game, me) - dealPartners(game, me).length),
     weariness: Math.round(p.weariness * 10) / 10,
     policyCost: game.nextPolicyCost(p),
     terrain, resource, improvement, road, hut, owner, state,

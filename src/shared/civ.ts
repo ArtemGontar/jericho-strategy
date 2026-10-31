@@ -15,6 +15,14 @@ import type { ResourceId } from './types';
 import type { Game } from './game';
 
 export const MAX_DEALS = 4;
+
+/** Trade agreements a civilisation may hold: four, one more for Navigation, and one for each of up to two embassies. */
+export function dealSlots(game: Game, pid: number): number {
+  const p = game.players[pid];
+  let embassies = 0;
+  for (const c of game.s.cities) if (c.owner === pid && c.buildings.includes('embassy')) embassies++;
+  return MAX_DEALS + (p.techs.includes('navigation') ? 1 : 0) + Math.min(2, embassies);
+}
 /** sanctions lapse after this many turns unless they are imposed again */
 export const SANCTION_TURNS = 30;
 /** contentment at which the people thrive */
@@ -81,20 +89,25 @@ export function contentment(game: Game, pid: number): Contentment {
   const add = (label: string, value: number) => { if (Math.abs(value) >= 0.05) parts.push({ label, value: Math.round(value * 10) / 10 }); };
   const mine = game.s.cities.filter((c) => c.owner === pid);
   const pop = mine.reduce((s, c) => s + c.pop, 0);
-  add('Base', 9);
-  add(`${mine.length} ${mine.length === 1 ? 'city' : 'cities'}`, -1.2 * Math.max(0, mine.length - 1));
-  add(`${pop} ${pop === 1 ? 'citizen' : 'citizens'}`, -0.25 * pop);
+  add('Base', 8);
+  add(`${mine.length} ${mine.length === 1 ? 'city' : 'cities'}`, -1.3 * Math.max(0, mine.length - 1));
+  // medicine: healthier cities are easier to keep calm
+  add(`${pop} ${pop === 1 ? 'citizen' : 'citizens'}`, -(p.techs.includes('medicine') ? 0.24 : 0.3) * pop);
   const lux = luxuryAccess(game, pid);
   add(`Luxuries (${lux.own.length + lux.traded.length})`, 3 * (lux.own.length + lux.traded.length));
-  let temples = 0;
+  let civic = 0;
   let wonders = 0;
+  let civicCount = 0;
   for (const c of mine) {
     for (const b of c.buildings) {
-      if (b === 'temple') temples++;
       if (BUILDINGS[b].wonder) wonders++;
+      else if (BUILDINGS[b].content) {
+        civic += BUILDINGS[b].content!;
+        civicCount++;
+      }
     }
   }
-  add(`Temples (${temples})`, temples);
+  add(`Temples, shrines and the like (${civicCount})`, civic);
   add(`Wonders (${wonders})`, wonders);
   if (p.policies.includes('patronage')) add('Patronage of the Arts', 2);
   if (p.policies.includes('hearth')) add('Hearth and Home', 2);

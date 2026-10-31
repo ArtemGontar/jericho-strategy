@@ -6,7 +6,7 @@ import { sfx } from '../audio';
 import { artIcon } from '../artwork';
 import { icon } from '../icons';
 import { civColor } from '../render';
-import { clear, fmtSigned, h, put, turnsLeft } from './dom';
+import { askConfirm, clear, fmtSigned, h, put, turnsLeft } from './dom';
 
 let tab: 'buildings' | 'units' | 'wonders' = 'buildings';
 
@@ -171,11 +171,28 @@ export function renderCityPanel(gs: GameScreen, panel: HTMLElement, c: ViewCity)
   };
   let options = buildOptions();
 
-  const have = h('section', null, h('div', { class: 'eyebrow' }, 'Built'), h('div', { class: 'chips' }));
+  const slots = c.slots ?? { used: 0, max: 0 };
+  const full = slots.used >= slots.max;
+  const have = h('section', null,
+    h('div', { class: 'slotline' }, h('span', { class: 'eyebrow' }, 'Built'), h('span', { class: `slots ${full ? 'full' : ''}`, title: 'Each city holds a few buildings and more as it grows. Walls, barracks, wonders and your civilisation’s own building take no slot.' }, `Slots ${slots.used} / ${slots.max}`)),
+    h('div', { class: 'chips builtchips' }));
   const chips = have.querySelector('.chips')!;
-  for (const b of c.buildings ?? []) chips.append(h('span', { title: BUILDINGS[b].desc }, icon(b, 16), BUILDINGS[b].name));
+  for (const b of c.buildings ?? []) {
+    const d = BUILDINGS[b];
+    const chip = h('span', { class: 'built', title: d.desc }, icon(b, 16), d.name);
+    if (!d.wonder) {
+      const tear = h('button', { class: 'tear', type: 'button', title: `Tear down the ${d.name} (recover a little gold, free its slot)`, 'aria-label': `Tear down ${d.name}` }, icon('close', 11));
+      tear.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (await askConfirm(`Tear down the ${d.name} in ${c.name}? You recover a little gold and free its slot.`, 'Tear down')) await gs.cmd({ t: 'sell', city: c.id, building: b });
+      });
+      chip.append(tear);
+    }
+    chips.append(chip);
+  }
   if (!c.buildings?.length) chips.append(h('span', { class: 'muted' }, 'No buildings yet.'));
   have.append(h('div', { class: 'hint' }, `Territory radius ${c.radius} · building upkeep ${y.upkeep} gold per turn`));
+  if (full && groups.buildings.length === 0) options.querySelector('.tabrow')?.after(h('div', { class: 'hint', style: { padding: '8px 0' } }, 'All slots are in use. Tear down a building below to make room for another.'));
 
   clear(panel);
   panel.append(header, h('div', { class: 'body' }, yields, citizens, prod, options, have));

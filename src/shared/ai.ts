@@ -30,6 +30,7 @@ const TECH_WEIGHT: Record<string, number> = {
   education: 6, engineering: 4, feudalism: 3, chivalry: 3, banking: 5,
   gunpowder: 4, metallurgy: 3.5, astronomy: 5, enlightenment: 10,
   sailing: 4, navigation: 3,
+  ceremony: 3, drama: 2, diplomacy: 3, medicine: 2.5, theology: 2,
 };
 
 export function aiChooseResearch(game: Game, p: Player): string | null {
@@ -43,6 +44,9 @@ export function aiChooseResearch(game: Game, p: Player): string | null {
     let s = (TECH_WEIGHT[id] ?? 2) - t.cost / 60 + (closure.has(id) ? 2.5 : 0);
     if (p.personality === 'warlord' && ['bronze', 'archery', 'husbandry', 'ironworking', 'mathematics', 'feudalism', 'chivalry', 'gunpowder', 'metallurgy'].includes(id)) s += 4;
     if (p.personality === 'builder' && ['pottery', 'writing', 'currency', 'philosophy', 'education', 'construction'].includes(id)) s += 2;
+    // restless people need the civic techs that calm them
+    if (p.content < 4 && ['ceremony', 'drama', 'theology', 'medicine'].includes(id)) s += 3;
+    if (p.personality === 'builder' && ['ceremony', 'drama', 'diplomacy'].includes(id)) s += 1.5;
     if ((id === 'sailing' || id === 'navigation') && game.cities.some((c) => c.owner === p.id && game.isCoastal(c.x, c.y))) s += 1.5;
     if (game.rng.chance(0.15)) s += 1.5;
     if (s > bestScore) {
@@ -678,16 +682,32 @@ export function aiPlanCity(game: Game, p: Player, city: City): void {
   const crowded = p.content < -3; // every new city makes the people more restless
   if (site && !crowded && city.pop >= 2 && settlers < 2) add('unit', 'settler', 9.5 - myCities.length * 0.4);
   if (site && city.pop === 1 && settlers < 1 && myCities.length < 3) add('unit', 'settler', 6);
-  // buildings
-  add('building', 'granary', 3.2);
-  add('building', 'library', 6 * sciWeight);
-  add('building', 'workshop', city.pop >= 3 ? 4.6 : 2.5);
-  add('building', 'market', 5.2);
+  // buildings. A city holds only a few, so each one has a role: the capital studies, the next earns, the next builds, the next
+  // keeps the peace. A building that suits the role is worth more, and a content people need fewer temples.
+  const rank = myCities.slice().sort((a, b) => a.id - b.id).findIndex((c) => c.id === city.id);
+  const role = city.capital ? 'science' : (['gold', 'prod', 'civic', 'science'] as const)[(Math.max(0, rank) - 1) % 4];
+  const fit = (b: string): number => {
+    const sci = ['library', 'university', 'observatory'], gold = ['market', 'bank', 'harbor', 'embassy'], prod = ['workshop', 'granary', 'aqueduct'], civic = ['temple', 'shrine', 'amphitheater', 'cathedral'];
+    const mine = role === 'science' ? sci : role === 'gold' ? gold : role === 'prod' ? prod : civic;
+    return mine.includes(b) ? 1.35 : 1;
+  };
+  const restless = Math.max(0, 4 - p.content) * 0.8;
+  add('building', 'granary', 3.2 * fit('granary'));
+  add('building', 'library', 6 * sciWeight * fit('library'));
+  add('building', 'workshop', (city.pop >= 3 ? 4.6 : 2.5) * fit('workshop'));
+  add('building', 'market', 5.2 * fit('market'));
   // restless people need temples; a content people can do without
-  add('building', 'temple', 4.1 * cultureWeight + Math.max(0, 3 - p.content) * 0.8);
-  add('building', 'university', 6.4 * sciWeight);
-  add('building', 'bank', 5);
-  add('building', 'observatory', 5);
+  add('building', 'temple', (4.1 * cultureWeight + restless) * fit('temple'));
+  add('building', 'shrine', (4.4 + restless) * fit('shrine'));
+  add('building', 'amphitheater', (3.7 + restless) * fit('amphitheater'));
+  add('building', 'cathedral', (3.5 + restless) * fit('cathedral'));
+  add('building', 'university', 6.4 * sciWeight * fit('university'));
+  add('building', 'bank', 5 * fit('bank'));
+  add('building', 'observatory', 5 * fit('observatory'));
+  // a trade agreement is worth having only when there is somebody to sign with
+  if (game.players.some((o) => o.alive && o.id !== p.id && game.relation(p.id, o.id) === 'peace')) add('building', 'embassy', 3.6 * fit('embassy'));
+  // the building only this civilisation can raise: it takes no slot, so it is always worth having
+  for (const b of Object.values(BUILDINGS)) if (b.civ) add('building', b.id, 6.4);
   if (city.pop >= 7) add('building', 'aqueduct', 7);
   if (th > 0.8 || (warNow && city.hp < 150)) add('building', 'walls', 6.5);
   if (p.personality === 'warlord' || warNow) add('building', 'barracks', 4.8);

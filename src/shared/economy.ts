@@ -47,6 +47,19 @@ function civOf(game: Game, owner: number) {
   return CIV_BY_ID[game.players[owner].civ];
 }
 
+/** Buildings a city can hold: it grows with the city, and the capital has one more. Walls, barracks, wonders and each civilisation's own building take none. */
+export const MAX_SLOTS = 10;
+export function buildingSlots(city: City): number {
+  return Math.min(MAX_SLOTS, 3 + Math.floor(city.pop / 2) + (city.capital ? 1 : 0));
+}
+export function usesSlot(b: BuildingId): boolean {
+  const d = BUILDINGS[b];
+  return !d.wonder && !d.free;
+}
+export function slotsUsed(city: City): number {
+  return city.buildings.filter(usesSlot).length;
+}
+
 export function hasBuilding(city: City, b: BuildingId): boolean {
   return city.buildings.includes(b);
 }
@@ -264,6 +277,8 @@ export function canBuildBuilding(game: Game, playerId: number, city: City, bid: 
   if (d.tech && !p.techs.includes(d.tech)) return false;
   if (city.buildings.includes(d.id)) return false;
   if (d.needs && !city.buildings.includes(d.needs)) return false;
+  if (d.civ && civOf(game, playerId).id !== d.civ) return false;
+  if (usesSlot(d.id) && slotsUsed(city) >= buildingSlots(city)) return false;
   if (d.wonder) {
     if (game.s.wonders[d.id] !== undefined) return false;
     if (d.coastal && !game.isCoastal(city.x, city.y)) return false;

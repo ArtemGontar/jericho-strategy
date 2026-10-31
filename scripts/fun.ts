@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { Game } from '../src/shared/game';
 import { THRIVING } from '../src/shared/civ';
+import { buildingSlots, slotsUsed, usesSlot } from '../src/shared/economy';
 import { BUILDINGS, UNITS, TECHS, POLICIES, FINAL_TECH } from '../src/shared/data';
 
 if (process.argv[2] === '--sum') {
@@ -66,6 +67,18 @@ for (let g = start; g < start + games; g++) {
     for (const x of p.techs) techUse[x] = (techUse[x] ?? 0) + 1;
     for (const x of p.policies) polUse[x] = (polUse[x] ?? 0) + 1;
   }
+  // do a civilisation's cities differ from each other? (1 = identical building sets, 0 = nothing in common)
+  let simSum = 0, simN = 0, fullN = 0, cityN = 0, sizeSum = 0;
+  for (const pl of game.players) {
+    const mine = game.playerCities(pl.id);
+    for (const c of mine) { cityN++; if (slotsUsed(c) >= buildingSlots(c)) fullN++; sizeSum += c.buildings.filter((b) => usesSlot(b)).length; }
+    for (let i = 0; i < mine.length; i++) for (let j = i + 1; j < mine.length; j++) {
+      const a = new Set(mine[i].buildings.filter((b) => usesSlot(b))), b = new Set(mine[j].buildings.filter((x) => usesSlot(x)));
+      const uni = new Set([...a, ...b]).size;
+      if (!uni) continue;
+      simSum += [...a].filter((x) => b.has(x)).length / uni; simN++;
+    }
+  }
   const wars = game.s.notes.filter((x) => x.kind === 'war');
   const dealNotes = game.s.notes.filter((x) => x.text.includes('Trade agreement signed')).length;
   const fc = firstCity.filter((x) => x >= 0);
@@ -75,6 +88,7 @@ for (let g = start; g < start + games; g++) {
     contact, firstWar, enl, leadChanges, attacks,
     declared: wars.filter((x) => x.text.includes('declared')).length, captured: wars.filter((x) => x.text.includes('captured')).length,
     eliminated: wars.filter((x) => x.text.includes('eliminated')).length,
+    similarity: simN ? simSum / simN : null, fullCities: cityN ? fullN / cityN : null, buildingsPerCity: cityN ? sizeSum / cityN : null,
     sanctioned: wars.filter((x) => x.text.includes('imposed sanctions')).length, dealNotes,
     finalCities: game.players.map((p) => game.playerCities(p.id).length), finalScore: game.players.map((p) => p.score),
     timeline, built, bld, techUse, polUse,
@@ -127,6 +141,11 @@ function summarise(rows: any[]): void {
     const restless = cs.filter((x) => x < 0).length, thriving = cs.filter((x) => x >= THRIVING).length;
     console.log(`turn ${T}: contentment median ${sorted[sorted.length >> 1].toFixed(1)} (min ${sorted[0].toFixed(1)}, max ${sorted[sorted.length - 1].toFixed(1)}); restless ${pct(restless, cs.length)}, thriving ${pct(thriving, cs.length)}; trade agreements in force ${(deals / Math.max(1, n)).toFixed(1)}, sanctions ${(sanc / Math.max(1, n)).toFixed(1)}`);
   }
+  const sims = rows.map((r) => r.similarity).filter((x) => x != null) as number[];
+  const fulls = rows.map((r) => r.fullCities).filter((x) => x != null) as number[];
+  const per = rows.map((r) => r.buildingsPerCity).filter((x) => x != null) as number[];
+  const avg = (a: number[]) => (a.reduce((x, y) => x + y, 0) / Math.max(1, a.length)).toFixed(2);
+  if (sims.length) console.log(`cities of one civilisation share ${avg(sims)} of their buildings (1 = identical); ${avg(fulls)} of cities at full slots at the end; ${avg(per)} slot buildings per city`);
   console.log(`agreements signed per game ${mean(rows, (r) => r.dealNotes ?? 0)}, sanctions imposed per game ${mean(rows, (r) => r.sanctioned ?? 0)}`);
   const ranks = rows.filter((r) => r.winner != null).map((r) => {
     const f = r.timeline.find((x: any) => x.t === 50);

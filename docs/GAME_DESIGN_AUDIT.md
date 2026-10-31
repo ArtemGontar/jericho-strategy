@@ -84,6 +84,33 @@ What to watch:
 - **Luxury art in the 3D renderer is unverified on a real screen**: the flat map shows them clearly; the 3D map draws them like gold and iron.
 - The seeds in two older tests were changed because new resource placement changes the generated maps.
 
+**Done: building slots, civic techs and civilisation identity (fourth pass).**
+
+- **Building slots.** A city holds three buildings, plus one for every two citizens, plus one in the capital, up to ten. Walls, barracks, wonders and each civilisation's own building take no slot. A building can be torn down (recovering 30% of its cost) to make room, unless another building needs it. The computers give each city a role (the capital studies, then trade, production, civic) and build what suits it.
+- **Civic techs.** Ceremony (Shrine, +1 contentment, cheap and early), Drama and Poetry (Amphitheater, +2), Diplomacy (Embassy: one more trade agreement, two count), Medicine (citizens weigh a fifth less on contentment), Theology (Cathedral, +3, needs a Temple). Navigation also allows one more trade agreement. None is needed to win by science.
+- **One building per civilisation,** free of slots and gated by an early tech: Spring Gardens, Ziggurat, Temple of the Sun, Great Bath, Forum, Satrapy, Stepped Pyramid, Agora.
+- **Retuned** because the new buildings add culture and contentment: the new civic buildings give little or no culture, the culture goal is 4300 (was 4000), the contentment base is 8 and a citizen weighs 0.3.
+
+Same 24 games, baseline against now [measured]:
+
+| | Baseline | Now |
+|---|---|---|
+| Victories | science 16, culture 7, last standing 1 | science 14, culture 8, domination 2 |
+| Median end turn | 153 | 151 |
+| Games ended before turn 130 | 4% | 4% |
+| Enlightenment reached (average) | 142 | 143 |
+| Contentment median at turn 60 / 120 / 150 | not tracked | 5.8 / 8.7 / 7.9 |
+| Restless civilisations at turn 60 / 150 | not tracked | 11% / 7% |
+| Cities of one civilisation sharing the same buildings | not tracked | 50% (1 = identical) |
+| Cities at full slots at the end | not applicable | 36% |
+| Built across 24 games | granary 202, harbor 11 | granary 96, shrine 340, each civilisation's own building 43 to 92 |
+
+What to watch:
+- **Contentment is comfortable late** (7–9 median, a quarter of civilisations thriving) because the computers build shrines and their own building everywhere. It is a little less tight than the earlier pass; slots, not contentment, are now the main constraint on a city.
+- **The tech tree is wider, not forked.** The sea and late-military techs (Sailing, Chivalry, Metallurgy) are still optional for a science victory, and Theology and the Cathedral are rarely reached by the computers. True alternative routes to the Enlightenment need an either-or prerequisite and a balance pass on their cost.
+- **The computers never tear buildings down,** so an early choice stays chosen.
+- Harbors are rarely built (10 across 24 games): the slot is better spent elsewhere for most coastal cities. Worth a stronger Harbor.
+
 ## The one-paragraph verdict
 
 The first thirty turns are good: a first city on turn 3, three cities by turn 30, a clear checklist, and a lot to do. After that the game turns into a **checklist**. Every building, every technology (bar one), every policy and every wonder ends up built, learned or adopted in every game, because nothing costs you anything you would miss. Land runs out around turn 60, wars start late (turn 55 on average) and rarely finish, so the next 90 turns are a queue of build orders until someone learns the Enlightenment and wins by science. The rules are sound and the engine is solid. What is missing is **scarcity**: reasons to choose one thing over another.

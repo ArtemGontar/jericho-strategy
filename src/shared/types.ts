@@ -11,6 +11,8 @@ export type UnitTypeId =
 export type BuildingId =
   | 'granary' | 'walls' | 'barracks' | 'library' | 'workshop' | 'market' | 'temple' | 'aqueduct'
   | 'university' | 'bank' | 'observatory' | 'harbor'
+  | 'shrine' | 'amphitheater' | 'embassy' | 'cathedral'
+  | 'spring_gardens' | 'ziggurat' | 'sun_temple' | 'great_bath' | 'forum' | 'satrapy' | 'stepped_pyramid' | 'agora'
   | 'pyramids' | 'great_library' | 'hanging_gardens' | 'oracle' | 'colossus';
 export type TechId = string;
 export type Focus = 'balanced' | 'food' | 'production' | 'gold';

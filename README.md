@@ -39,7 +39,7 @@ Room state (the whole game) is saved on the server after every turn, so a restar
 ## How to play
 
 1. **Found your capital** — select the Settler and press `B`. Pick food-rich land near hills and the coast.
-2. **Choose production** in the city panel (`C`): warriors for safety, workers and settlers to grow, then libraries, markets, walls… Queue several items, or spend gold to **buy** the current one.
+2. **Choose production** in the city panel (`C`): warriors for safety, workers and settlers to grow, then libraries, markets, walls… Queue several items, or spend gold to **buy** the current one. **A city holds only a few buildings** (three, plus one for every two citizens, plus one in the capital, up to ten), so each city needs a role: the capital studies, another trades, another builds, another keeps the peace. Walls, barracks, wonders and your civilisation's own building take no slot, and you can tear a building down to make room.
 3. **Pick research** (`T`). Technologies unlock units, buildings, wonders and tile improvements.
 4. **Explore and expand.** Cities must be 3 tiles apart. Workers build farms, mines and roads (or set them to **Auto**). Scouts can auto-explore (`A`).
 5. **Meet the neighbours.** By default civilisations start at *peace* (armies cannot enter each other's borders). You can only attack civilisations you are at war with: declare war from **Diplomacy** (`D`) once a treaty has held for 10 turns. The *Start at war* option makes everyone hostile on contact. Once you are at peace you can sign a **trade agreement** (gold for both of you every turn, and you share each other's luxuries and horses and iron) or impose **sanctions** on a civilisation you want to hurt without fighting it: trade stops and they lose gold and contentment. Declaring war on someone at peace is remembered, and computer players may shun you for it.
@@ -47,6 +47,23 @@ Room state (the whole game) is saved on the server after every turn, so a restar
 7. **Fight.** Click an enemy to attack — hover first to preview the damage. Ranged units (archers, catapults, crossbowmen, cannons) shoot two tiles away without retaliation. Walls turn back everything but siege engines, and cavalry ride down archers. Fighting earns experience and promotions; outdated units can be **upgraded** for gold inside your borders. Reduce a city to 0 HP and walk a melee unit in to capture it; capturing a lone worker or settler takes it prisoner.
 8. **Cross the sea.** Learn *Sailing* and build a Trireme (or, later, a Caravel or Frigate) in a coastal city. Walk a unit onto an adjacent friendly ship to board it, sail, then step ashore on the far coast — settle islands, scout, or raid. Choose *Islands* in the setup to give every player a home island of their own. Ships can only attack other ships, except the Frigate, which bombards coasts.
 9. **Win** by being the last civilisation standing, by discovering **Enlightenment** first and holding your capital for 12 turns while everyone else gets a chance to take it (science), by **domination** (hold at least 60% of all the cities, six or more, and twice as many as anyone else, for 10 turns), or by holding the highest score when the turn limit ends.
+
+### The eight civilisations
+
+Each has a bonus and one building of its own that nobody else can build and that takes no slot:
+
+| Civilisation | Bonus | Own building |
+| --- | --- | --- |
+| Jericho | +1 food in every city centre | Spring Gardens: +3 food, +1 contentment |
+| Sumer | +10% science | Ziggurat: +3 science, +1 culture |
+| Egypt | +1 production in the capital, cheaper wonders | Temple of the Sun: +1 production, +2 culture, +1 contentment |
+| Indus | +10% gold | Great Bath: +2 contentment, +1 food |
+| Rome | military units built 15% faster | Forum: +4 gold, +1 contentment |
+| Persia | workers build 50% faster | Satrapy: +2 gold, +2 production |
+| Maya | +2 culture per city | Stepped Pyramid: +2 science, +2 culture |
+| Greece | +2 gold per city, +1 science per temple and library | Agora: +2 contentment, +2 science, +1 gold |
+
+Five civic technologies sit beside the main tree: **Ceremony** (Shrine), **Drama and Poetry** (Amphitheater), **Diplomacy** (Embassy: one more trade agreement), **Medicine** (citizens weigh less on contentment) and **Theology** (Cathedral). **Navigation** also allows one more trade agreement. None is needed to win by science.
 
 ### Graphics
 

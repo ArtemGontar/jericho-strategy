@@ -348,8 +348,14 @@ const I: Record<string, IconPart[]> = {
 
 export const ICON_NAMES = Object.keys(I);
 
+/** New buildings borrow the drawing of a close relative until they have their own. */
+const ALIAS: Record<string, string> = {
+  shrine: 'temple', amphitheater: 'oracle', embassy: 'peace', cathedral: 'temple',
+  spring_gardens: 'hanging_gardens', ziggurat: 'great_library', sun_temple: 'pyramids', great_bath: 'aqueduct', forum: 'market',
+  satrapy: 'bank', stepped_pyramid: 'observatory', agora: 'oracle',
+};
 export function iconParts(name: string): IconPart[] {
-  return I[name] ?? I.hex;
+  return I[name] ?? I[ALIAS[name]] ?? I.hex;
 }
 
 const pathCache = new Map<string, Path2D>();

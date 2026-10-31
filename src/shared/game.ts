@@ -11,7 +11,7 @@ import {
 } from './economy';
 import { findPath, stepCost, tileBlockedFor } from './path';
 import { resolveAttack, cityStrength, bombardTargets, captureCity } from './combat';
-import { MAX_DEALS, SANCTION_TURNS, dealGold, dealPartners } from './civ';
+import { SANCTION_TURNS, dealGold, dealPartners, dealSlots } from './civ';
 import { aiTakeTurn, aiAutoExplore, aiAutoWorker, aiChooseResearch } from './ai';
 import type {
   AiLevel, AiPersonality, BuildingId, City, CmdResult, Focus, GameSettings, GameState, Note, Player,
@@ -36,6 +36,7 @@ export type Command =
   | { t: 'deal'; to: number }
   | { t: 'cancelDeal'; with: number }
   | { t: 'sanction'; on: number }
+  | { t: 'sell'; city: number; building: string }
   | { t: 'lift'; on: number }
   | { t: 'gift'; to: number; amount: number }
   | { t: 'policy'; id: string }
@@ -156,7 +157,7 @@ export class Game {
         lastDefeat: -99,
         eliminatedTurn: -1,
         weariness: 0,
-        content: 9,
+        content: 8,
         aggression: -99,
         restless: false,
       };
@@ -229,7 +230,7 @@ export class Game {
       if (!p.policyChoices) p.policyChoices = [];
       if (!p.forgone) p.forgone = [];
       if (p.weariness === undefined) p.weariness = 0;
-      if (p.content === undefined) p.content = 9;
+      if (p.content === undefined) p.content = 8;
       if (p.aggression === undefined) p.aggression = -99;
       if (p.restless === undefined) p.restless = false;
     }
@@ -260,7 +261,7 @@ export class Game {
   get speedMult(): number { return this.s.settings.speed === 'quick' ? 0.67 : 1; }
 
   /** Culture a civilisation needs before it can claim cultural hegemony. */
-  get cultureGoal(): number { return Math.round(4000 * this.speedMult); }
+  get cultureGoal(): number { return Math.round(4300 * this.speedMult); }
 
   tile(x: number, y: number): Tile { return this.s.tiles[y * this.s.settings.width + x]; }
   inBounds(x: number, y: number): boolean { return x >= 0 && y >= 0 && x < this.width && y < this.height; }
@@ -527,6 +528,7 @@ export class Game {
       case 'deal': res = this.cmdDeal(p, cmd.to); break;
       case 'cancelDeal': res = this.cmdCancelDeal(p, cmd.with); break;
       case 'sanction': res = this.cmdSanction(p, cmd.on); break;
+      case 'sell': res = this.cmdSell(p, cmd.city, cmd.building); break;
       case 'lift': res = this.cmdLift(p, cmd.on); break;
       case 'gift': res = this.cmdGift(p, cmd.to, cmd.amount); break;
       case 'policy': res = this.cmdPolicy(p, cmd.id); break;
@@ -979,8 +981,8 @@ export class Game {
     if (this.relation(a, b) !== 'peace') return 'You can only trade with a civilisation you are at peace with.';
     if (this.hasDeal(a, b)) return 'You already trade with them.';
     if (this.isSanctioned(a, b) || this.isSanctioned(b, a)) return 'Sanctions forbid it.';
-    if (dealPartners(this, a).length >= MAX_DEALS) return `You already have ${MAX_DEALS} trade agreements.`;
-    if (dealPartners(this, b).length >= MAX_DEALS) return `${pb.name} already has ${MAX_DEALS} trade agreements.`;
+    if (dealPartners(this, a).length >= dealSlots(this, a)) return `You already have ${dealSlots(this, a)} trade agreements. An embassy or Navigation allows more.`;
+    if (dealPartners(this, b).length >= dealSlots(this, b)) return `${pb.name} already has all the trade agreements they can hold.`;
     return null;
   }
 
@@ -1031,6 +1033,23 @@ export class Game {
   private cmdCancelDeal(p: Player, other: number): CmdResult {
     if (!this.hasDeal(p.id, other)) return { ok: false, error: 'You have no trade agreement with them.' };
     this.endDeal(p.id, other, 'chosen');
+    return { ok: true };
+  }
+
+  /** Tear a building down to free its slot. It pays back a little. */
+  private cmdSell(p: Player, cityId: number, building: string): CmdResult {
+    const c = this.ownCity(p, cityId);
+    if (typeof c === 'string') return { ok: false, error: c };
+    const d = BUILDINGS[building as BuildingId];
+    if (!d || !c.buildings.includes(d.id)) return { ok: false, error: 'There is no such building here.' };
+    if (d.wonder) return { ok: false, error: 'A wonder cannot be torn down.' };
+    // a building others rest on stays while they do
+    const dependant = c.buildings.find((b) => BUILDINGS[b].needs === d.id);
+    if (dependant) return { ok: false, error: `${BUILDINGS[dependant].name} needs it.` };
+    c.buildings = c.buildings.filter((b) => b !== d.id);
+    const refund = Math.floor(itemCost(this, p.id, 'building', d.id) * 0.3);
+    p.gold += refund;
+    this.note([p.id], `${c.name} tore down its ${d.name} and recovered ${refund} gold.`, 'info', { x: c.x, y: c.y });
     return { ok: true };
   }
 

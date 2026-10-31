@@ -502,6 +502,12 @@ button.stat { background: none; border: 0; color: inherit; font: inherit; font-w
 .tabrow button:hover { color: var(--text); }
 .chips { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 13px; color: var(--text2); }
 .chips span { display: inline-flex; align-items: center; gap: 5px; }
+.slotline { display: flex; justify-content: space-between; align-items: baseline; }
+.slots { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.slots.full { color: var(--gold-hi); }
+.builtchips .built { padding: 3px 4px 3px 8px; border: 1px solid var(--line-soft); }
+.builtchips .tear { appearance: none; background: none; border: 0; color: var(--muted); padding: 4px; margin-left: 2px; cursor: pointer; line-height: 0; border-radius: 50%; }
+.builtchips .tear:hover { color: var(--bad); background: rgba(236, 108, 93, 0.12); }
 
 /* ---------- confirmation dialogs (askConfirm) ---------- */
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
@@ -717,9 +723,9 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; padding: 0 6px; f
   .screen > .content { padding-top: calc(24px + var(--sat)); padding-bottom: calc(24px + var(--sab)); }
   .eyebrow, .turnno, .yieldrow small, .facts small, .note small, .rank small { font-size: 12px; }
   .table th { font-size: 11px; }
-  .sheet.scene-research > header { gap: 10px; }
-  .sheet.scene-research > header h2 { flex: none; }
-  .sheet.scene-research > header .muted { flex: 1; min-width: 0; font-size: 12px; text-align: right; line-height: 1.25; }
+  .sheet.scene-research > header { gap: 4px 10px; flex-wrap: wrap; }
+  .sheet.scene-research > header h2 { flex: 1; }
+  .sheet.scene-research > header .muted { order: 5; flex: 1 1 100%; min-width: 0; font-size: 12px; text-align: left; line-height: 1.25; }
   .sheet > header .sci { white-space: nowrap; }
 }
 /* roomy enough for the rival portraits and the era name once the phone is wide */

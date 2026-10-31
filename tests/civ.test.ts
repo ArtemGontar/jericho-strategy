@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '../src/shared/game';
-import { MAX_DEALS, SANCTION_TURNS, contentment, dealGold, luxuryAccess, outputFactor, growthFactor } from '../src/shared/civ';
-import { cityYield, refreshPlayer } from '../src/shared/economy';
+import { MAX_DEALS, SANCTION_TURNS, contentment, dealGold, dealSlots, luxuryAccess, outputFactor, growthFactor } from '../src/shared/civ';
+import { MAX_SLOTS, buildingSlots, canBuildBuilding, cityYield, refreshPlayer, slotsUsed } from '../src/shared/economy';
 import { buildView } from '../src/shared/view';
-import { TERRAIN } from '../src/shared/data';
+import { BUILDINGS, CIVS, TECHS, TECH_BY_ID, TERRAIN } from '../src/shared/data';
 
 /** n humans, each with a capital, all met and at peace. */
 function world(n = 3, seed = 21) {
@@ -206,3 +206,102 @@ describe('hostile input', () => {
   });
 });
 
+
+describe('building slots', () => {
+  it('limit a city to a few buildings, growing with it, and leave walls, barracks, wonders and unique buildings free', () => {
+    const g = world(2);
+    const city = g.playerCities(0)[0]; // the capital: 3 slots + 1 for the capital at population 1
+    const p = g.players[0];
+    p.techs.push('pottery', 'writing', 'masonry', 'bronze', 'currency', 'mining', 'ceremony', 'philosophy');
+    expect(buildingSlots(city)).toBe(4);
+    for (const b of ['granary', 'library', 'market', 'workshop'] as const) {
+      expect(canBuildBuilding(g, 0, city, b)).toBe(true);
+      city.buildings.push(b);
+    }
+    expect(slotsUsed(city)).toBe(4);
+    expect(canBuildBuilding(g, 0, city, 'temple')).toBe(false);
+    expect(canBuildBuilding(g, 0, city, 'shrine')).toBe(false);
+    expect(canBuildBuilding(g, 0, city, 'walls')).toBe(true); // free
+    expect(canBuildBuilding(g, 0, city, 'barracks')).toBe(true); // free
+    expect(canBuildBuilding(g, 0, city, 'pyramids')).toBe(true); // a wonder
+    city.pop = 4; // two more slots
+    expect(buildingSlots(city)).toBe(6);
+    expect(canBuildBuilding(g, 0, city, 'temple')).toBe(true);
+    city.pop = 40;
+    expect(buildingSlots(city)).toBe(MAX_SLOTS);
+  });
+
+  it('give each civilisation one building of its own that no other can raise', () => {
+    const g = world(2);
+    const mine = g.players[0].civ, theirs = g.players[1].civ;
+    const own = Object.values(BUILDINGS).find((b) => b.civ === mine)!;
+    const foreign = Object.values(BUILDINGS).find((b) => b.civ === theirs)!;
+    g.players[0].techs.push(own.tech!, foreign.tech!);
+    const city = g.playerCities(0)[0];
+    expect(canBuildBuilding(g, 0, city, own.id)).toBe(true);
+    expect(canBuildBuilding(g, 0, city, foreign.id)).toBe(false);
+    expect(own.free).toBe(true);
+    // every civilisation has exactly one
+    for (const c of CIVS) expect(Object.values(BUILDINGS).filter((b) => b.civ === c.id)).toHaveLength(1);
+  });
+
+  it('can be torn down for a little gold, which frees the slot', () => {
+    const g = world(2);
+    const city = g.playerCities(0)[0];
+    g.players[0].techs.push('writing', 'pottery', 'education', 'philosophy', 'ceremony');
+    city.buildings.push('library', 'university', 'pyramids');
+    const gold = g.players[0].gold;
+    expect(g.exec(0, { t: 'sell', city: city.id, building: 'library' }).ok).toBe(false); // the university needs it
+    expect(g.exec(0, { t: 'sell', city: city.id, building: 'pyramids' }).ok).toBe(false); // a wonder
+    expect(g.exec(0, { t: 'sell', city: city.id, building: 'market' }).ok).toBe(false); // not there
+    expect(g.exec(1, { t: 'sell', city: city.id, building: 'university' }).ok).toBe(false); // not theirs
+    const used = slotsUsed(city);
+    expect(g.exec(0, { t: 'sell', city: city.id, building: 'university' }).ok).toBe(true);
+    expect(slotsUsed(city)).toBe(used - 1);
+    expect(g.players[0].gold).toBeGreaterThan(gold);
+    expect(g.exec(0, { t: 'sell', city: city.id, building: 'library' }).ok).toBe(true);
+  });
+
+  it('shows in the view', () => {
+    const g = world(2);
+    const vc = buildView(g, 0).cities.find((c) => c.mine)!;
+    expect(vc.slots).toEqual({ used: 0, max: 4 });
+  });
+});
+
+describe('civic techs and buildings', () => {
+  it('shrines, amphitheaters and cathedrals add contentment like temples', () => {
+    const g = world(2);
+    stripLuxuries(g);
+    const city = g.playerCities(0)[0];
+    const base = contentment(g, 0).value;
+    city.buildings.push('shrine');
+    expect(contentment(g, 0).value).toBe(base + 1);
+    city.buildings.push('amphitheater');
+    expect(contentment(g, 0).value).toBe(base + 3);
+    city.buildings.push('temple', 'cathedral');
+    expect(contentment(g, 0).value).toBe(base + 7);
+  });
+
+  it('embassies and Navigation allow more trade agreements; Medicine eases the weight of citizens', () => {
+    const g = world(2);
+    expect(dealSlots(g, 0)).toBe(4);
+    g.players[0].techs.push('navigation');
+    expect(dealSlots(g, 0)).toBe(5);
+    const [a, b, c] = [g.playerCities(0)[0], g.playerCities(0)[0], g.playerCities(0)[0]];
+    a.buildings.push('embassy');
+    expect(dealSlots(g, 0)).toBe(6);
+    void b; void c;
+    stripLuxuries(g);
+    const city = g.playerCities(0)[0];
+    city.pop = 10;
+    const before = contentment(g, 0).value;
+    g.players[0].techs.push('medicine');
+    expect(contentment(g, 0).value).toBeCloseTo(before + 0.6, 5);
+  });
+
+  it('the tree has the new branches, all reachable', () => {
+    for (const id of ['ceremony', 'drama', 'diplomacy', 'medicine', 'theology']) expect(TECH_BY_ID[id]).toBeDefined();
+    for (const t of TECHS) for (const pre of t.pre) expect(TECH_BY_ID[pre], `${t.id} needs ${pre}`).toBeDefined();
+  });
+});

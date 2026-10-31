@@ -134,23 +134,43 @@ export interface BuildingDef {
   science?: number;
   culture?: number;
   growth?: number;
+  /** contentment this building gives the whole empire */
+  content?: number;
+  /** takes no slot in the city (walls, barracks and every civilisation's own building) */
+  free?: boolean;
+  /** only this civilisation can build it */
+  civ?: string;
   desc: string;
 }
 
 const B = (d: BuildingDef): BuildingDef => d;
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   granary:      B({ id: 'granary', name: 'Granary', icon: '🏺', cost: 40, upkeep: 1, tech: 'pottery', food: 2, desc: '+2 food.' }),
-  walls:        B({ id: 'walls', name: 'Walls', icon: '🧱', cost: 60, upkeep: 1, tech: 'masonry', desc: '+100 city HP and +40% city defence. Only siege engines do full damage to a walled city.' }),
-  barracks:     B({ id: 'barracks', name: 'Barracks', icon: '⚔️', cost: 60, upkeep: 1, tech: 'bronze', desc: 'New military units start veteran (+15% strength) and heal fully in the city.' }),
+  walls:        B({ id: 'walls', name: 'Walls', icon: '🧱', cost: 60, upkeep: 1, tech: 'masonry', free: true, desc: '+100 city HP and +40% city defence. Only siege engines do full damage to a walled city.' }),
+  barracks:     B({ id: 'barracks', name: 'Barracks', icon: '⚔️', cost: 60, upkeep: 1, tech: 'bronze', free: true, desc: 'New military units start veteran (+15% strength) and heal fully in the city.' }),
   library:      B({ id: 'library', name: 'Library', icon: '📚', cost: 70, upkeep: 1, tech: 'writing', science: 3, desc: '+3 science.' }),
   workshop:     B({ id: 'workshop', name: 'Workshop', icon: '🔨', cost: 70, upkeep: 1, tech: 'mining', prod: 2, desc: '+2 production.' }),
   market:       B({ id: 'market', name: 'Market', icon: '⚖️', cost: 80, upkeep: 0, tech: 'currency', gold: 3, desc: '+3 gold.' }),
-  temple:       B({ id: 'temple', name: 'Temple', icon: '🛕', cost: 60, upkeep: 1, tech: 'philosophy', culture: 2, science: 1, desc: '+2 culture, +1 science.' }),
+  temple:       B({ id: 'temple', name: 'Temple', icon: '🛕', cost: 60, upkeep: 1, tech: 'philosophy', culture: 2, science: 1, content: 1, desc: '+2 culture, +1 science, +1 contentment.' }),
   aqueduct:     B({ id: 'aqueduct', name: 'Aqueduct', icon: '🌉', cost: 80, upkeep: 1, tech: 'construction', growth: 1, desc: 'Allows the city to grow beyond 8 population.' }),
   university:   B({ id: 'university', name: 'University', icon: '🎓', cost: 120, upkeep: 2, tech: 'education', needs: 'library', science: 5, desc: '+5 science. Requires a Library.' }),
   bank:         B({ id: 'bank', name: 'Bank', icon: '🏦', cost: 120, upkeep: 2, tech: 'banking', needs: 'market', gold: 5, desc: '+5 gold. Requires a Market.' }),
   observatory:  B({ id: 'observatory', name: 'Observatory', icon: '🔭', cost: 120, upkeep: 2, tech: 'astronomy', science: 4, culture: 1, desc: '+4 science.' }),
   harbor:       B({ id: 'harbor', name: 'Harbor', icon: '⚓', cost: 60, upkeep: 1, tech: 'sailing', coastal: true, food: 1, desc: 'Coastal city: +1 food, and +1 food from every worked water tile.' }),
+  // civic buildings: they keep the people content and culture growing
+  shrine:       B({ id: 'shrine', name: 'Shrine', icon: '⛩️', cost: 30, upkeep: 0, tech: 'ceremony', content: 1, desc: '+1 contentment. Cheap, and early.' }),
+  amphitheater: B({ id: 'amphitheater', name: 'Amphitheater', icon: '🎭', cost: 70, upkeep: 1, tech: 'drama', content: 2, desc: '+2 contentment.' }),
+  embassy:      B({ id: 'embassy', name: 'Embassy', icon: '🕊️', cost: 60, upkeep: 1, tech: 'diplomacy', gold: 1, desc: '+1 gold, and one more trade agreement. Two embassies count.' }),
+  cathedral:    B({ id: 'cathedral', name: 'Cathedral', icon: '⛪', cost: 120, upkeep: 2, tech: 'theology', needs: 'temple', culture: 1, content: 3, desc: '+3 contentment, +1 culture. Requires a Temple.' }),
+  // one building only a single civilisation can raise; it takes no slot, so it is always worth having
+  spring_gardens:  B({ id: 'spring_gardens', name: 'Spring Gardens', icon: '🌿', cost: 50, upkeep: 0, tech: 'pottery', food: 3, content: 1, free: true, civ: 'jericho', desc: 'Jericho only. +3 food, +1 contentment. Takes no slot.' }),
+  ziggurat:        B({ id: 'ziggurat', name: 'Ziggurat', icon: '🛕', cost: 70, upkeep: 1, tech: 'writing', science: 3, culture: 1, free: true, civ: 'sumer', desc: 'Sumer only. +3 science, +1 culture. Takes no slot.' }),
+  sun_temple:      B({ id: 'sun_temple', name: 'Temple of the Sun', icon: '☀️', cost: 60, upkeep: 0, tech: 'masonry', prod: 1, culture: 2, content: 1, free: true, civ: 'egypt', desc: 'Egypt only. +1 production, +2 culture, +1 contentment. Takes no slot.' }),
+  great_bath:      B({ id: 'great_bath', name: 'Great Bath', icon: '🛁', cost: 70, upkeep: 1, tech: 'construction', food: 1, content: 2, free: true, civ: 'indus', desc: 'Indus only. +2 contentment, +1 food. Takes no slot.' }),
+  forum:           B({ id: 'forum', name: 'Forum', icon: '🏛️', cost: 80, upkeep: 0, tech: 'currency', gold: 4, content: 1, free: true, civ: 'rome', desc: 'Rome only. +4 gold, +1 contentment. Takes no slot.' }),
+  satrapy:         B({ id: 'satrapy', name: 'Satrapy', icon: '🏺', cost: 80, upkeep: 1, tech: 'currency', gold: 2, prod: 2, free: true, civ: 'persia', desc: 'Persia only. +2 gold, +2 production. Takes no slot.' }),
+  stepped_pyramid: B({ id: 'stepped_pyramid', name: 'Stepped Pyramid', icon: '🔺', cost: 90, upkeep: 1, tech: 'mathematics', science: 2, culture: 2, free: true, civ: 'maya', desc: 'Maya only. +2 science, +2 culture. Takes no slot.' }),
+  agora:           B({ id: 'agora', name: 'Agora', icon: '🏛️', cost: 80, upkeep: 0, tech: 'philosophy', science: 2, gold: 1, content: 2, free: true, civ: 'greece', desc: 'Greece only. +2 contentment, +2 science, +1 gold. Takes no slot.' }),
   pyramids:        B({ id: 'pyramids', name: 'Pyramids', icon: '🔺', cost: 170, upkeep: 0, tech: 'masonry', wonder: true, prod: 4, culture: 3, desc: 'Wonder: +4 production, +3 culture.' }),
   great_library:   B({ id: 'great_library', name: 'Great Library', icon: '🏛️', cost: 190, upkeep: 0, tech: 'writing', wonder: true, science: 8, culture: 3, desc: 'Wonder: +8 science, +3 culture.' }),
   hanging_gardens: B({ id: 'hanging_gardens', name: 'Hanging Gardens', icon: '🌳', cost: 190, upkeep: 0, tech: 'construction', wonder: true, food: 4, culture: 3, desc: 'Wonder: +4 food, +3 culture.' }),
@@ -180,16 +200,21 @@ export const TECHS: TechDef[] = [
   T('writing', 'Writing', 0, 35, ['pottery'], 'Library, Great Library'),
   T('wheel', 'The Wheel', 0, 35, ['husbandry'], 'Roads'),
   T('sailing', 'Sailing', 0, 35, ['pottery'], 'Trireme, Harbor'),
+  T('ceremony', 'Ceremony', 0, 30, [], 'Shrine: an early way to keep people content'),
   T('ironworking', 'Iron Working', 1, 70, ['bronze'], 'Swordsman'),
   T('mathematics', 'Mathematics', 1, 70, ['archery', 'masonry'], 'Catapult'),
   T('currency', 'Currency', 1, 70, ['bronze'], 'Market'),
   T('philosophy', 'Philosophy', 1, 80, ['writing'], 'Temple, Oracle'),
   T('construction', 'Construction', 1, 80, ['masonry', 'wheel'], 'Aqueduct, Hanging Gardens'),
+  T('drama', 'Drama and Poetry', 1, 75, ['writing'], 'Amphitheater'),
+  T('diplomacy', 'Diplomacy', 1, 80, ['writing', 'currency'], 'Embassy: one more trade agreement'),
   T('education', 'Education', 2, 130, ['philosophy'], 'University'),
   T('engineering', 'Engineering', 2, 130, ['mathematics', 'construction'], 'Crossbowman'),
   T('feudalism', 'Feudalism', 2, 130, ['ironworking'], 'Pikeman'),
   T('chivalry', 'Chivalry', 2, 150, ['feudalism', 'husbandry'], 'Knight'),
-  T('navigation', 'Navigation', 2, 140, ['sailing', 'mathematics'], 'Caravel, ocean voyages'),
+  T('navigation', 'Navigation', 2, 140, ['sailing', 'mathematics'], 'Caravel, ocean voyages, one more trade agreement'),
+  T('medicine', 'Medicine', 2, 140, ['philosophy', 'construction'], 'Citizens weigh less on contentment'),
+  T('theology', 'Theology', 2, 150, ['philosophy', 'drama'], 'Cathedral'),
   T('banking', 'Banking', 2, 150, ['currency', 'education'], 'Bank'),
   T('gunpowder', 'Gunpowder', 3, 230, ['feudalism', 'engineering'], 'Musketman'),
   T('metallurgy', 'Metallurgy', 3, 260, ['gunpowder', 'mathematics'], 'Cannon, Frigate'),
