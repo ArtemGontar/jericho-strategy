@@ -50,6 +50,18 @@ Room state (the whole game) is saved on the server after every turn, so a restar
 8. **Cross the sea.** Learn *Sailing* and build a Trireme (or, later, a Caravel or Frigate) in a coastal city. Walk a unit onto an adjacent friendly ship to board it, sail, then step ashore on the far coast — settle islands, scout, or raid. Choose *Islands* in the setup to give every player a home island of their own. Ships can only attack other ships, except the Frigate, which bombards coasts.
 9. **Win** by being the last civilisation standing, by discovering **Enlightenment** (the last technology of the Industrial era) first and holding your capital for 12 turns while everyone else gets a chance to take it (science), by **domination** (hold at least 60% of all the cities, six or more, and twice as many as anyone else, for 10 turns), or by holding the highest score when the turn limit ends.
 
+### Saving, and playing on more than one device
+
+JERICHO runs in any modern browser, so a phone, a tablet and a computer all play the same game, and an online room can mix them. There are no accounts.
+
+| What | Where it lives | Moving it to another device |
+| --- | --- | --- |
+| **Solo and hot-seat games** | In the browser on the device: an autosave at the end of every turn, plus three slots (Menu → Save game). Each save carries a version, so a newer build still opens an older save. | **Send** (Saved games, or Menu → Save game → *Send this game to another device*) gives an 8-character code that works once, for an hour, through the game server. On the other device open *Saved games*, type the code and press *Receive*. Or **Export** a file and **Import** it. |
+| **Online games** | On the game server, which saves the room after every turn and brings it back after a restart (rooms nobody has touched for three days are not restored, and files older than a week are deleted). Your seat is a secret kept in your browser. | *Menu → Continue on another device* gives a link that takes over your seat from the new device. Anyone with the link can play your seat, so send it only to yourself. A refresh or a closed tab needs nothing: the same browser slips back into its seat. |
+| **Settings** (sound, graphics, events, accessibility) | In the browser, per device. | Set them again on the new device. |
+
+If a browser clears its site data (some do after a week without a visit, unless the page is installed to the home screen), its saves go with it, which is a reason to keep a copy with Send or Export. Solo and hot-seat also work with no network once the page has been opened once.
+
 ### The eight civilisations
 
 Each has a bonus and one building of its own that nobody else can build and that takes no slot:

@@ -27,6 +27,8 @@ export interface GameScreenOptions {
   onExit: () => void;
   /** online only */
   invite?: { code: string };
+  /** online: a link that carries this seat to another device, or null when there is none */
+  handoff?: () => string | null;
   hostActions?: { forceEnd: () => void; takeover: (slot: number) => void; rematch: () => void } | null;
   sendChat?: (text: string) => void;
 }
@@ -279,6 +281,9 @@ export class GameScreen {
       this.lastTurn = v.turn;
       this.initCamera();
       this.autoSelect();
+      // a new game that starts with the capital founded opens it, so the first thing on screen is the choice to make
+      const fresh = this.myCities().find((c) => this.cityNeedsProduction(c));
+      if (fresh && v.turn === 1 && this.myCities().length === 1) this.openCityPanel(fresh.id);
     } else if (newTurn) {
       this.lastTurn = v.turn;
       this.pending = null;

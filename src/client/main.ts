@@ -69,10 +69,10 @@ function showTitle(): void {
   const online = savedOnline();
   mount(titleScreen({
     continueGame: hasSavedGame(),
-    savedGames: hasSavedGame(),
+    savedGames: true, // always: it is also where a game from another device is received
     onSaved: () => showSavedGames(),
     // one tap: a random civilisation against two computers on a small map, stopping at turn 60
-    onQuick: () => startLocal({ name: savedName() || 'Player', civ: null, opponents: 2, aiLevel: 'normal', size: 'small', speed: 'quick', seed: null, turnLimit: 60, startAtWar: false, scienceVictory: true, aggression: 'normal', mapStyle: 'continent', events: 'gentle', friends: [] }, 'solo'),
+    onQuick: () => startLocal({ name: savedName() || 'Player', civ: null, opponents: 2, aiLevel: 'normal', size: 'small', speed: 'quick', seed: null, turnLimit: 60, startAtWar: false, scienceVictory: true, aggression: 'normal', mapStyle: 'continent', events: 'gentle', autoFound: true, friends: [] }, 'solo'),
     rejoin: online ? online.code : null,
     onNew: () => showSetup('solo'),
     onHotseat: () => showSetup('hotseat'),
@@ -126,7 +126,7 @@ function startLocal(cfg: SoloConfig, mode: 'solo' | 'hotseat'): void {
   for (let i = 0; i < cfg.opponents; i++) players.push({ name: 'Computer', ai: true, aiLevel: cfg.aiLevel });
   const n = players.length;
   const size = cfg.size === 'auto' ? undefined : cfg.size;
-  const game = Game.create({ seed: cfg.seed ?? undefined, size: size ?? (n <= 3 ? 'small' : n <= 5 ? 'medium' : 'large'), speed: cfg.speed, turnLimit: cfg.turnLimit, startAtWar: cfg.startAtWar, allowScience: cfg.scienceVictory, aggression: cfg.aggression, mapStyle: cfg.mapStyle, events: cfg.events, players });
+  const game = Game.create({ seed: cfg.seed ?? undefined, size: size ?? (n <= 3 ? 'small' : n <= 5 ? 'medium' : 'large'), speed: cfg.speed, turnLimit: cfg.turnLimit, startAtWar: cfg.startAtWar, allowScience: cfg.scienceVictory, aggression: cfg.aggression, mapStyle: cfg.mapStyle, events: cfg.events, autoFound: cfg.autoFound, players });
   game.players.forEach((p) => {
     if (p.ai) p.name = `${game.civOf(p.id).leader} (AI)`;
   });
@@ -199,6 +199,10 @@ async function connectOnline(initial: () => ClientMsg, name: string): Promise<vo
       playing = true;
       startGame(rt, {
         invite: { code: room.code },
+        handoff: () => {
+          const o = savedOnline();
+          return o ? `${location.origin}${location.pathname}?room=${o.code}&seat=${o.token}&name=${encodeURIComponent(o.name)}` : null;
+        },
         sendChat: (text) => rt.sendChat(text),
         hostActions: room.you.host ? hostActions(rt) : null,
       });
@@ -216,9 +220,17 @@ async function connectOnline(initial: () => ClientMsg, name: string): Promise<vo
 // ----------------------------------------------------------------------------- boot
 applyAccessibility();
 installMotion();
-const roomParam = new URLSearchParams(location.search).get('room');
+const params = new URLSearchParams(location.search);
+const roomParam = params.get('room');
+const seatParam = params.get('seat');
 const previous = savedOnline();
-if (roomParam && previous && previous.code === roomParam.toUpperCase().slice(0, 6)) {
+if (roomParam && seatParam && /^[a-f0-9]{8,64}$/i.test(seatParam)) {
+  // a link from our own other device: take the seat over, and take the secret out of the address bar
+  const code = roomParam.toUpperCase().slice(0, 6);
+  const who = (params.get('name') ?? '').slice(0, 20) || 'Player';
+  history.replaceState(null, '', location.pathname);
+  void connectOnline(() => ({ t: 'join', code, name: who, token: seatParam }), who);
+} else if (roomParam && previous && previous.code === roomParam.toUpperCase().slice(0, 6)) {
   // opened our own invite link again (e.g. after a refresh): slip straight back into the game
   void connectOnline(() => ({ t: 'join', code: previous.code, name: previous.name, token: previous.token }), previous.name);
 } else if (roomParam) showOnlineEntry(roomParam.toUpperCase().slice(0, 6));

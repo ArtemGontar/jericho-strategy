@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { randomBytes, randomInt } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -11,6 +11,7 @@ import {
   DEFAULT_ROOM_SETTINGS, type ClientMsg, type RoomInfo, type RoomSettings, type RoomSlot, type ServerMsg,
 } from '../shared/protocol';
 import type { GameState } from '../shared/types';
+import { handleTransfer, resetTransfers, sweepTransfers } from './transfer';
 
 export interface ServerOptions {
   port?: number;
@@ -229,7 +230,10 @@ function loadRooms(): void {
     if (!f.endsWith('.json')) continue;
     try {
       const path = join(DATA, f);
-      if (Date.now() - statSync(path).mtimeMs > 3 * 24 * 3600 * 1000) continue;
+      const age = Date.now() - statSync(path).mtimeMs;
+      // a room nobody has touched for a week is gone for good; one older than three days is not restored
+      if (age > 7 * 24 * 3600 * 1000) { try { unlinkSync(path); } catch { /* ignore */ } continue; }
+      if (age > 3 * 24 * 3600 * 1000) continue;
       const snap = JSON.parse(readFileSync(path, 'utf8')) as { code: string; phase: Room['phase']; slots: RoomSlot[]; settings: RoomSettings; tokens: Array<{ slot: number; token: string }>; state: GameState };
       const room = new Room(snap.code);
       room.phase = snap.phase;
@@ -549,7 +553,12 @@ export function startServer(opts: ServerOptions = {}): Promise<{ port: number; c
   abuse.clear();
   rooms = new Map();
   const allowedOrigins = opts.allowedOrigins ?? (process.env.ALLOWED_ORIGINS ?? '').split(',').map((o) => o.trim().replace(/\/$/, '')).filter(Boolean);
-  const server = createServer(serveStatic);
+  resetTransfers();
+  const server = createServer((req, res) => {
+    // a save handed to another device is not a page: it is answered here
+    if (handleTransfer(req, res, clientIp(req), allowedOrigins)) return;
+    serveStatic(req, res);
+  });
   const wss = new WebSocketServer({
     server, path: '/ws', maxPayload: 16 * 1024,
     // a socket from a browser page on another site is refused when an allow-list is set (non-browser clients send no Origin)
@@ -571,6 +580,7 @@ export function startServer(opts: ServerOptions = {}): Promise<{ port: number; c
         rooms.delete(code);
       }
     }
+    sweepTransfers(now);
     for (const [ip, a] of abuse) if (a.conns === 0 && !recent(a.created, 3600_000, now).length && !recent(a.bad, 600_000, now).length) abuse.delete(ip);
   }, 5 * 60 * 1000);
   sweep.unref();

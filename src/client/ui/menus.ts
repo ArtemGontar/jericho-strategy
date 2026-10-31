@@ -6,7 +6,7 @@ import { icon } from '../icons';
 import { isMuted, setMuted } from '../audio';
 import { askConfirm, btn, clear, h, isCompact, put } from './dom';
 import { emblem } from './hud';
-import { browserStore, checkServer, type RemoteTransport } from '../transport';
+import { browserStore, checkServer, fetchSaveByCode, sendSaveToServer, type RemoteTransport } from '../transport';
 import { SAVE_IDS, exportText, fileNameFor, importText, listSaves, readSave, removeSave, slotName, writeSave, type SaveId, type SaveSummary } from '../saves';
 
 export interface SoloConfig {
@@ -23,6 +23,7 @@ export interface SoloConfig {
   aggression: 'calm' | 'normal' | 'fierce';
   mapStyle: 'continent' | 'islands';
   events: 'off' | 'gentle' | 'normal';
+  autoFound: boolean;
   /** extra local humans (hot-seat), names */
   friends: string[];
 }
@@ -114,7 +115,7 @@ export function titleScreen(hd: TitleHandlers): HTMLElement {
     hd.continueGame ? item('Continue', hd.onContinue, 'autosave', true) : null,
     hd.rejoin ? item('Rejoin online game', hd.onRejoin, hd.rejoin, true) : null,
     item('Quick game', hd.onQuick, '60 turns', !hd.continueGame && !hd.rejoin),
-    hd.savedGames ? item('Saved games', hd.onSaved, 'slots · import') : null,
+    hd.savedGames ? item('Saved games', hd.onSaved, 'slots · other devices') : null,
     item('New game', hd.onNew, 'vs computer'),
     soloOnly ? null : item('Play online', hd.onOnline, 'with friends'),
     item('Hot-seat', hd.onHotseat, 'one screen'),
@@ -211,6 +212,8 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
   const speed = segmented<'standard' | 'quick' | 'short'>([['standard', 'Long · 200'], ['quick', 'Quick · 120'], ['short', 'Short · 60']], isCompact() ? 'quick' : 'standard');
   // random events: a few surprises, good and bad; gentler by default on a phone and in short games
   const events = segmented<'off' | 'gentle' | 'normal'>([['off', 'Off'], ['gentle', 'Gentle'], ['normal', 'Normal']], isCompact() ? 'gentle' : 'normal');
+  // the first turn: place the capital yourself, or start with it founded on the good spot the map picked
+  const capital = segmented<'auto' | 'self'>([['auto', 'Found it for me'], ['self', 'I’ll place it']], 'auto');
   const stance = segmented<'peace' | 'war'>([['peace', 'Peace'], ['war', 'War']], 'peace');
   const land = segmented<'continent' | 'islands'>([['continent', 'Continent'], ['islands', 'Islands']], 'continent');
   const aggr = segmented<'calm' | 'normal' | 'fierce'>([['calm', 'Calm'], ['normal', 'Normal'], ['fierce', 'Fierce']], 'normal');
@@ -229,6 +232,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
     field('Computers', aggr.el),
     field('Map', size),
     field('Land', land.el),
+    field('Capital', capital.el),
     field('Random events', events.el),
     field('Game length', speed.el),
     field('Diplomacy', stance.el),
@@ -253,7 +257,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
     onStart({
       name, civ, opponents: Number(opp.value), aiLevel: level.get(), size: size.value as SoloConfig['size'], speed: speed.get() === 'standard' ? 'standard' : 'quick',
       seed: seed.value.trim() ? Number(seed.value) || null : null, turnLimit: { standard: 200, quick: 120, short: 60 }[speed.get()],
-      startAtWar: stance.get() === 'war', scienceVictory: victories.get() === 'all', aggression: aggr.get(), mapStyle: land.get(), events: events.get(), friends,
+      startAtWar: stance.get() === 'war', scienceVictory: victories.get() === 'all', aggression: aggr.get(), mapStyle: land.get(), events: events.get(), autoFound: capital.get() === 'auto', friends,
     });
   };
 
@@ -432,6 +436,17 @@ export function savedGamesScreen(onOpen: (id: SaveId) => void, onBack: () => voi
   const row = (sv: SaveSummary) => {
     const actions = h('div', { class: 'save-actions' },
       sv.ok ? btn('Open', () => onOpen(sv.id), 'primary small') : null,
+      sv.ok ? btn('Send', async () => {
+        const text = exportText(browserStore(), sv.id);
+        if (!text) return;
+        try {
+          const r = await sendSaveToServer(text);
+          note = { text: `Your code is ${r.code}. On your other device open Saved games and receive it within ${r.minutes} minutes. It works once.`, bad: false };
+        } catch (e) {
+          note = { text: (e as Error).message, bad: true };
+        }
+        draw();
+      }, 'small', 'Get a code to open this game on another device') : null,
       btn('Export', () => {
         const text = exportText(browserStore(), sv.id);
         if (!text) return;
@@ -456,6 +471,23 @@ export function savedGamesScreen(onOpen: (id: SaveId) => void, onBack: () => voi
       saves.length ? h('div', { class: 'save-list' }, ...saves.map(row)) : h('p', { class: 'muted' }, 'No saved games yet. The game saves itself at the end of every turn, and Menu → Save game keeps a copy in a slot.'),
       h('div', { class: 'eyebrow' }, 'Move a game between devices'),
       h('p', { class: 'muted', style: { margin: '0', fontSize: '14px' } }, 'Export writes a file you can keep or send to your other device. Import reads one back into a free slot.'),
+      h('div', { class: 'eyebrow' }, 'Receive a game from another device'),
+      (() => {
+        const input = h('input', { placeholder: 'CODE', maxLength: 12, 'aria-label': 'Code from your other device', style: { textTransform: 'uppercase', letterSpacing: '0.2em', width: '170px' } });
+        const go = btn('Receive', async () => {
+          try {
+            const rec = importText(await fetchSaveByCode(input.value));
+            const id = await slotForImport();
+            if (!id) return;
+            const res = writeSave(browserStore(), id, rec);
+            note = res.ok ? { text: `Received into ${slotName(id).toLowerCase()}. Open it from the list.`, bad: false } : { text: res.error, bad: true };
+          } catch (e) {
+            note = { text: (e as Error).message, bad: true };
+          }
+          draw();
+        }, 'primary small');
+        return h('div', { class: 'row' }, input, go);
+      })(),
       btn('Import a save file', () => {
         const input = h('input', { type: 'file', accept: '.json,application/json' });
         input.addEventListener('change', async () => {

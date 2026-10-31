@@ -63,3 +63,7 @@ No domain? Alternative: put a CloudFront distribution in front of the instance (
 | Mixed content error in the console | `VITE_SERVER_URL` starts with `ws://`; it must be `wss://` |
 | Everyone gets "Too many connections" | `TRUST_PROXY=1` missing, so all players look like the proxy's address (it is set in `docker-compose.yml`) |
 | Friends cannot join each other's rooms | more than one backend instance is running |
+
+## Saves handed to another device
+
+The same Node process also answers `POST /transfer` and `GET /transfer/CODE`, so a player can send a solo save to another device with an 8-character code. A code works once and for an hour; the text is kept in memory only, at most 200 at a time, and a body over 3 MB is refused. One address may send 12 saves an hour and try 12 wrong codes in ten minutes. With `ALLOWED_ORIGINS` set, only those sites may use it from a browser. If the frontend is hosted separately (for example on Vercel), `VITE_SERVER_URL` decides where the page sends them, as it does for online play. Nothing is stored on disk. Room snapshots in `DATA_DIR` older than a week are deleted when the server starts.

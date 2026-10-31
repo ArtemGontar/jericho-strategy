@@ -74,6 +74,8 @@ export interface NewGameOptions {
   allowScience?: boolean;
   allowDomination?: boolean;
   events?: 'off' | 'gentle' | 'normal';
+  /** found each human's capital where their settler stands, so the first turn is about what to build, not where to click */
+  autoFound?: boolean;
   startAtWar?: boolean;
   aggression?: 'calm' | 'normal' | 'fierce';
   mapStyle?: 'continent' | 'islands';
@@ -205,7 +207,14 @@ export class Game {
       game.addUnit(p.id, 'scout', spot.x, spot.y);
     });
     game.updateVisibility();
-    game.note([], 'The age of cities begins. Found your capital and explore!', 'info');
+    if (opts.autoFound) {
+      // the start positions are chosen as good city sites, so this is never a bad capital
+      for (const p of game.players) {
+        const settler = !p.ai ? game.units.find((u) => u.owner === p.id && u.type === 'settler') : undefined;
+        if (settler) game.exec(p.id, { t: 'found', unit: settler.id });
+      }
+      game.note([], 'The age of cities begins. Your capital is founded: choose what it builds, then explore!', 'info');
+    } else game.note([], 'The age of cities begins. Found your capital and explore!', 'info');
     return game;
   }
 

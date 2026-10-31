@@ -3,7 +3,7 @@ import { buildView, filterEvents, type GameView } from '../shared/view';
 import { previewAttack, type AttackPreview } from '../shared/combat';
 import type { CmdResult } from '../shared/types';
 import type { ClientMsg, RoomInfo, ServerMsg } from '../shared/protocol';
-import { hasAnySave, makeRecord, newestReadable, readSave, removeSave, writeSave, type SaveId, type Store } from './saves';
+import { hasAnySave, makeRecord, newestReadable, readSave, removeSave, writeSave, type SaveId, type SaveRecord, type Store } from './saves';
 
 export interface GameTransport {
   readonly kind: 'local' | 'remote';
@@ -110,6 +110,11 @@ export class LocalTransport implements GameTransport {
 
   sendChat(): void {}
 
+  /** This game as a save record, for sending to another device. */
+  exportRecord(): SaveRecord {
+    return makeRecord(this.game.toJSON(), this.humans);
+  }
+
   /** Called once when the browser refuses a save, so the player is told instead of believing the game is safe. */
   onSaveFailed: (message: string) => void = () => {};
   private saveWarned = false;
@@ -149,6 +154,37 @@ export function loadSavedGame(id?: SaveId): { ok: true; transport: LocalTranspor
 
 export function hasSavedGame(): boolean {
   return hasAnySave(browserStore());
+}
+
+/** Send a save to the game server and get a short code for another device. Throws an Error with a message for the player. */
+export async function sendSaveToServer(json: string): Promise<{ code: string; minutes: number }> {
+  const url = RemoteTransport.httpUrl('/transfer');
+  if (!url) throw new Error('There is no game server to send it through. Use Export instead.');
+  let res: Response;
+  try {
+    res = await fetch(url, { method: 'POST', body: json, headers: { 'content-type': 'application/json' } });
+  } catch {
+    throw new Error('Could not reach the game server. Use Export instead, or try again later.');
+  }
+  const body = (await res.json().catch(() => ({}))) as { code?: string; minutes?: number; error?: string };
+  if (!res.ok || !body.code) throw new Error(body.error ?? 'The server would not take it.');
+  return { code: body.code, minutes: body.minutes ?? 60 };
+}
+
+/** Fetch a save that another device sent. It can be fetched once. */
+export async function fetchSaveByCode(code: string): Promise<string> {
+  const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (clean.length !== 8) throw new Error('A code has 8 letters and numbers.');
+  const url = RemoteTransport.httpUrl(`/transfer/${clean}`);
+  if (!url) throw new Error('There is no game server to fetch it from.');
+  let res: Response;
+  try {
+    res = await fetch(url);
+  } catch {
+    throw new Error('Could not reach the game server.');
+  }
+  if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'No saved game with that code.');
+  return res.text();
 }
 
 /** Is a game server answering at the address this page would use for online play? */
@@ -201,6 +237,19 @@ export class RemoteTransport implements GameTransport {
   }
 
   /** Address of the server's health check, derived from the socket address. */
+  /** Address of a page on the game server, derived from the socket address (`/transfer` and the like). */
+  static httpUrl(path: string, wsUrl = RemoteTransport.defaultUrl()): string | null {
+    try {
+      const u = new URL(wsUrl);
+      u.protocol = u.protocol === 'wss:' ? 'https:' : 'http:';
+      u.pathname = path;
+      u.search = '';
+      return u.toString();
+    } catch {
+      return null;
+    }
+  }
+
   static healthUrl(wsUrl = RemoteTransport.defaultUrl()): string | null {
     try {
       const u = new URL(wsUrl);

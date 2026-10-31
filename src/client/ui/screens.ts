@@ -12,7 +12,7 @@ import { artIcon } from '../artwork';
 import { icon } from '../icons';
 import { askConfirm, btn, clear, h, put, turnsLeft } from './dom';
 import { currentEra, emblem } from './hud';
-import { browserStore, type LocalTransport } from '../transport';
+import { browserStore, sendSaveToServer, type LocalTransport } from '../transport';
 import { inviteButtons } from './menus';
 import { THRIVING, growthFactor, outputFactor } from '../../shared/civ';
 import { LUXURIES, RESOURCES } from '../../shared/data';
@@ -348,6 +348,15 @@ export function showMenu(gs: GameScreen): HTMLElement {
   list.append(
     item('Resume', () => gs.closeModal(), true),
     ...(gs.transport.kind === 'local' ? [item('Save game', () => gs.openModal('save'))] : []),
+    ...(gs.opts.handoff ? [item('Continue on another device', async () => {
+      const link = gs.opts.handoff!();
+      if (!link) return;
+      if (!(await askConfirm('This link lets whoever opens it play your seat, and your other device takes over from this one. Send it only to yourself.', 'Get the link'))) return;
+      if (typeof navigator.share === 'function') void navigator.share({ title: 'My JERICHO seat', text: 'Open this on your other device to carry on.', url: link }).catch(() => undefined);
+      else {
+        try { await navigator.clipboard.writeText(link); gs.toast('Link copied. Open it on your other device.'); } catch { gs.toast('Could not copy the link.', 'bad'); }
+      }
+    })] : []),
     item('Policies', () => gs.openModal('policies')),
     item('Your cities', () => gs.openModal('cities')),
     item('Diplomacy', () => gs.openDiplomacy()),
@@ -456,7 +465,20 @@ export function showSave(gs: GameScreen): HTMLElement {
     });
     return b;
   });
-  return sheet('Save game', [h('p', { class: 'muted', style: { margin: '0' } }, 'The game also saves itself at the end of every turn. Slots keep a copy you choose.'), h('div', { class: 'menu-list compact' }, ...rows)], () => gs.closeModal(), { narrow: true, scene: 'settings' });
+  // hand this game to another device: a short code that works once
+  const status = h('p', { class: 'muted', style: { margin: '0', fontSize: '14px' } }, '');
+  const send = btn([icon('gift', 16), 'Send this game to another device'], async () => {
+    status.textContent = 'Sending…';
+    try {
+      const r = await sendSaveToServer(JSON.stringify(t.exportRecord()));
+      status.textContent = `Your code is ${r.code}. On your other device open Saved games and receive it within ${r.minutes} minutes. It works once.`;
+      status.className = 'verdict good';
+    } catch (e) {
+      status.textContent = (e as Error).message;
+      status.className = 'verdict bad';
+    }
+  }, 'small', 'Get a code to continue this game on a phone, tablet or computer');
+  return sheet('Save game', [h('p', { class: 'muted', style: { margin: '0' } }, 'The game also saves itself at the end of every turn. Slots keep a copy you choose.'), h('div', { class: 'menu-list compact' }, ...rows), h('div', null, send), status], () => gs.closeModal(), { narrow: true, scene: 'settings' });
 }
 
 // ------------------------------------------------------------------ help

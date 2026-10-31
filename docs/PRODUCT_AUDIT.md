@@ -16,6 +16,8 @@ Updated after the first round of work. The owner decided that **analytics and er
 | Phone basics (1, 6) | The first-game list became a one-line chip with touch wording, tile info is placed above the unit card with a background and clears itself, offline service worker, manifest `standalone` and `any` orientation, screen wake lock, vibration (own setting), smallest text sizes raised on phones | Reachability test with real hands; a real-device performance check of the 3D map |
 | Smaller items (8, 10, 11, 12) | Fonts bundled instead of loaded from Google, colour-blind palette (Okabe-Ito civilisation colours, blue and orange for good and bad, a mark on warring rivals), high-contrast option, build number in the menu, a daily 3D end-to-end job, deploy docs point to `main`, stricter type checking (the `noUnusedLocals` option was listed twice with `false` winning) | Translations (strings are still inline), a linter (typescript-eslint does not support TypeScript 7 yet), screenshot comparisons, a privacy page, a record of where each picture came from |
 
+Update, after the cross-device work: a solo game now moves between devices with a one-time code (and still by file), an online seat moves with a hand-over link, the title screen always offers *Saved games* so a new device can receive one, and a new game can start with the capital already founded.
+
 Two corrections to the first version of this document:
 
 - **Tile info on touch.** The first version said tapping a tile shows nothing. It does show a strip, but the strip had no background, sat under the notification area and collided with toasts. That is what was fixed.

@@ -98,3 +98,27 @@ describe('auto-research', () => {
     expect(p.autoResearch).toBe(false);
   });
 });
+
+describe('a first turn that starts with the capital', () => {
+  it('founds it for each human on the map’s chosen start, and leaves the computers to do their own', () => {
+    const g = Game.create({ seed: 8, size: 'small', autoFound: true, players: [{ name: 'A', ai: false }, { name: 'B', ai: true }] });
+    expect(g.playerCities(0)).toHaveLength(1);
+    expect(g.playerCities(0)[0].capital).toBe(true);
+    expect(g.units.some((u) => u.owner === 0 && u.type === 'settler')).toBe(false);
+    expect(g.units.some((u) => u.owner === 0 && u.type === 'warrior')).toBe(true);
+    expect(g.playerCities(1)).toHaveLength(0);
+    expect(g.units.some((u) => u.owner === 1 && u.type === 'settler')).toBe(true);
+    const plain = Game.create({ seed: 8, size: 'small', players: [{ name: 'A', ai: false }, { name: 'B', ai: true }] });
+    expect(plain.playerCities(0)).toHaveLength(0);
+  });
+  it('is a good place: food and room, as every start is', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const g = Game.create({ seed, size: 'small', autoFound: true, players: [{ name: 'A', ai: false }, { name: 'B', ai: false }] });
+      for (const pid of [0, 1]) {
+        const c = g.playerCities(pid)[0];
+        expect(c, `seed ${seed}`).toBeDefined();
+        expect(c.worked.length + c.pop, `seed ${seed}`).toBeGreaterThan(0);
+      }
+    }
+  });
+});

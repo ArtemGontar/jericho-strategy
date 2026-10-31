@@ -211,6 +211,14 @@ try {
     await B.page.evaluate(() => { void (window as any).__jericho.screen.endTurn(); });
     await A.page.waitForFunction(() => (window as any).__jericho.screen.view.turn === 2, null, { timeout: 5000 });
     check('turn resolves once everyone is ready', (await screenState(A.page)).turn === 2);
+    // Bob carries his seat to another browser with the hand-over link, and the first browser is replaced
+    const link = await B.page.evaluate(() => { const o = JSON.parse(localStorage.getItem('jericho.online') || 'null'); return o ? `${location.origin}${location.pathname}?room=${o.code}&seat=${o.token}&name=${encodeURIComponent(o.name)}` : null; });
+    check('a hand-over link exists for the online seat', !!link);
+    const C = await newPage('bob on another device');
+    await C.page.goto(link!);
+    await C.page.waitForFunction(() => (window as any).__jericho?.screen?.view, null, { timeout: 8000 }).catch(() => undefined);
+    check('the seat moves to the other browser', (await screenState(C.page).catch(() => ({ me: -1 }))).me === 1);
+    check('the secret is taken out of the address bar', !(await C.page.url()).includes('seat='));
     check('no browser errors (online)', A.errors.length + B.errors.length === 0, [...A.errors, ...B.errors].slice(0, 2).join(' | '));
   }
 
@@ -265,6 +273,38 @@ try {
     await page.waitForSelector('.server-status.up, .server-status.down');
     const up = await page.$('.server-status.up');
     check('Play online confirms the game server is reachable', !!up);
+    // a solo game travels to another device by a short code
+    await page.evaluate(() => { localStorage.removeItem('jericho.save.auto'); });
+    await page.reload();
+    await page.waitForSelector('button:has-text("Quick game")');
+    await page.tap('button:has-text("Quick game")');
+    await page.waitForFunction(() => (window as any).__jericho?.screen?.view);
+    await page.evaluate(() => (window as any).__jericho.screen.openModal('save'));
+    await page.tap('.overlay button:has-text("Send this game")');
+    await page.waitForSelector('.overlay .verdict.good');
+    const sent = await page.$eval('.overlay .verdict.good', (e) => e.textContent ?? '');
+    const code = /code is ([A-Z0-9]{8})/.exec(sent)?.[1] ?? '';
+    check('a game can be sent to another device with a code', code.length === 8, sent.slice(0, 40));
+    const D = await newPage('other device', { viewport: { width: 1000, height: 700 } });
+    await D.page.goto(base);
+    // a device with no saves of its own can still receive one
+    await D.page.waitForSelector('button:has-text("Saved games")');
+    await D.page.click('button:has-text("Saved games")');
+    await D.page.fill('input[aria-label="Code from your other device"]', code.toLowerCase());
+    await D.page.click('button:has-text("Receive")');
+    await D.page.waitForSelector('.ok-line');
+    check('the other device receives it', /Received/.test(await D.page.$eval('.ok-line', (e) => e.textContent ?? '')));
+    await D.page.click('.save-row button:has-text("Open")');
+    await D.page.waitForFunction(() => (window as any).__jericho?.screen?.view);
+    check('and opens the same game', (await screenState(D.page)).turn >= 1);
+    // the code worked once
+    await D.page.evaluate(() => (window as any).__jericho.screen.opts.onExit());
+    await D.page.click('button:has-text("Saved games")');
+    await D.page.fill('input[aria-label="Code from your other device"]', code);
+    await D.page.click('button:has-text("Receive")');
+    await D.page.waitForSelector('.error-line');
+    check('a code works only once', /No saved game with that code/.test(await D.page.$eval('.error-line', (e) => e.textContent ?? '')));
+    await D.ctx.close();
     check('no browser errors (flows)', errors.length === 0, errors.slice(0, 2).join(' | '));
   }
 
@@ -278,7 +318,7 @@ try {
     await page.waitForFunction(() => (window as any).__jericho?.screen?.view);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     check('no horizontal overflow on a phone', !overflow);
-    await page.tap('button[aria-label^="Found city"]');
+    // the capital is founded for the player, and its panel is already open
     await page.waitForSelector('.drawer:not(.hidden)');
     check('city panel opens as a bottom sheet', true);
     check('no browser errors (phone)', errors.length === 0, errors.slice(0, 2).join(' | '));
@@ -301,9 +341,12 @@ try {
         return { overflow: document.documentElement.scrollWidth > vw + 1, offscreen: btns.filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && (r.right > vw + 0.5 || r.left < 0); }).length, menu: !!menu && menu.right <= vw && menu.width >= 36 };
       });
       check(`${w}x${hgt}: no horizontal overflow, top-bar buttons on screen`, !bar.overflow && bar.offscreen === 0 && bar.menu);
+      // the capital's panel opens first; look at the unit card with it closed and a unit picked
+      await page.evaluate(() => { const sc = (window as any).__jericho.screen; sc.closeCity(); sc.selectNextIdle(); });
+      await page.waitForTimeout(400);
       const unit = await page.evaluate(() => { const r = document.querySelector('.unitbar')?.getBoundingClientRect(); return r ? Math.round(r.height) : 0; });
       if (hgt < 520) check(`${w}x${hgt}: unit card leaves most of the map free`, unit > 0 && unit < hgt * 0.34, `${unit}px of ${hgt}px`);
-      await page.tap('button[aria-label^="Found city"], .unitactions button[aria-label^="Found city"]');
+      await page.evaluate(() => { const sc = (window as any).__jericho.screen; sc.openCityPanel(sc.view.cities.find((c: any) => c.mine).id); });
       await page.waitForSelector('.drawer:not(.hidden)');
       await page.waitForTimeout(400);
       const d = await page.evaluate(() => { const r = document.querySelector('.drawer')!.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: innerWidth, h: innerHeight }; });

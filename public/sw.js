@@ -22,7 +22,8 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin || url.pathname.endsWith('/healthz') || url.pathname.endsWith('/ws') || url.pathname.endsWith('/sw.js')) return;
+  // pages of the game server are never stored: a health check, the socket, and a save handed to another device
+  if (url.origin !== self.location.origin || url.pathname.endsWith('/healthz') || url.pathname.endsWith('/ws') || url.pathname.endsWith('/sw.js') || url.pathname.includes('/transfer')) return;
 
   if (req.mode === 'navigate') {
     // the page: the network when there is one (so updates arrive), the stored copy when there is not
