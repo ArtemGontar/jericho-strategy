@@ -192,6 +192,8 @@ export interface GameState {
   enlightenment?: { owner: number; since: number; capital: number; duration: number } | null;
   /** the cultural hegemony countdown: set when one civilisation's culture towers over everyone else's */
   hegemony?: { owner: number; since: number; duration: number } | null;
+  /** the domination countdown: set when one civilisation holds most of the world's cities */
+  domination?: { owner: number; since: number; duration: number } | null;
   /** civilisations whose academy fell during a countdown and can no longer win by science */
   barred?: number[];
   winner: number | null;

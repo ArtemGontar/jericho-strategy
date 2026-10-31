@@ -5,6 +5,15 @@ import type { City, CmdResult, Unit } from './types';
 import type { Game } from './game';
 
 const BASE_DAMAGE = 30;
+/** extra attack strength (a fraction) of mounted units against units that shoot */
+export const CAVALRY_VS_RANGED = 0.5;
+/** damage that anything but siege does to a city behind walls */
+export const WALLS_VS_NON_SIEGE = 0.65;
+
+/** Walls turn back ordinary soldiers and archers; only siege engines do full damage to a walled city. */
+export function wallFactor(att: Unit, city: City): number {
+  return hasBuilding(city, 'walls') && !UNITS[att.type].siege ? WALLS_VS_NON_SIEGE : 1;
+}
 
 function hpFactor(hp: number, max: number): number {
   return 0.7 + 0.3 * (hp / max);
@@ -43,10 +52,12 @@ export function defenceStrength(game: Game, u: Unit, attackerMounted: boolean): 
 }
 
 /** Strength of a unit when it attacks. */
-export function attackStrength(_game: Game, u: Unit, ranged: boolean, defMounted: boolean, vsCity: boolean): number {
+export function attackStrength(_game: Game, u: Unit, ranged: boolean, defMounted: boolean, vsCity: boolean, defRanged = false): number {
   const d = UNITS[u.type];
   let m = 1 + 0.15 * u.level;
   if (d.antiMounted && defMounted) m += d.antiMounted / 100;
+  // cavalry ride down archers, crossbowmen and siege crews
+  if (d.mounted && defRanged) m += CAVALRY_VS_RANGED;
   if (d.siege && vsCity) m += 0.6;
   const base = ranged ? d.ranged : d.strength;
   return base * m * hpFactor(u.hp, UNIT_HP);
@@ -119,7 +130,7 @@ export function previewAttack(game: Game, att: Unit, x: number, y: number): Atta
     const D = cityStrength(game, city);
     return {
       ok: true,
-      dmgDef: Math.round(damageFor(A, D)),
+      dmgDef: Math.round(damageFor(A, D) * wallFactor(att, city)),
       dmgAtt: ranged ? 0 : Math.round(damageFor(D, A) * 0.6),
       defHp: city.hp,
       attHp: att.hp,
@@ -133,7 +144,7 @@ export function previewAttack(game: Game, att: Unit, x: number, y: number): Atta
     if (!civ) return fail('Nothing to attack.');
     return { ok: true, dmgDef: civ.hp, dmgAtt: 0, defHp: civ.hp, attHp: att.hp, target: UNITS[civ.type].name, city: false, capture: !ranged };
   }
-  const A = attackStrength(game, att, ranged, !!UNITS[def.type].mounted, false);
+  const A = attackStrength(game, att, ranged, !!UNITS[def.type].mounted, false, UNITS[def.type].ranged > 0);
   const D = defenceStrength(game, def, !!d.mounted);
   return {
     ok: true,
@@ -174,7 +185,7 @@ export function resolveAttack(game: Game, att: Unit, x: number, y: number): CmdR
     }
     const A = attackStrength(game, att, ranged, false, true);
     const D = cityStrength(game, city);
-    dmgDef = Math.round(damageFor(A, D, roll()));
+    dmgDef = Math.round(damageFor(A, D, roll()) * wallFactor(att, city));
     dmgAtt = ranged ? 0 : Math.round(damageFor(D, A, roll()) * 0.6);
     city.hp -= dmgDef;
     city.lastAttacked = game.turn;
@@ -215,7 +226,7 @@ export function resolveAttack(game: Game, att: Unit, x: number, y: number): CmdR
     }
     defOwner = def.owner;
     defType = def.type;
-    const A = attackStrength(game, att, ranged, !!UNITS[def.type].mounted, false);
+    const A = attackStrength(game, att, ranged, !!UNITS[def.type].mounted, false, UNITS[def.type].ranged > 0);
     const D = defenceStrength(game, def, !!d.mounted);
     dmgDef = Math.min(def.hp, Math.round(damageFor(A, D, roll())));
     dmgAtt = ranged ? 0 : Math.min(att.hp, Math.round(damageFor(D, A, roll())));

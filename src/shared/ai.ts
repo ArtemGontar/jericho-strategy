@@ -1,6 +1,6 @@
 import { tilesWithin, type Pos } from './hex';
 import { BUILDINGS, FINAL_TECH, IMPROVEMENTS, MIN_CITY_DISTANCE, PEACE_MIN_TURNS, RESOURCES, TECHS, TECH_BY_ID, TERRAIN, UNITS } from './data';
-import { availableTechs, canBuildBuilding, canBuildUnit, itemCost, tileYield } from './economy';
+import { availableTechs, canBuildBuilding, canBuildUnit, hasBuilding, itemCost, tileYield } from './economy';
 import { canEnterTerrain, findPath, tileBlockedFor } from './path';
 import { previewAttack } from './combat';
 import type { City, Player, Tile, Unit, UnitTypeId, WorkKind } from './types';
@@ -440,7 +440,9 @@ function planWar(game: Game, p: Player): WarPlan {
     // the capital of a civilisation counting down to victory is the one target that matters
     const clock = game.s.enlightenment;
     const heg = game.s.hegemony;
-    const s = d + e.hp / 40 - (clock && e.id === clock.capital ? 40 : 0) - (heg && e.owner === heg.owner && e.capital ? 25 : 0);
+    const dom = game.s.domination;
+    // any city of a civilisation counting down to domination breaks its hold
+    const s = d + e.hp / 40 - (clock && e.id === clock.capital ? 40 : 0) - (heg && e.owner === heg.owner && e.capital ? 25 : 0) - (dom && e.owner === dom.owner ? 25 : 0);
     if (s < bs) {
       bs = s;
       best = e;
@@ -580,7 +582,9 @@ function queuedIn(game: Game, pid: number, kind: 'unit' | 'building', id: string
   return game.cities.filter((c) => c.owner === pid && c.queue.some((q) => q.kind === kind && q.id === id)).length;
 }
 
-function bestMilitary(game: Game, p: Player, city: City, role: 'melee' | 'ranged' | 'siege' | 'any'): UnitTypeId | null {
+type Role = 'melee' | 'ranged' | 'siege' | 'mounted' | 'any';
+
+function bestMilitary(game: Game, p: Player, city: City, role: Role): UnitTypeId | null {
   let best: UnitTypeId | null = null;
   let bs = -1;
   for (const id of Object.keys(UNITS) as UnitTypeId[]) {
@@ -588,7 +592,8 @@ function bestMilitary(game: Game, p: Player, city: City, role: 'melee' | 'ranged
     if (d.civilian || d.scout || d.naval) continue;
     if (!canBuildUnit(game, p.id, city, id)) continue;
     const power = Math.max(d.strength, d.ranged * 0.85);
-    if (role === 'melee' && d.ranged > 0) continue;
+    if (role === 'melee' && (d.ranged > 0 || d.mounted)) continue;
+    if (role === 'mounted' && !d.mounted) continue;
     if (role === 'ranged' && !(d.ranged > 0 && !d.siege)) continue;
     if (role === 'siege' && !d.siege) continue;
     const s = power / Math.sqrt(d.cost);
@@ -598,6 +603,35 @@ function bestMilitary(game: Game, p: Player, city: City, role: 'melee' | 'ranged
     }
   }
   return best;
+}
+
+
+const isShooter = (u: Unit): boolean => UNITS[u.type].ranged > 0 && !UNITS[u.type].siege;
+
+/**
+ * Which kind of soldier this army is short of. A sound army has a front line, a fifth to a quarter archers, some
+ * cavalry to ride down the enemy's archers, and siege engines in proportion to the walls it expects to meet.
+ */
+function wantedRole(game: Game, p: Player, warNow: boolean): Exclude<Role, 'any'> {
+  const army = military(game, p.id).filter((u) => !UNITS[u.type].scout && !UNITS[u.type].naval);
+  const n = army.length;
+  const siege = army.filter((u) => UNITS[u.type].siege).length;
+  const shooters = army.filter(isShooter).length;
+  const mounted = army.filter((u) => UNITS[u.type].mounted).length;
+  const enemies = knownEnemyCities(game, p.id);
+  const walled = enemies.some((c) => hasBuilding(c, 'walls'));
+  const wantSiege = Math.max(warNow ? 2 : 1, Math.round(n * (warNow && walled ? 0.3 : p.personality === 'warlord' ? 0.2 : 0.12)));
+  const wantShooters = Math.round(n * 0.22);
+  // enemy armies that shoot are what cavalry is for
+  let enemyShooters = 0;
+  let enemyArmy = 0;
+  for (const o of enemiesOf(game, p.id)) for (const u of military(game, o)) { enemyArmy++; if (isShooter(u)) enemyShooters++; }
+  const wantMounted = Math.ceil(n * (enemyArmy && enemyShooters / enemyArmy > 0.3 ? 0.2 : 0.1));
+  const lacks: Array<[Exclude<Role, 'any'>, number]> = [
+    ['siege', (wantSiege - siege) * 1.4], ['ranged', wantShooters - shooters], ['mounted', wantMounted - mounted],
+  ];
+  lacks.sort((a, b) => b[1] - a[1]);
+  return lacks[0][1] > 0.5 ? lacks[0][0] : 'melee';
 }
 
 export function aiPlanCity(game: Game, p: Player, city: City): void {
@@ -665,14 +699,22 @@ export function aiPlanCity(game: Game, p: Player, city: City): void {
   }
   // military
   const wantArmy = p.personality === 'warlord' ? 3 + myCities.length * 2 : 2 + myCities.length * 1.2;
+  // an army that lacks shooters, cavalry or siege builds them even when it is big enough: a mix is what wins fights
+  const lacking = armySize >= 3 ? wantedRole(game, p, warNow) : 'melee';
+  if (lacking !== 'melee') {
+    const u = bestMilitary(game, p, city, lacking);
+    if (u) add('unit', u, warNow ? 7.6 : p.personality === 'warlord' ? 5.6 : 5.2);
+  }
   if (armySize < wantArmy) {
-    const role = game.rng.chance(0.3) ? 'ranged' : game.rng.chance(0.2) ? 'siege' : 'melee';
-    const u = bestMilitary(game, p, city, role) ?? bestMilitary(game, p, city, 'any');
+    const u = bestMilitary(game, p, city, lacking) ?? bestMilitary(game, p, city, 'melee') ?? bestMilitary(game, p, city, 'any');
     if (u) add('unit', u, (warNow ? 8.2 : p.personality === 'warlord' ? 6.2 : 3.3) + (armySize < myCities.length ? 2 : 0));
   }
   if (warNow && armySize >= 4) {
+    // walls turn back everything but siege: the more walled cities in the enemy's land, the more engines we bring
     const siege = bestMilitary(game, p, city, 'siege');
-    if (siege && countUnits(game, p.id, siege) < 3) add('unit', siege, 7);
+    const have = military(game, p.id).filter((u) => UNITS[u.type].siege).length;
+    const walled = knownEnemyCities(game, p.id).some((c) => hasBuilding(c, 'walls'));
+    if (siege && have < (walled ? Math.max(3, Math.ceil(armySize * 0.3)) : 3)) add('unit', siege, 7.4);
   }
   if (!options.length) {
     const d = bestMilitary(game, p, city, 'any');
@@ -726,7 +768,7 @@ function minCityDistance(game: Game, a: number, b: number): number {
 /** Is `o` about to win by research? Everyone else has a reason to stop them. */
 function runawayLeader(game: Game, o: Player): boolean {
   if (!game.s.settings.allowScience) return false;
-  if (game.s.enlightenment?.owner === o.id || game.s.hegemony?.owner === o.id) return true;
+  if (game.s.enlightenment?.owner === o.id || game.s.hegemony?.owner === o.id || game.s.domination?.owner === o.id) return true;
   const others = game.players.filter((x) => x.alive && x.id !== o.id);
   if (!others.length) return false;
   const best = Math.max(...others.map((x) => x.techs.length));
@@ -772,9 +814,9 @@ function runDiplomacy(game: Game, p: Player): void {
         : losing && since >= minWar && game.rng.chance(0.3);
       const alreadyAsked = game.s.proposals.some((x) => x.from === p.id && x.to === o.id);
       if (wantsPeace && !alreadyAsked) exec(game, p.id, { t: 'peace', to: o.id });
-    } else if (rel === 'peace' && (game.s.enlightenment?.owner === o.id || game.s.hegemony?.owner === o.id) && since >= PEACE_MIN_TURNS) {
-      // the world turns on whoever is about to win by research or culture, whatever else it was doing
-      if (game.rng.chance(game.s.enlightenment?.owner === o.id ? 0.55 : 0.3)) exec(game, p.id, { t: 'war', to: o.id });
+    } else if (rel === 'peace' && (game.s.enlightenment?.owner === o.id || game.s.hegemony?.owner === o.id || game.s.domination?.owner === o.id) && since >= PEACE_MIN_TURNS) {
+      // the world turns on whoever is about to win by research, culture or conquest, whatever else it was doing
+      if (game.rng.chance(game.s.enlightenment?.owner === o.id || game.s.domination?.owner === o.id ? 0.55 : 0.3)) exec(game, p.id, { t: 'war', to: o.id });
     } else if (rel === 'peace' && since >= PEACE_MIN_TURNS && wars.length === 0 && game.turn > graceTurns(p, o, game)) {
       if (game.rng.chance(warDesire(game, p, o))) exec(game, p.id, { t: 'war', to: o.id });
     }

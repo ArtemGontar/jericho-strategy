@@ -125,7 +125,7 @@ export function cityYield(game: Game, city: City): CityYield {
     gold += t.gold;
     // a harbour makes the sea more fertile
     if (harbour && !TERRAIN[game.tiles[idx].terrain].land) food += 1;
-    if (seafaring && !TERRAIN[game.tiles[idx].terrain].land) food += 1;
+    if (seafaring && !TERRAIN[game.tiles[idx].terrain].land) { food += 1; gold += 1; }
   }
   let science = 3 + Math.floor(city.pop * 0.7) + (city.capital ? 2 : 0);
   let culture = 1;

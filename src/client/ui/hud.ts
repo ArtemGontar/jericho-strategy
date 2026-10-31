@@ -84,6 +84,8 @@ export function renderTopbar(gs: GameScreen, el: HTMLElement): void {
       v.enlightenment ? countdown(gs) : null,
       v.hegemony ? h('span', { class: 'sep' }) : null,
       v.hegemony ? hegemonyChip(gs) : null,
+      v.domination ? h('span', { class: 'sep' }) : null,
+      v.domination ? dominationChip(gs) : null,
     ),
     rankings,
     h('div', { class: 'era', 'data-era': String(era), title: civ.bonus }, `Turn ${v.turn} / ${v.settings.turnLimit}`, h('b', null, `${ERA_NAMES[era]} Era`)),
@@ -142,6 +144,26 @@ function hegemonyChip(gs: GameScreen): HTMLElement {
   }, icon('culture', 16), h('span', null, mine ? 'Culture lead' : `${CIV_BY_ID[who.civ].name} culture`), h('b', { class: 'num' }, String(e.turnsLeft)));
   chip.addEventListener('click', (ev) => {
     ev.stopPropagation();
+    if (isCompact()) gs.toast(chip.title);
+  });
+  return chip;
+}
+
+/** The conquest race: one civilisation holds most of the world's cities. Click to look at its capital. */
+function dominationChip(gs: GameScreen): HTMLElement {
+  const v = gs.view;
+  const e = v.domination!;
+  const who = v.players[e.owner];
+  const mine = e.owner === v.me;
+  const cap = v.cities.find((c) => c.owner === e.owner && c.capital) ?? v.cities.find((c) => c.owner === e.owner);
+  const chip = h('button', {
+    class: `countdown ${mine ? 'mine' : 'foe'}`,
+    type: 'button',
+    title: mine ? `You hold most of the world's cities. You win in ${e.turnsLeft} turns unless enough are taken back.` : `${who.name} holds most of the world's cities and wins in ${e.turnsLeft} turns unless you and the others take cities back. Click to look.`,
+  }, icon('swords', 16), h('span', null, mine ? 'Hold your conquests' : `${CIV_BY_ID[who.civ].name} dominates`), h('b', { class: 'num' }, String(e.turnsLeft)));
+  chip.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (cap) gs.focus(cap.x, cap.y);
     if (isCompact()) gs.toast(chip.title);
   });
   return chip;

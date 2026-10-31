@@ -183,3 +183,99 @@ describe('island maps', () => {
     expect(ids.size).toBeGreaterThan(1);
   });
 });
+
+describe('unit roles', () => {
+  /** Two capitals at war, with a free tile beside B's city for an attacker. */
+  function war(seed = 12) {
+    const game = Game.create({ seed, players: [{ name: 'A', ai: false }, { name: 'B', ai: false }] });
+    for (const t of game.tiles) t.explored = 0xffff;
+    game.exec(0, { t: 'found', unit: game.units.find((u) => u.owner === 0 && u.type === 'settler')!.id });
+    game.exec(1, { t: 'found', unit: game.units.find((u) => u.owner === 1 && u.type === 'settler')!.id });
+    const cityB = game.playerCities(1)[0];
+    for (const u of game.units.filter((u) => u.owner === 1 && u.x === cityB.x && u.y === cityB.y)) game.removeUnit(u);
+    game.setRelation(0, 1, 'war');
+    const spot = game.nb(cityB.x, cityB.y).find((n) => TERRAIN[game.tile(n.x, n.y).terrain].passable && game.unitsAt(n.x, n.y).length === 0)!;
+    return { game, cityB, spot };
+  }
+
+  it('walls turn back ordinary soldiers and archers, but not siege engines', () => {
+    const { game, cityB, spot } = war();
+    const sword = game.addUnit(0, 'swordsman', spot.x, spot.y);
+    const archer = game.addUnit(0, 'archer', spot.x, spot.y);
+    const cat = game.addUnit(0, 'catapult', spot.x, spot.y);
+    const open = [sword, archer, cat].map((u) => previewAttack(game, u, cityB.x, cityB.y).dmgDef);
+    cityB.buildings.push('walls');
+    const walled = [sword, archer, cat].map((u) => previewAttack(game, u, cityB.x, cityB.y).dmgDef);
+    // walls also make the city stronger, so a catapult's damage drops a little, but soldiers lose far more
+    expect(walled[0]).toBeLessThan(open[0] * 0.65);
+    expect(walled[1]).toBeLessThan(open[1] * 0.65);
+    expect(walled[2]).toBeGreaterThan(open[2] * 0.7);
+    expect(walled[2]).toBeGreaterThan(walled[0]);
+  });
+
+  it('cavalry ride down archers and siege crews, and not spearmen', () => {
+    const { game, spot } = war();
+    const at = game.nb(spot.x, spot.y).find((n) => TERRAIN[game.tile(n.x, n.y).terrain].passable && game.unitsAt(n.x, n.y).length === 0)!;
+    const horse = game.addUnit(0, 'horseman', spot.x, spot.y);
+    const archer = game.addUnit(1, 'archer', at.x, at.y);
+    const vsArcher = previewAttack(game, horse, at.x, at.y).dmgDef;
+    game.removeUnit(archer);
+    const spear = game.addUnit(1, 'spearman', at.x, at.y);
+    const vsSpear = previewAttack(game, horse, at.x, at.y).dmgDef;
+    expect(vsArcher).toBeGreaterThan(vsSpear * 2);
+    game.removeUnit(spear);
+    const crew = game.addUnit(1, 'catapult', at.x, at.y);
+    expect(previewAttack(game, horse, at.x, at.y).dmgDef).toBeGreaterThan(vsSpear * 2);
+    void crew;
+  });
+});
+
+describe('domination', () => {
+  it('starts a countdown when one civilisation holds most of the cities, and ends the game if it holds', () => {
+    const game = Game.create({ seed: 31, size: 'large', players: [{ name: 'A', ai: false }, { name: 'B', ai: false }] });
+    for (const t of game.tiles) t.explored = 0xffff;
+    game.exec(0, { t: 'found', unit: game.units.find((u) => u.owner === 0 && u.type === 'settler')!.id });
+    game.exec(1, { t: 'found', unit: game.units.find((u) => u.owner === 1 && u.type === 'settler')!.id });
+    // hand A seven more cities, so A holds 8 of 9
+    let made = 0;
+    for (const t of game.tiles) {
+      if (made >= 7) break;
+      if (!TERRAIN[t.terrain].land || !TERRAIN[t.terrain].passable || t.city >= 0) continue;
+      if (game.cities.some((c) => game.dist(c.x, c.y, t.x, t.y) < 3)) continue;
+      game.foundCity(0, t.x, t.y);
+      made++;
+    }
+    expect(game.cities.filter((c) => c.owner === 0).length).toBeGreaterThanOrEqual(6);
+    game.checkVictory();
+    const d = game.s.domination;
+    expect(d?.owner).toBe(0);
+    // winning back cities breaks it
+    const mine = game.cities.filter((c) => c.owner === 0);
+    for (const c of mine.slice(0, Math.ceil(mine.length / 2))) c.owner = 1;
+    game.checkVictory();
+    expect(game.s.domination).toBeNull();
+  });
+
+  it('is won when the countdown runs out', () => {
+    const game = Game.create({ seed: 31, size: 'large', players: [{ name: 'A', ai: false }, { name: 'B', ai: false }] });
+    for (const t of game.tiles) t.explored = 0xffff;
+    game.exec(0, { t: 'found', unit: game.units.find((u) => u.owner === 0 && u.type === 'settler')!.id });
+    game.exec(1, { t: 'found', unit: game.units.find((u) => u.owner === 1 && u.type === 'settler')!.id });
+    let made = 0;
+    for (const t of game.tiles) {
+      if (made >= 7) break;
+      if (!TERRAIN[t.terrain].land || !TERRAIN[t.terrain].passable || t.city >= 0) continue;
+      if (game.cities.some((c) => game.dist(c.x, c.y, t.x, t.y) < 3)) continue;
+      game.foundCity(0, t.x, t.y);
+      made++;
+    }
+    game.checkVictory();
+    expect(game.s.domination).not.toBeNull();
+    game.s.turn += game.s.domination!.duration;
+    game.checkVictory();
+    expect(game.s.over).toBe(true);
+    expect(game.s.winner).toBe(0);
+    expect(game.s.victory).toBe('domination');
+  });
+});
+

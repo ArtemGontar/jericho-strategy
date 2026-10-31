@@ -137,6 +137,8 @@ export interface GameView {
   enlightenment?: { owner: number; capital: number; turnsLeft: number } | null;
   /** the cultural hegemony countdown, when one is running */
   hegemony?: { owner: number; turnsLeft: number } | null;
+  /** the domination countdown, when one is running */
+  domination?: { owner: number; turnsLeft: number } | null;
   /** culture a civilisation needs before it can claim cultural hegemony */
   cultureGoal?: number;
 }
@@ -290,6 +292,7 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
     timerEnds,
     enlightenment: s.enlightenment ? { owner: s.enlightenment.owner, capital: s.enlightenment.capital, turnsLeft: s.enlightenment.duration - (s.turn - s.enlightenment.since) } : null,
     hegemony: s.hegemony ? { owner: s.hegemony.owner, turnsLeft: s.hegemony.duration - (s.turn - s.hegemony.since) } : null,
+    domination: s.domination ? { owner: s.domination.owner, turnsLeft: s.domination.duration - (s.turn - s.domination.since) } : null,
     cultureGoal: game.cultureGoal,
   };
 }

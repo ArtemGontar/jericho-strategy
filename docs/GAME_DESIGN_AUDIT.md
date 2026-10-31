@@ -27,6 +27,35 @@ What to watch: **culture wins fell from 7 to 4**, because Patronage of the Arts 
 
 Saves from before this change keep working: players get an empty "passed over" list, and the next offer comes at the new, higher threshold.
 
+**Done: items 3 and 6, unit roles and a conquest win** (second pass), plus buffs for the two weak policies.
+
+- **Walls now matter.** Only siege engines (catapult, cannon) do full damage to a walled city; soldiers and archers do 65%. Walls also keep their +100 HP and +40% defence.
+- **Cavalry ride down archers and siege crews** (+50% attack against any unit that shoots). Horseman and Knight descriptions say so.
+- **The computers build a mix.** An army is short of shooters, cavalry or siege when they are below about 22%, 10–20% and 12–30% of it (siege more when the enemy has walls), and then the cities build what is missing even if the army is already big enough. Before, they picked the strongest melee unit per cost every time.
+- **Domination victory.** A civilisation that holds at least 60% of all cities, at least six, and at least twice as many as anyone else starts a 10-turn countdown (7 on quick). The world declares war on it, its cities become the computers' preferred targets, and winning cities back breaks it. The HUD shows the countdown.
+- **Exploration** now also gives scouts and ships one more move; **Seafaring** now gives +1 gold as well as +1 food from every worked water tile. The builder personality takes Patronage of the Arts first.
+
+Same 24 games, three snapshots [measured]:
+
+| | First audit | After policies | After roles and domination |
+|---|---|---|---|
+| Victories | science 16, culture 7, last standing 1 | science 19, culture 4, last standing 1 | **science 15, culture 5, domination 4** |
+| Captures per game | 1.6 | 2.4 | **2.7** |
+| Lead changes per game | 3.3 | 3.3 | 4.0 |
+| Median end turn | 153 | 158 | 152 |
+| Archers built | 76 | 75 | **980** |
+| Crossbowmen built | 4 | 19 | **703** |
+| Horsemen built | 51 | 34 | **562** |
+| Catapults built | 626 | 582 | **1023** |
+
+Army makeup at turn 100 (`scripts/armies.ts`, 6 games): 84% front line, 9% shooters, 6% siege, 1% cavalry. Old front-line units stay until they are lost, so the mix moves slowly; the units built from now on follow the mix.
+
+Still open from this pass:
+- **Frigates and cannons are still almost never built** (Metallurgy is an optional tech that most games finish without), so the sea has no military role. That needs the tech-tree work (item 4) or a naval AI.
+- **Cavalry is rare late** because it needs horses and Chivalry.
+- Domination ended 4 of 16 continent games and none of the island games, which is what the rules say: you cannot walk to cities across water. That is a reason to make ships matter.
+- 24 games is a small sample; the share of games each route wins moves by a few games between runs.
+
 ## The one-paragraph verdict
 
 The first thirty turns are good: a first city on turn 3, three cities by turn 30, a clear checklist, and a lot to do. After that the game turns into a **checklist**. Every building, every technology (bar one), every policy and every wonder ends up built, learned or adopted in every game, because nothing costs you anything you would miss. Land runs out around turn 60, wars start late (turn 55 on average) and rarely finish, so the next 90 turns are a queue of build orders until someone learns the Enlightenment and wins by science. The rules are sound and the engine is solid. What is missing is **scarcity**: reasons to choose one thing over another.

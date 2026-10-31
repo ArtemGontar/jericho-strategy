@@ -74,8 +74,8 @@ export const STATE_VERSION = 1;
 /** What each kind of computer player reaches for first when offered a policy (earlier is better). */
 const AI_POLICY_PREF: Record<string, string[]> = {
   warlord: ['drill', 'veterans', 'fortification', 'conscription', 'craftsmen', 'pioneers', 'agrarian', 'merchants', 'exploration', 'hearth'],
-  builder: ['scholarship', 'scribes', 'agrarian', 'patronage', 'monuments', 'coinage', 'merchants', 'hearth', 'bureaucracy', 'trade_routes', 'pioneers'],
-  balanced: ['craftsmen', 'agrarian', 'scholarship', 'pioneers', 'coinage', 'merchants', 'scribes', 'hearth', 'trade_routes', 'bureaucracy'],
+  builder: ['patronage', 'scholarship', 'monuments', 'scribes', 'agrarian', 'coinage', 'merchants', 'hearth', 'bureaucracy', 'trade_routes', 'pioneers', 'seafaring', 'exploration'],
+  balanced: ['craftsmen', 'agrarian', 'scholarship', 'patronage', 'pioneers', 'coinage', 'merchants', 'scribes', 'hearth', 'trade_routes', 'bureaucracy', 'seafaring', 'exploration'],
 };
 
 export class Game {
@@ -1111,7 +1111,7 @@ export class Game {
     this.s.proposals = this.s.proposals.filter((x) => this.s.turn - x.turn < 6 && this.s.players[x.from].alive && this.s.players[x.to].alive);
     for (const u of this.s.units) {
       const def = UNITS[u.type];
-      u.mp = def.moves * 2;
+      u.mp = def.moves * 2 + ((def.scout || def.naval) && this.s.players[u.owner].policies.includes('exploration') ? 2 : 0);
       u.active = false;
       u.attacked = false;
       u.skipped = false;
@@ -1394,6 +1394,7 @@ export class Game {
     if (this.s.over) return;
     const alive = this.s.players.filter((p) => p.alive);
     if (this.s.settings.allowScience && (this.tickEnlightenment(alive) || this.tickHegemony(alive))) return;
+    if (this.s.settings.allowDomination && this.tickDomination(alive)) return;
     if (alive.length <= 1) {
       return this.finish(alive[0]?.id ?? null, 'last-standing');
     }
@@ -1487,6 +1488,42 @@ export class Game {
       // a visible race before the countdown: the leader's progress toward the goal
       const share = Math.min(1, top.culture / goal);
       if (share >= 0.5) this.note([], `Culture race: ${top.name} has ${Math.round(share * 100)}% of the culture needed for hegemony.`, 'info');
+    }
+    return false;
+  }
+
+  /**
+   * Domination: a civilisation that holds at least 60% of every city in the world, at least six of them and at least
+   * twice as many as anyone else, starts a countdown. Winning back enough cities breaks it. It gives a war a finish
+   * line short of wiping everyone out. Returns true when the countdown ended the game.
+   */
+  private tickDomination(alive: Player[]): boolean {
+    if (alive.length < 2) return false;
+    const counts = alive.map((p) => ({ id: p.id, n: this.cities.filter((c) => c.owner === p.id).length })).sort((a, b) => b.n - a.n);
+    const total = this.cities.length;
+    const top = counts[0];
+    const second = counts[1]?.n ?? 0;
+    let d = this.s.domination ?? null;
+    if (d) {
+      const p = this.s.players[d.owner];
+      const n = counts.find((c) => c.id === d!.owner)?.n ?? 0;
+      // a little looser than the start, so a single lost city does not reset the clock
+      if (!p.alive || n < total * 0.5 || n < second * 1.5) {
+        this.note([], `${p.name}'s grip on the world has slipped: the domination is broken.`, 'good');
+        this.s.domination = null;
+        d = null;
+      } else if (this.s.turn - d.since >= d.duration) {
+        this.finish(d.owner, 'domination');
+        return true;
+      } else {
+        const left = d.duration - (this.s.turn - d.since);
+        if (left <= 3 || left % 4 === 0) this.note([], `${p.name} holds ${n} of ${total} cities: ${left} turn${left === 1 ? '' : 's'} to domination. Take cities back!`, 'wonder');
+      }
+    }
+    if (!d && top.n >= 6 && top.n >= total * 0.6 && top.n >= second * 2) {
+      const duration = this.s.settings.speed === 'quick' ? 7 : 10;
+      this.s.domination = { owner: top.id, since: this.s.turn, duration };
+      this.note([], `${this.playerName(top.id)} holds ${top.n} of ${total} cities! They win by domination in ${duration} turns unless the world takes cities back.`, 'wonder');
     }
     return false;
   }

@@ -97,17 +97,17 @@ export const UNITS: Record<UnitTypeId, UnitDef> = {
   warrior:     U({ id: 'warrior', name: 'Warrior', icon: '🗡️', cost: 30, moves: 2, strength: 8, ranged: 0, range: 0, tech: null, vision: 2, desc: 'Basic melee fighter.', obsoleteBy: 'ironworking' }),
   archer:      U({ id: 'archer', name: 'Archer', icon: '🏹', cost: 40, moves: 2, strength: 5, ranged: 8, range: 2, tech: 'archery', vision: 2, desc: 'Shoots enemies two tiles away without retaliation from melee units.', obsoleteBy: 'engineering' }),
   spearman:    U({ id: 'spearman', name: 'Spearman', icon: '🔱', cost: 45, moves: 2, strength: 11, ranged: 0, range: 0, tech: 'bronze', antiMounted: 100, vision: 2, desc: 'Strong against mounted units.', obsoleteBy: 'feudalism' }),
-  horseman:    U({ id: 'horseman', name: 'Horseman', icon: '🏇', cost: 55, moves: 4, strength: 12, ranged: 0, range: 0, tech: 'husbandry', needs: 'horses', mounted: true, vision: 2, desc: 'Fast raider. Requires horses.', obsoleteBy: 'chivalry' }),
+  horseman:    U({ id: 'horseman', name: 'Horseman', icon: '🏇', cost: 55, moves: 4, strength: 12, ranged: 0, range: 0, tech: 'husbandry', needs: 'horses', mounted: true, vision: 2, desc: 'Fast raider that rides down archers and siege crews. Requires horses.', obsoleteBy: 'chivalry' }),
   swordsman:   U({ id: 'swordsman', name: 'Swordsman', icon: '⚔️', cost: 60, moves: 2, strength: 15, ranged: 0, range: 0, tech: 'ironworking', needs: 'iron', vision: 2, desc: 'Powerful melee infantry. Requires iron.', obsoleteBy: 'gunpowder' }),
-  catapult:    U({ id: 'catapult', name: 'Catapult', icon: '🪨', cost: 75, moves: 2, strength: 5, ranged: 14, range: 2, tech: 'mathematics', siege: true, vision: 2, desc: 'Siege engine, devastating against cities.', obsoleteBy: 'metallurgy' }),
+  catapult:    U({ id: 'catapult', name: 'Catapult', icon: '🪨', cost: 75, moves: 2, strength: 5, ranged: 14, range: 2, tech: 'mathematics', siege: true, vision: 2, desc: 'Siege engine. Only siege does full damage to a walled city.', obsoleteBy: 'metallurgy' }),
   crossbowman: U({ id: 'crossbowman', name: 'Crossbowman', icon: '🎯', cost: 80, moves: 2, strength: 8, ranged: 16, range: 2, tech: 'engineering', vision: 2, desc: 'Accurate ranged infantry.' }),
   pikeman:     U({ id: 'pikeman', name: 'Pikeman', icon: '🛡️', cost: 70, moves: 2, strength: 18, ranged: 0, range: 0, tech: 'feudalism', antiMounted: 100, vision: 2, desc: 'Tough defender, strong against mounted units.' }),
-  knight:      U({ id: 'knight', name: 'Knight', icon: '🐴', cost: 95, moves: 4, strength: 24, ranged: 0, range: 0, tech: 'chivalry', needs: 'horses', mounted: true, vision: 2, desc: 'Heavy cavalry. Requires horses.' }),
+  knight:      U({ id: 'knight', name: 'Knight', icon: '🐴', cost: 95, moves: 4, strength: 24, ranged: 0, range: 0, tech: 'chivalry', needs: 'horses', mounted: true, vision: 2, desc: 'Heavy cavalry that rides down archers and siege crews. Requires horses.' }),
   musketman:   U({ id: 'musketman', name: 'Musketman', icon: '🔫', cost: 110, moves: 2, strength: 30, ranged: 0, range: 0, tech: 'gunpowder', vision: 2, desc: 'Gunpowder infantry.' }),
   trireme:     U({ id: 'trireme', name: 'Trireme', icon: '⛵', cost: 45, moves: 3, strength: 6, ranged: 0, range: 0, tech: 'sailing', naval: true, capacity: 2, vision: 2, desc: 'Coastal ship that carries two land units. Cannot enter the deep ocean.', obsoleteBy: 'navigation' }),
   caravel:     U({ id: 'caravel', name: 'Caravel', icon: '⛵', cost: 80, moves: 4, strength: 12, ranged: 0, range: 0, tech: 'navigation', naval: true, capacity: 3, deepSea: true, vision: 3, desc: 'Ocean-going ship that carries three land units.' }),
   frigate:     U({ id: 'frigate', name: 'Frigate', icon: '🚢', cost: 120, moves: 4, strength: 18, ranged: 22, range: 2, tech: 'metallurgy', naval: true, capacity: 0, deepSea: true, vision: 3, desc: 'Warship that bombards ships and the coast from two tiles away.' }),
-  cannon:      U({ id: 'cannon', name: 'Cannon', icon: '💣', cost: 130, moves: 2, strength: 10, ranged: 34, range: 2, tech: 'metallurgy', siege: true, vision: 2, desc: 'Heavy artillery.' }),
+  cannon:      U({ id: 'cannon', name: 'Cannon', icon: '💣', cost: 130, moves: 2, strength: 10, ranged: 34, range: 2, tech: 'metallurgy', siege: true, vision: 2, desc: 'Heavy artillery. Only siege does full damage to a walled city.' }),
 };
 
 // ---------------------------------------------------------------- buildings
@@ -133,7 +133,7 @@ export interface BuildingDef {
 const B = (d: BuildingDef): BuildingDef => d;
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   granary:      B({ id: 'granary', name: 'Granary', icon: '🏺', cost: 40, upkeep: 1, tech: 'pottery', food: 2, desc: '+2 food.' }),
-  walls:        B({ id: 'walls', name: 'Walls', icon: '🧱', cost: 60, upkeep: 1, tech: 'masonry', desc: '+100 city HP and +50% city defence.' }),
+  walls:        B({ id: 'walls', name: 'Walls', icon: '🧱', cost: 60, upkeep: 1, tech: 'masonry', desc: '+100 city HP and +40% city defence. Only siege engines do full damage to a walled city.' }),
   barracks:     B({ id: 'barracks', name: 'Barracks', icon: '⚔️', cost: 60, upkeep: 1, tech: 'bronze', desc: 'New military units start veteran (+15% strength) and heal fully in the city.' }),
   library:      B({ id: 'library', name: 'Library', icon: '📚', cost: 70, upkeep: 1, tech: 'writing', science: 3, desc: '+3 science.' }),
   workshop:     B({ id: 'workshop', name: 'Workshop', icon: '🔨', cost: 70, upkeep: 1, tech: 'mining', prod: 2, desc: '+2 production.' }),
@@ -249,7 +249,7 @@ export const POLICIES: PolicyDef[] = [
   { id: 'patronage', name: 'Patronage of the Arts', icon: 'culture', desc: '+2 culture in every city.' },
   { id: 'drill', name: 'Standing Army', icon: 'swords', desc: 'Military units cost 20% less to build.' },
   { id: 'fortification', name: 'Fortification Doctrine', icon: 'walls', desc: 'Cities are 25% stronger and have +60 HP.' },
-  { id: 'exploration', name: 'Age of Exploration', icon: 'explore', desc: 'All units see one tile further.' },
+  { id: 'exploration', name: 'Age of Exploration', icon: 'explore', desc: 'All units see one tile further. Scouts and ships move one tile more.' },
   { id: 'bureaucracy', name: 'Civil Service', icon: 'policy', desc: 'Each city pays 1 less building upkeep.' },
   { id: 'conscription', name: 'Field Medicine', icon: 'health', desc: 'Units heal 10 more HP per turn.' },
   { id: 'trade_routes', name: 'Caravan Routes', icon: 'trade', desc: '+4 gold in the capital and +1 gold in every other city.' },
@@ -258,7 +258,7 @@ export const POLICIES: PolicyDef[] = [
   { id: 'scribes', name: 'Scribes and Copyists', icon: 'library', desc: '+1 science for every Library and +2 for every University.' },
   { id: 'monuments', name: 'Monument Builders', icon: 'wonder', desc: 'Wonders cost 25% less and give +2 culture more.' },
   { id: 'veterans', name: 'Veteran Corps', icon: 'level', desc: 'Every new soldier starts as a veteran, with or without Barracks.' },
-  { id: 'seafaring', name: 'Seafaring', icon: 'trireme', desc: '+1 food from every worked water tile. Ships cost 25% less.' },
+  { id: 'seafaring', name: 'Seafaring', icon: 'trireme', desc: '+1 food and +1 gold from every worked water tile. Ships cost 25% less.' },
   { id: 'hearth', name: 'Hearth and Home', icon: 'food', desc: 'Cities need 15% less food to grow.' },
 ];
 export const POLICY_BY_ID: Record<string, PolicyDef> = Object.fromEntries(POLICIES.map((p) => [p.id, p]));
