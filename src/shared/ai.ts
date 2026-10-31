@@ -31,9 +31,10 @@ const TECH_WEIGHT: Record<string, number> = {
   gunpowder: 4, metallurgy: 3.5, astronomy: 5, enlightenment: 10,
   sailing: 4, navigation: 3,
   ceremony: 3, drama: 2, diplomacy: 3, medicine: 2.5, theology: 2,
+  industrialization: 6, sanitation: 5, electricity: 5, combustion: 3,
 };
 
-export function aiChooseResearch(game: Game, p: Player): string | null {
+export function aiChooseResearch(game: Game, p: Player, quiet = false): string | null {
   const options = availableTechs(p);
   if (!options.length) return null;
   const closure = closureOfFinal();
@@ -48,7 +49,7 @@ export function aiChooseResearch(game: Game, p: Player): string | null {
     if (p.content < 4 && ['ceremony', 'drama', 'theology', 'medicine'].includes(id)) s += 3;
     if (p.personality === 'builder' && ['ceremony', 'drama', 'diplomacy'].includes(id)) s += 1.5;
     if ((id === 'sailing' || id === 'navigation') && game.cities.some((c) => c.owner === p.id && game.isCoastal(c.x, c.y))) s += 1.5;
-    if (game.rng.chance(0.15)) s += 1.5;
+    if (!quiet && game.rng.chance(0.15)) s += 1.5; // quiet: a suggestion shown on screen must not touch the game's random numbers
     if (s > bestScore) {
       bestScore = s;
       best = id;
@@ -217,7 +218,7 @@ function tileWorkValue(game: Game, p: Player, t: Tile, kind: WorkKind): number {
   const wMul = worked ? 1.7 : 0.8;
   if (kind === 'farm') {
     if (t.improvement) return 0;
-    const base = tileYield(t);
+    const base = tileYield(t, p.techs);
     if (t.terrain === 'desert') return base.food + 1 < 1 ? 0 : 0.5 * wMul;
     return (t.resource === 'wheat' ? 2.4 : 1.6) * wMul + (base.prod === 0 ? 0.2 : 0);
   }
@@ -304,7 +305,7 @@ function siteScore(game: Game, p: Player, x: number, y: number, from: Pos): numb
   for (const q of tilesWithin(x, y, 2, game.width, game.height)) {
     const qt = game.tile(q.x, q.y);
     if (qt.owner >= 0 && qt.owner !== p.id) continue;
-    const y2 = tileYield(qt);
+    const y2 = tileYield(qt, p.techs);
     s += y2.food * 1.3 + y2.prod * 1.0 + y2.gold * 0.5;
     if (qt.resource && RESOURCES[qt.resource].strategic) s += 1.5;
     if (qt.resource && RESOURCES[qt.resource].luxury && !enjoyed(game, p).has(qt.resource)) s += 3.5;
@@ -651,13 +652,16 @@ function wantedRole(game: Game, p: Player, warNow: boolean): Exclude<Role, 'any'
   return lacks[0][1] > 0.5 ? lacks[0][0] : 'melee';
 }
 
-export function aiPlanCity(game: Game, p: Player, city: City): void {
-  if (city.queue.length) return;
+/**
+ * Everything a sensible governor would consider building here, best first. With `suggest` it takes no random numbers and
+ * skips the costly search for a city site, so it is safe to ask while drawing the screen.
+ */
+function planOptions(game: Game, p: Player, city: City, suggest = false): Array<{ kind: 'unit' | 'building'; id: string; score: number }> {
   const myCities = game.cities.filter((c) => c.owner === p.id);
   const options: Array<{ kind: 'unit' | 'building'; id: string; score: number }> = [];
   const add = (kind: 'unit' | 'building', id: string, score: number) => {
     if (kind === 'unit' ? !canBuildUnit(game, p.id, city, id) : !canBuildBuilding(game, p.id, city, id)) return;
-    options.push({ kind, id, score: score + game.rng.next() * 0.8 });
+    options.push({ kind, id, score: score + (suggest ? 0 : game.rng.next() * 0.8) });
   };
   const gar = garrison(game, city).filter((u) => !UNITS[u.type].scout).length;
   const th = threatNear(game, city);
@@ -666,7 +670,8 @@ export function aiPlanCity(game: Game, p: Player, city: City): void {
   const settlers = countUnits(game, p.id, 'settler') + queuedIn(game, p.id, 'unit', 'settler');
   const armySize = military(game, p.id).filter((u) => !UNITS[u.type].scout).length;
   const desiredCities = p.personality === 'builder' ? 7 : p.personality === 'warlord' ? 4 : 5;
-  const site = myCities.length + settlers < desiredCities + (game.turn > 120 ? 0 : 0) ? bestSite(game, p, null, city) : null;
+  const wantsSite = myCities.length + settlers < desiredCities;
+  const site = wantsSite ? (suggest ? { x: city.x, y: city.y, score: 9 } : bestSite(game, p, null, city)) : null;
   const sciWeight = p.personality === 'builder' ? 1.2 : 1;
   // culture race: join it when within reach of the goal and not far behind the leader; builders always lean into it
   const goal = game.cultureGoal;
@@ -704,6 +709,10 @@ export function aiPlanCity(game: Game, p: Player, city: City): void {
   add('building', 'university', 6.4 * sciWeight * fit('university'));
   add('building', 'bank', 5 * fit('bank'));
   add('building', 'observatory', 5 * fit('observatory'));
+  // the industrial age
+  add('building', 'factory', (city.pop >= 4 ? 5 : 3) * fit('workshop'));
+  add('building', 'laboratory', 5.6 * sciWeight * fit('university'));
+  add('building', 'hospital', 3.4 + (city.pop >= 6 ? 1.2 : 0) + restless * 0.5);
   // a trade agreement is worth having only when there is somebody to sign with
   if (game.players.some((o) => o.alive && o.id !== p.id && game.relation(p.id, o.id) === 'peace')) add('building', 'embassy', 3.6 * fit('embassy'));
   // the building only this civilisation can raise: it takes no slot, so it is always worth having
@@ -757,8 +766,19 @@ export function aiPlanCity(game: Game, p: Player, city: City): void {
     else add('unit', 'warrior', 1);
   }
   options.sort((a, b) => b.score - a.score);
-  const pick = options[0];
+  return options;
+}
+
+export function aiPlanCity(game: Game, p: Player, city: City): void {
+  if (city.queue.length) return;
+  const pick = planOptions(game, p, city)[0];
   if (pick) exec(game, p.id, { t: 'queue', city: city.id, op: 'set', kind: pick.kind, id: pick.id });
+}
+
+/** What a governor would build next in this city: shown to the player as a suggestion. */
+export function suggestBuild(game: Game, p: Player, city: City): { kind: 'unit' | 'building'; id: string } | null {
+  const pick = planOptions(game, p, city, true)[0];
+  return pick ? { kind: pick.kind, id: pick.id } : null;
 }
 
 function maybeBuy(game: Game, p: Player, city: City): void {

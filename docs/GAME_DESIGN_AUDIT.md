@@ -111,6 +111,29 @@ What to watch:
 - **The computers never tear buildings down,** so an early choice stays chosen.
 - Harbors are rarely built (10 across 24 games): the slot is better spent elsewhere for most coastal cities. Worth a stronger Harbor.
 
+**Done: events, an Industrial era and less work for the player (fifth pass),** after the owner asked for more mid- and end-game content, some randomness with technology in it, and a game that does not lose people early or wear them out.
+
+- **Random events** (`src/shared/events.ts`), Off, Gentle or Normal. Good: bountiful harvest, travelling merchants, visiting scholars, ancient ruins, a new luxury in the hills, and coal and oil once the technology exists. Bad: drought, plague, earthquake, floods, wildfire, raiders. Technology decides how hard they bite (Medicine and Sanitation, Hospital, Construction, Granary, Harbor, a garrison). Nothing bad before turn 30 or with one city; events are at least four turns apart; opponents set to easy make the player's luck gentler. All from the game's seeded random numbers.
+- **Industrial era.** Industrialization, Sanitation, Electricity, Combustion; Enlightenment moved into the era and now needs Industrialization, which needs Metallurgy, so the late military line is no longer skipped. Factory, Hospital, Laboratory; four new wonders (Great Wall, Great Lighthouse, Notre Dame, Crystal Palace); coal and oil that are invisible and worthless until the technology is known.
+- **Less work.** A governor per city (picks what to build when the queue empties), a suggested build marked in the city panel and offered in one tap, a suggested technology in the tree, and Auto-research. Suggestions use no random numbers, so asking never changes a game.
+- **Retuned:** the culture goal is 6000 (it was 4300) so that culture does not end games before the new era is reached.
+
+Same 24 games, baseline against now [measured]:
+
+| | Baseline | Now |
+|---|---|---|
+| Victories | science 16, culture 7, last standing 1 | science 12, culture 9, domination 3 |
+| Median end turn | 153 | 166 |
+| Civilisations reaching the Industrial era | not possible | 53 of 100 |
+| Enlightenment reached (average turn) | 142 | 155 |
+| Events per civilisation per game | none | about 11 (all good before turn 30: about 2 per civilisation) |
+
+What to watch:
+- **Games are about 13 turns longer.** On the standard 200-turn limit a few reach it; Quick (120) and Short (60) still end on score.
+- **Hospitals and laboratories are rarely built by the computers** (their techs are optional); they are for human players and long games.
+- **Events fire about once every 14 turns per civilisation.** If that feels busy, lower `EVENT_CHANCE` in `events.ts`.
+- **Culture still wins about a third of games;** the goal was raised once and may need another look after play-testing.
+
 ## The one-paragraph verdict
 
 The first thirty turns are good: a first city on turn 3, three cities by turn 30, a clear checklist, and a lot to do. After that the game turns into a **checklist**. Every building, every technology (bar one), every policy and every wonder ends up built, learned or adopted in every game, because nothing costs you anything you would miss. Land runs out around turn 60, wars start late (turn 55 on average) and rarely finish, so the next 90 turns are a queue of build orders until someone learns the Enlightenment and wins by science. The rules are sound and the engine is solid. What is missing is **scarcity**: reasons to choose one thing over another.

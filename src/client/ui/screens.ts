@@ -39,7 +39,7 @@ const TECH_ICON: Record<string, string> = {
   gunpowder: 'musketman', metallurgy: 'cannon', astronomy: 'observatory', enlightenment: 'science',
 };
 
-const ERA_COLOR = ['var(--era0)', 'var(--era1)', 'var(--era2)', 'var(--era3)'];
+const ERA_COLOR = ['var(--era0)', 'var(--era1)', 'var(--era2)', 'var(--era3)', 'var(--era4)'];
 const NODE_W = 200;
 const NODE_H = 58;
 const STEP_X = 232;
@@ -71,7 +71,7 @@ function layoutTree(): { nodes: Map<string, Placed>; width: number; height: numb
   const eraX: number[] = [];
   let cursor = 24;
   let maxY = 0;
-  for (let era = 0; era < 4; era++) {
+  for (let era = 0; era < ERA_NAMES.length; era++) {
     const inEra = TECHS.filter((t) => t.era === era);
     const cols = Math.max(...inEra.map((t) => sub.get(t.id)!)) + 1;
     eraX.push(cursor);
@@ -108,7 +108,7 @@ export function showTechTree(gs: GameScreen): HTMLElement {
   svg.setAttribute('width', String(width));
   svg.setAttribute('height', String(height));
   tree.append(svg);
-  for (let era = 0; era < 4; era++) {
+  for (let era = 0; era < ERA_NAMES.length; era++) {
     const edge = eraX[era + 1] ?? width;
     tree.append(
       h('div', { class: 'era-band', style: `left:${eraX[era] - 14}px;width:${edge - eraX[era] - 8}px;--era:${ERA_COLOR[era]}` }),
@@ -135,9 +135,10 @@ export function showTechTree(gs: GameScreen): HTMLElement {
     const cost = v.techCosts[t.id];
     const missing = t.pre.filter((p) => !v.techs.includes(p)).map((p) => TECH_BY_ID[p].name);
     const sub = st === 'known' ? 'Discovered' : st === 'cur' ? `${turnsLeft(v.researchCost - v.research, v.income.science)} turns left` : st === 'avail' ? `${cost} · ${turnsLeft(cost, v.income.science)} turns` : `Needs ${missing.join(', ')}`;
-    const node = h('div', { class: `node ${st}`, style: `left:${x}px;top:${y}px;--era:${ERA_COLOR[t.era]}`, title: `Unlocks: ${t.desc}` },
+    const node = h('div', { class: `node ${st} ${v.suggestedTech === t.id && st === 'avail' ? 'suggest' : ''}`, style: `left:${x}px;top:${y}px;--era:${ERA_COLOR[t.era]}`, title: `Unlocks: ${t.desc}` },
       h('span', { class: 'badge' }, artIcon(TECH_ICON[t.id] ?? 'science', 22), st === 'known' ? h('i', { class: 'tick' }, icon('check', 9)) : null),
       h('div', null, h('b', null, t.name), h('span', null, st === 'locked' ? sub : `${t.desc} · ${sub}`)));
+    if (v.suggestedTech === t.id && st === 'avail') node.querySelector('b')?.append(h('span', { class: 'tag' }, 'Suggested'));
     if (st === 'cur' && v.researchCost) node.append(h('i', { class: 'prog', style: { width: `${Math.min(100, (v.research / v.researchCost) * 100)}%` } }));
     if (st === 'avail') {
       const pick = async () => {
@@ -160,6 +161,11 @@ export function showTechTree(gs: GameScreen): HTMLElement {
       h('h2', null, 'Technology'),
       h('span', { class: 'muted' }, researching ? `Researching ${researching.name}` : 'Choose a technology to research'),
       h('span', { class: 'sci', style: { display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: '600' } }, icon('science', 18), `+${v.income.science} per turn`),
+      (() => {
+        const b = h('button', { class: `btn small autoresearch ${v.autoResearch ? 'active' : ''}`, type: 'button', title: 'When a technology is finished, the next one is chosen for you.' }, icon('auto', 15), v.autoResearch ? 'Auto-research on' : 'Auto-research');
+        b.addEventListener('click', () => void gs.cmd({ t: 'autoResearch', on: !v.autoResearch }));
+        return b;
+      })(),
       (() => {
         const c = h('button', { class: 'round flat', type: 'button', title: 'Close (Esc)' }, icon('close', 20));
         c.addEventListener('click', () => gs.closeModal());

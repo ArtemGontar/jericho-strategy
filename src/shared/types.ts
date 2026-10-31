@@ -1,7 +1,7 @@
 import type { Pos } from './hex';
 
 export type TerrainId = 'ocean' | 'coast' | 'grass' | 'plains' | 'desert' | 'tundra' | 'forest' | 'hills' | 'mountain';
-export type ResourceId = 'wheat' | 'cattle' | 'fish' | 'deer' | 'horses' | 'iron' | 'gold' | 'wine' | 'spices' | 'gems' | 'pearls';
+export type ResourceId = 'wheat' | 'cattle' | 'fish' | 'deer' | 'horses' | 'iron' | 'gold' | 'wine' | 'spices' | 'gems' | 'pearls' | 'coal' | 'oil';
 export type ImprovementId = 'farm' | 'mine';
 export type WorkKind = 'farm' | 'mine' | 'road';
 export type UnitTypeId =
@@ -11,9 +11,9 @@ export type UnitTypeId =
 export type BuildingId =
   | 'granary' | 'walls' | 'barracks' | 'library' | 'workshop' | 'market' | 'temple' | 'aqueduct'
   | 'university' | 'bank' | 'observatory' | 'harbor'
-  | 'shrine' | 'amphitheater' | 'embassy' | 'cathedral'
+  | 'shrine' | 'amphitheater' | 'embassy' | 'cathedral' | 'factory' | 'hospital' | 'laboratory'
   | 'spring_gardens' | 'ziggurat' | 'sun_temple' | 'great_bath' | 'forum' | 'satrapy' | 'stepped_pyramid' | 'agora'
-  | 'pyramids' | 'great_library' | 'hanging_gardens' | 'oracle' | 'colossus';
+  | 'pyramids' | 'great_library' | 'hanging_gardens' | 'oracle' | 'colossus' | 'great_wall' | 'lighthouse' | 'notre_dame' | 'crystal_palace';
 export type TechId = string;
 export type Focus = 'balanced' | 'food' | 'production' | 'gold';
 export type Relation = 'unmet' | 'war' | 'peace';
@@ -96,6 +96,8 @@ export interface City {
   worked: number[];
   /** tiles the player pinned for citizens to work */
   locked: number[];
+  /** a governor chooses what this city builds whenever its queue runs empty */
+  governor: boolean;
   lastAttacked: number;
   /** has this city already bombarded this turn */
   shot: boolean;
@@ -141,6 +143,10 @@ export interface Player {
   aggression: number;
   /** the people were restless at the last check (so the player is told once when that changes) */
   restless: boolean;
+  /** the turn something last happened to this civilisation (see events.ts) */
+  lastEvent: number;
+  /** research chooses itself whenever a technology is finished */
+  autoResearch: boolean;
 }
 
 export interface Proposal {
@@ -177,6 +183,8 @@ export interface GameSettings {
   aggression: Aggression;
   /** one big continent, or a separate island for every player */
   mapStyle: 'continent' | 'islands';
+  /** random events: off, gentle or normal (see events.ts) */
+  events: 'off' | 'gentle' | 'normal';
 }
 
 export type Aggression = 'calm' | 'normal' | 'fierce';

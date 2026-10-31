@@ -198,7 +198,7 @@ export class GameScreen {
   needsOrders(u: ViewUnit): boolean {
     return u.owner === this.me && (u.mp ?? 0) > 0 && !u.order && !u.auto && !u.fortified && !u.skipped && u.carriedBy == null;
   }
-  cityNeedsProduction(c: ViewCity): boolean { return !!c.mine && (c.queue?.length ?? 0) === 0; }
+  cityNeedsProduction(c: ViewCity): boolean { return !!c.mine && !c.governor && (c.queue?.length ?? 0) === 0; }
 
   async cmd(c: Command): Promise<boolean> {
     const res = await this.transport.send(c);

@@ -22,6 +22,7 @@ export interface SoloConfig {
   scienceVictory: boolean;
   aggression: 'calm' | 'normal' | 'fierce';
   mapStyle: 'continent' | 'islands';
+  events: 'off' | 'gentle' | 'normal';
   /** extra local humans (hot-seat), names */
   friends: string[];
 }
@@ -208,6 +209,8 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
   const level = segmented<AiLevel>([['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']], 'normal');
   // three lengths: the third plays at the quick pace and stops at turn 60, for a game that fits a short sitting
   const speed = segmented<'standard' | 'quick' | 'short'>([['standard', 'Long · 200'], ['quick', 'Quick · 120'], ['short', 'Short · 60']], isCompact() ? 'quick' : 'standard');
+  // random events: a few surprises, good and bad; gentler by default on a phone and in short games
+  const events = segmented<'off' | 'gentle' | 'normal'>([['off', 'Off'], ['gentle', 'Gentle'], ['normal', 'Normal']], isCompact() ? 'gentle' : 'normal');
   const stance = segmented<'peace' | 'war'>([['peace', 'Peace'], ['war', 'War']], 'peace');
   const land = segmented<'continent' | 'islands'>([['continent', 'Continent'], ['islands', 'Islands']], 'continent');
   const aggr = segmented<'calm' | 'normal' | 'fierce'>([['calm', 'Calm'], ['normal', 'Normal'], ['fierce', 'Fierce']], 'normal');
@@ -226,6 +229,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
     field('Computers', aggr.el),
     field('Map', size),
     field('Land', land.el),
+    field('Random events', events.el),
     field('Game length', speed.el),
     field('Diplomacy', stance.el),
     field('Victory', victories.el),
@@ -249,7 +253,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
     onStart({
       name, civ, opponents: Number(opp.value), aiLevel: level.get(), size: size.value as SoloConfig['size'], speed: speed.get() === 'standard' ? 'standard' : 'quick',
       seed: seed.value.trim() ? Number(seed.value) || null : null, turnLimit: { standard: 200, quick: 120, short: 60 }[speed.get()],
-      startAtWar: stance.get() === 'war', scienceVictory: victories.get() === 'all', aggression: aggr.get(), mapStyle: land.get(), friends,
+      startAtWar: stance.get() === 'war', scienceVictory: victories.get() === 'all', aggression: aggr.get(), mapStyle: land.get(), events: events.get(), friends,
     });
   };
 
@@ -355,6 +359,7 @@ export function lobbyScreen(rt: RemoteTransport, onLeave: () => void): { el: HTM
               h('div', { class: 'muted', style: { fontSize: '11px', marginTop: '8px', wordBreak: 'break-all' } }, link)),
             h('div', { class: 'eyebrow', style: { padding: '6px 0 2px' } }, 'Settings'),
             sel('Map', 'size', Object.entries(MAP_SIZES).map(([k, v]) => [k, v.label])),
+            sel('Random events', 'events', [['off', 'Off'], ['gentle', 'Gentle'], ['normal', 'Normal']]),
             sel('Land', 'mapStyle', [['continent', 'One continent'], ['islands', 'Islands (ships needed)']]),
             sel('Speed', 'speed', [['standard', 'Standard'], ['quick', 'Quick']]),
             sel('Turn limit', 'turnLimit', [['60', '60'], ['100', '100'], ['120', '120'], ['150', '150'], ['200', '200'], ['300', '300']]),

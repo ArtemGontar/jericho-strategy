@@ -3,7 +3,7 @@ import { Rng } from './rng';
 import { generateMap } from './mapgen';
 import {
   BUILDINGS, CITY_BASE_HP, CIVS, CIV_BY_ID, FINAL_TECH, IMPROVEMENTS, MAP_SIZES, MAX_PLAYERS, MIN_CITY_DISTANCE,
-  PEACE_MIN_TURNS, POLICIES, POLICY_BY_ID, RESOURCES, TECHS, TERRAIN, UNITS, UNIT_HP, UNIT_UPGRADES, XP_LEVELS, policyCost,
+  PEACE_MIN_TURNS, POLICIES, POLICY_BY_ID, RESOURCES, TECHS, TECH_BY_ID, TERRAIN, UNITS, UNIT_HP, UNIT_UPGRADES, XP_LEVELS, policyCost,
 } from './data';
 import {
   assignWorkedTiles, availableTechs, canBuildBuilding, canBuildUnit, cityYield, foodNeeded, hasBuilding, itemCost,
@@ -11,8 +11,9 @@ import {
 } from './economy';
 import { findPath, stepCost, tileBlockedFor } from './path';
 import { resolveAttack, cityStrength, bombardTargets, captureCity } from './combat';
+import { rollEvent } from './events';
 import { SANCTION_TURNS, dealGold, dealPartners, dealSlots } from './civ';
-import { aiTakeTurn, aiAutoExplore, aiAutoWorker, aiChooseResearch } from './ai';
+import { aiTakeTurn, aiAutoExplore, aiAutoWorker, aiChooseResearch, aiPlanCity } from './ai';
 import type {
   AiLevel, AiPersonality, BuildingId, City, CmdResult, Focus, GameSettings, GameState, Note, Player,
   QueueItem, Relation, ResourceId, Tile, Unit, UnitTypeId, WorkKind,
@@ -37,6 +38,8 @@ export type Command =
   | { t: 'cancelDeal'; with: number }
   | { t: 'sanction'; on: number }
   | { t: 'sell'; city: number; building: string }
+  | { t: 'governor'; city: number; on: boolean }
+  | { t: 'autoResearch'; on: boolean }
   | { t: 'lift'; on: number }
   | { t: 'gift'; to: number; amount: number }
   | { t: 'policy'; id: string }
@@ -70,6 +73,7 @@ export interface NewGameOptions {
   players: PlayerSlot[];
   allowScience?: boolean;
   allowDomination?: boolean;
+  events?: 'off' | 'gentle' | 'normal';
   startAtWar?: boolean;
   aggression?: 'calm' | 'normal' | 'fierce';
   mapStyle?: 'continent' | 'islands';
@@ -119,6 +123,7 @@ export class Game {
       turnTimer: opts.turnTimer ?? 0,
       allowScience: opts.allowScience ?? true,
       allowDomination: opts.allowDomination ?? true,
+      events: opts.events ?? 'normal',
       startAtWar: opts.startAtWar ?? false,
       aggression: opts.aggression ?? 'normal',
       mapStyle: opts.mapStyle ?? 'continent',
@@ -160,6 +165,8 @@ export class Game {
         content: 8,
         aggression: -99,
         restless: false,
+        lastEvent: -99,
+        autoResearch: false,
       };
     });
     const relations: Relation[][] = players.map((a) => players.map((b) => (a.id === b.id ? 'peace' : 'unmet')));
@@ -220,9 +227,10 @@ export class Game {
   private normalise(): void {
     if (!this.s.settings.aggression) this.s.settings.aggression = 'normal';
     if (!this.s.settings.mapStyle) this.s.settings.mapStyle = 'continent';
+    if (!this.s.settings.events) this.s.settings.events = 'normal';
     for (const t of this.s.tiles) if (t.hut === undefined) t.hut = false;
     for (const u of this.s.units) if (u.xp === undefined) u.xp = 0;
-    for (const c of this.s.cities) if (!c.locked) c.locked = [];
+    for (const c of this.s.cities) { if (!c.locked) c.locked = []; if (c.governor === undefined) c.governor = false; }
     if (!this.s.deals) this.s.deals = [];
     if (!this.s.sanctions) this.s.sanctions = [];
     for (const p of this.s.players) {
@@ -233,6 +241,8 @@ export class Game {
       if (p.content === undefined) p.content = 8;
       if (p.aggression === undefined) p.aggression = -99;
       if (p.restless === undefined) p.restless = false;
+      if (p.lastEvent === undefined) p.lastEvent = -99;
+      if (p.autoResearch === undefined) p.autoResearch = false;
     }
   }
 
@@ -261,7 +271,7 @@ export class Game {
   get speedMult(): number { return this.s.settings.speed === 'quick' ? 0.67 : 1; }
 
   /** Culture a civilisation needs before it can claim cultural hegemony. */
-  get cultureGoal(): number { return Math.round(4300 * this.speedMult); }
+  get cultureGoal(): number { return Math.round(6000 * this.speedMult); }
 
   tile(x: number, y: number): Tile { return this.s.tiles[y * this.s.settings.width + x]; }
   inBounds(x: number, y: number): boolean { return x >= 0 && y >= 0 && x < this.width && y < this.height; }
@@ -325,6 +335,14 @@ export class Game {
       for (const o of dealPartners(this, playerId)) for (const t of this.s.tiles) if (t.owner === o && t.resource === res) return true;
     }
     return false;
+  }
+
+  /** The era a technology belongs to. */
+  techEra(id: string): number {
+    return TECH_BY_ID[id]?.era ?? 0;
+  }
+  isCivilian(u: Unit): boolean {
+    return !!UNITS[u.type].civilian;
   }
 
   hasDeal(a: number, b: number): boolean {
@@ -488,7 +506,7 @@ export class Game {
     const city: City = {
       id: this.s.nextId++, owner, name: this.nextCityName(owner), x, y, pop: 1, food: 0, prod: 0, prodKind: null,
       queue: [], buildings: [], hp: CITY_BASE_HP, focus: 'balanced', capital, founded: this.s.turn, radius: 2,
-      worked: [], locked: [], lastAttacked: -99, shot: false,
+      worked: [], locked: [], governor: false, lastAttacked: -99, shot: false,
     };
     this.s.cities.push(city);
     this.cityById.set(city.id, city);
@@ -529,6 +547,8 @@ export class Game {
       case 'cancelDeal': res = this.cmdCancelDeal(p, cmd.with); break;
       case 'sanction': res = this.cmdSanction(p, cmd.on); break;
       case 'sell': res = this.cmdSell(p, cmd.city, cmd.building); break;
+      case 'governor': res = this.cmdGovernor(p, cmd.city, cmd.on); break;
+      case 'autoResearch': p.autoResearch = !!cmd.on; if (p.autoResearch && !p.researching && availableTechs(p).length) p.researching = aiChooseResearch(this, p); res = { ok: true }; break;
       case 'lift': res = this.cmdLift(p, cmd.on); break;
       case 'gift': res = this.cmdGift(p, cmd.to, cmd.amount); break;
       case 'policy': res = this.cmdPolicy(p, cmd.id); break;
@@ -1036,6 +1056,15 @@ export class Game {
     return { ok: true };
   }
 
+  /** Hand a city to a governor, who picks what it builds whenever the queue is empty, or take it back. */
+  private cmdGovernor(p: Player, cityId: number, on: boolean): CmdResult {
+    const c = this.ownCity(p, cityId);
+    if (typeof c === 'string') return { ok: false, error: c };
+    c.governor = !!on;
+    if (c.governor && !c.queue.length) aiPlanCity(this, p, c);
+    return { ok: true };
+  }
+
   /** Tear a building down to free its slot. It pays back a little. */
   private cmdSell(p: Player, cityId: number, building: string): CmdResult {
     const c = this.ownCity(p, cityId);
@@ -1367,7 +1396,7 @@ export class Game {
     // science
     let sci = p.income.science * aiMult;
     if (!p.researching) {
-      if (p.ai) p.researching = aiChooseResearch(this, p);
+      if (p.ai || p.autoResearch) p.researching = aiChooseResearch(this, p);
       else if (availableTechs(p).length && this.s.turn % 6 === 1) this.note([p.id], 'Choose a technology to research.', 'info');
     }
     p.research += sci;
@@ -1378,7 +1407,7 @@ export class Game {
         p.techs.push(p.researching);
         this.note([p.id], `Discovered ${TECHS.find((t) => t.id === p.researching)!.name}!`, 'tech');
         if (this.s.settings.allowScience && !this.s.enlightenment && availableTechs(p).includes(FINAL_TECH)) this.note([], `${p.name} is one discovery away from the Enlightenment.`, 'wonder');
-        p.researching = p.ai ? aiChooseResearch(this, p) : null;
+        p.researching = p.ai || p.autoResearch ? aiChooseResearch(this, p) : null;
         if (!p.researching && !p.ai && availableTechs(p).length) this.note([p.id], 'Choose your next technology.', 'info');
       }
     }
@@ -1386,6 +1415,8 @@ export class Game {
     this.offerPolicy(p);
     // cities
     for (const c of this.s.cities.filter((x) => x.owner === p.id)) this.cityTurn(c, p, aiMult);
+    // now and then something happens: a windfall, a plague, a find under your own land
+    this.guard('events', () => { rollEvent(this, p); });
   }
 
   private cityTurn(c: City, p: Player, aiMult: number): void {
@@ -1414,6 +1445,8 @@ export class Game {
     }
     // production
     c.prod += Math.max(0, y.prod * aiMult);
+    // a governor fills an empty queue, so the player is not asked
+    if (!c.queue.length && c.governor && !p.ai) aiPlanCity(this, p, c);
     if (!c.queue.length) {
       if (p.ai) return;
       if (this.s.turn % 5 === 0 || c.founded === this.s.turn - 1) this.note([p.id], `${c.name} has nothing to build.`, 'info', { x: c.x, y: c.y });

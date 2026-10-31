@@ -5,7 +5,7 @@ import { contentment, dealIncome, growthFactor, outputFactor, sanctionersOf } fr
 import type { Game } from './game';
 
 /** Global knobs: how expensive technology (per era) and production items are relative to the base tables. */
-export const TECH_ERA_FACTOR = [1.0, 2.7, 4.5, 6.8];
+export const TECH_ERA_FACTOR = [1.0, 2.7, 4.5, 6.8, 8.0];
 export const PROD_COST_FACTOR = 0.75;
 
 export interface Yield {
@@ -14,10 +14,11 @@ export interface Yield {
   gold: number;
 }
 
-export function tileYield(t: Tile): Yield {
+/** What a tile yields. `techs` are its owner's technologies: coal and oil are worth nothing until they are known. */
+export function tileYield(t: Tile, techs?: string[]): Yield {
   const base = TERRAIN[t.terrain];
   const y = { food: base.food, prod: base.prod, gold: base.gold };
-  if (t.resource) {
+  if (t.resource && !(techs && RESOURCES[t.resource].reveal && !techs.includes(RESOURCES[t.resource].reveal!))) {
     const r = RESOURCES[t.resource];
     y.food += r.food;
     y.prod += r.prod;
@@ -76,7 +77,7 @@ export function foodNeeded(game: Game, pop: number, owner?: number): number {
 
 export function cityCenterYield(game: Game, city: City): Yield {
   const t = game.tile(city.x, city.y);
-  const y = tileYield(t);
+  const y = tileYield(t, game.players[city.owner].techs);
   y.food = Math.max(2, y.food);
   y.prod = Math.max(3, y.prod);
   y.gold += 1;
@@ -98,7 +99,7 @@ export function assignWorkedTiles(game: Game, playerId: number): void {
       const t = game.tiles[idx];
       if (t.owner !== playerId || !TERRAIN[t.terrain].workable) continue;
       if (game.hostileUnitOn(playerId, t.x, t.y)) continue;
-      candidates.push({ idx, y: tileYield(t) });
+      candidates.push({ idx, y: tileYield(t, game.players[playerId].techs) });
     }
     // pinned tiles first
     const pinned = candidates.filter((c) => city.locked.includes(c.idx)).slice(0, city.pop);
@@ -133,7 +134,7 @@ export function cityYield(game: Game, city: City): CityYield {
   let prod = y.prod;
   let gold = y.gold;
   for (const idx of city.worked) {
-    const t = tileYield(game.tiles[idx]);
+    const t = tileYield(game.tiles[idx], game.players[city.owner].techs);
     food += t.food;
     prod += t.prod;
     gold += t.gold;

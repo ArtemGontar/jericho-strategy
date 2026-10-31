@@ -32,7 +32,7 @@
   --bad: #ec6c5d;
   --scrim: rgba(5, 8, 13, 0.78);
   --bronze: #b08a3c;
-  --era0: #d9a653; --era1: #78b8c8; --era2: #c8705f; --era3: #b79ae6;
+  --era0: #d9a653; --era1: #78b8c8; --era2: #c8705f; --era3: #b79ae6; --era4: #9ccf8a;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --ease-io: cubic-bezier(0.65, 0, 0.35, 1);
   --display: 'Cinzel', 'Trajan Pro', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
@@ -324,7 +324,7 @@ button.stat { background: none; border: 0; color: inherit; font: inherit; font-w
 /* the yields sit on one line and take the room between the medals and the rival portraits; they clip before anything else moves */
 .topbar .stats { display: flex; align-items: center; flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; }
 .era { --era: var(--era0); font-family: var(--display); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text2); text-align: right; line-height: 1.3; padding-right: 12px; position: relative; }
-.era[data-era='1'] { --era: var(--era1); } .era[data-era='2'] { --era: var(--era2); } .era[data-era='3'] { --era: var(--era3); }
+.era[data-era='1'] { --era: var(--era1); } .era[data-era='2'] { --era: var(--era2); } .era[data-era='4'] { --era: var(--era4); } .era[data-era='3'] { --era: var(--era3); }
 .era b { display: block; color: var(--era); font-size: 15px; letter-spacing: 0.14em; text-shadow: 0 0 16px color-mix(in srgb, var(--era) 55%, transparent); }
 .era::after { content: ''; position: absolute; right: 0; top: 50%; width: 5px; height: 5px; margin-top: -2.5px; transform: rotate(45deg); background: var(--era); box-shadow: 0 0 8px var(--era); }
 .rankings { display: flex; gap: 4px; align-items: center; margin: 0 12px; }
@@ -502,6 +502,10 @@ button.stat { background: none; border: 0; color: inherit; font: inherit; font-w
 .tabrow button:hover { color: var(--text); }
 .chips { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 13px; color: var(--text2); }
 .chips span { display: inline-flex; align-items: center; gap: 5px; }
+.tag { display: inline-block; margin-left: 8px; padding: 1px 6px; border: 1px solid var(--gold-lo); color: var(--gold-hi); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; vertical-align: 2px; }
+.node.suggest { box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(212, 175, 90, 0.35); }
+.node .tag { position: absolute; top: 3px; right: 6px; margin: 0; background: rgba(8, 11, 17, 0.9); }
+.autoresearch { margin-left: auto; }
 .slotline { display: flex; justify-content: space-between; align-items: baseline; }
 .slots { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text2); font-weight: 600; font-variant-numeric: tabular-nums; }
 .slots.full { color: var(--gold-hi); }

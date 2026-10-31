@@ -618,11 +618,13 @@ export function resourceSprite(res: ResourceId): Sprite {
         break;
       }
       // luxuries: a few shining goods in their own colour (gems also sit on rock)
+      case 'coal':
+      case 'oil':
       case 'gems':
       case 'wine':
       case 'spices':
       case 'pearls': {
-        const colour = res === 'gems' ? '#58d0ff' : res === 'wine' ? '#a8325f' : res === 'spices' ? '#e8822a' : '#f3efe6';
+        const colour = res === 'coal' ? '#3c3c46' : res === 'oil' ? '#2d2540' : res === 'gems' ? '#58d0ff' : res === 'wine' ? '#a8325f' : res === 'spices' ? '#e8822a' : '#f3efe6';
         shadow(ctx, 0, 7, 17, 4.5, 0.3);
         const r2 = new Rng(res.length * 7);
         const dots: Array<[number, number, number]> = [[-8, 3, 6], [8, 4, 5.5], [0, -3, 7], [-2, 6, 4.5]];

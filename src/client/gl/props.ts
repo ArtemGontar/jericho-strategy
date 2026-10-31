@@ -270,9 +270,11 @@ export class Props {
               break;
             case 'iron':
             case 'gold':
+            case 'coal':
+            case 'oil':
             case 'gems': {
               put('oreRocks', Prefab.oreRocks, this.hardMat, compose(rsx, gy - 0.01, rsz, rng() * 6, 1.5));
-              const col = res === 'gold' ? '#ffcf3a' : res === 'gems' ? '#58d0ff' : '#d9692c';
+              const col = res === 'gold' ? '#ffcf3a' : res === 'gems' ? '#58d0ff' : res === 'coal' ? '#3a3a42' : res === 'oil' ? '#2a2236' : '#d9692c';
               put(`crystal:${res}`, () => Prefab.crystal(col), this.glowMat, compose(rsx, gy + 0.03, rsz, rng() * 6, 1.6));
               break;
             }

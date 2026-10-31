@@ -34,8 +34,11 @@ for (let g = start; g < start + games; g++) {
   const timeline: Array<{ t: number; cities: number[]; score: number[]; content: number[]; deals: number; sanctions: number; weary: number[] }> = [];
   const seenUnits = new Set<number>();
   const built: Record<string, number> = {};
+  const evCount: Record<string, number> = {};
+  const lastSeen = game.players.map(() => -99);
   while (!game.s.over && game.turn < maxTurns + 3) {
     game.processTurn();
+    for (const pl of game.players) if (pl.lastEvent !== lastSeen[pl.id] && pl.lastEvent > 0) { lastSeen[pl.id] = pl.lastEvent; evCount.total = (evCount.total ?? 0) + 1; if (pl.lastEvent < 30) evCount.early = (evCount.early ?? 0) + 1; }
     for (const e of game.events) if (e.kind === 'attack') attacks++;
     game.events.length = 0;
     const t = game.turn;
@@ -88,6 +91,7 @@ for (let g = start; g < start + games; g++) {
     contact, firstWar, enl, leadChanges, attacks,
     declared: wars.filter((x) => x.text.includes('declared')).length, captured: wars.filter((x) => x.text.includes('captured')).length,
     eliminated: wars.filter((x) => x.text.includes('eliminated')).length,
+    evCount, players: n, eras: game.players.map((pl) => Math.max(0, ...pl.techs.map((t) => game.techEra(t)))),
     similarity: simN ? simSum / simN : null, fullCities: cityN ? fullN / cityN : null, buildingsPerCity: cityN ? sizeSum / cityN : null,
     sanctioned: wars.filter((x) => x.text.includes('imposed sanctions')).length, dealNotes,
     finalCities: game.players.map((p) => game.playerCities(p.id).length), finalScore: game.players.map((p) => p.score),
@@ -141,6 +145,11 @@ function summarise(rows: any[]): void {
     const restless = cs.filter((x) => x < 0).length, thriving = cs.filter((x) => x >= THRIVING).length;
     console.log(`turn ${T}: contentment median ${sorted[sorted.length >> 1].toFixed(1)} (min ${sorted[0].toFixed(1)}, max ${sorted[sorted.length - 1].toFixed(1)}); restless ${pct(restless, cs.length)}, thriving ${pct(thriving, cs.length)}; trade agreements in force ${(deals / Math.max(1, n)).toFixed(1)}, sanctions ${(sanc / Math.max(1, n)).toFixed(1)}`);
   }
+  const evT = rows.reduce((a, r) => a + (r.evCount?.total ?? 0), 0), plT = rows.reduce((a, r) => a + (r.players ?? 0), 0);
+  const evE = rows.reduce((a, r) => a + (r.evCount?.early ?? 0), 0);
+  console.log(`events: ${(evT / Math.max(1, plT)).toFixed(1)} per civilisation per game (${evE} before turn 30 across all games)`);
+  const eraAt = rows.flatMap((r) => r.eras ?? []);
+  console.log(`highest era reached by each civilisation: ${[0, 1, 2, 3, 4].map((e) => `era ${e}: ${eraAt.filter((x: number) => x === e).length}`).join(', ')}`);
   const sims = rows.map((r) => r.similarity).filter((x) => x != null) as number[];
   const fulls = rows.map((r) => r.fullCities).filter((x) => x != null) as number[];
   const per = rows.map((r) => r.buildingsPerCity).filter((x) => x != null) as number[];

@@ -1,8 +1,9 @@
-import { BUILDINGS, CIV_BY_ID, ERA_NAMES, IMPROVEMENT_YIELD, TECHS, UNITS, XP_LEVELS } from './data';
+import { BUILDINGS, CIV_BY_ID, ERA_NAMES, IMPROVEMENT_YIELD, RESOURCES, TECHS, UNITS, XP_LEVELS } from './data';
 import {
   availableTechs, buildingSlots, canBuildBuilding, canBuildUnit, cityYield, foodNeeded, itemCost, maxPop, slotsUsed, techCost, type CityYield,
 } from './economy';
 import { cityStrength } from './combat';
+import { aiChooseResearch, suggestBuild } from './ai';
 import { contentment, dealIncome, dealPartners, dealSlots, luxuryAccess, ownLuxuries, type Contentment } from './civ';
 import type { Game, GameEvent } from './game';
 import type {
@@ -10,7 +11,7 @@ import type {
 } from './types';
 
 export const TERRAIN_LIST: TerrainId[] = ['ocean', 'coast', 'grass', 'plains', 'desert', 'tundra', 'forest', 'hills', 'mountain'];
-export const RESOURCE_LIST: ResourceId[] = ['wheat', 'cattle', 'fish', 'deer', 'horses', 'iron', 'gold', 'wine', 'spices', 'gems', 'pearls'];
+export const RESOURCE_LIST: ResourceId[] = ['wheat', 'cattle', 'fish', 'deer', 'horses', 'iron', 'gold', 'wine', 'spices', 'gems', 'pearls', 'coal', 'oil'];
 
 export interface ViewPlayer {
   id: number;
@@ -97,6 +98,10 @@ export interface ViewCity {
   maxPop?: number;
   /** building slots used and available */
   slots?: { used: number; max: number };
+  /** a governor chooses what this city builds */
+  governor?: boolean;
+  /** what a governor would build next, offered to the player as a suggestion */
+  suggest?: { kind: 'unit' | 'building'; id: string } | null;
   radius?: number;
 }
 
@@ -132,6 +137,9 @@ export interface GameView {
   dealIncome: number;
   dealsLeft: number;
   weariness: number;
+  /** research chooses itself, and what it would choose next */
+  autoResearch: boolean;
+  suggestedTech: string | null;
   /** culture needed for the next policy */
   policyCost: number;
   // map: parallel arrays, index = y * width + x
@@ -186,7 +194,9 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
       continue;
     }
     terrain[i] = TERRAIN_LIST.indexOf(t.terrain);
-    resource[i] = t.resource ? RESOURCE_LIST.indexOf(t.resource) + 1 : 0;
+    // fossil fuel is invisible to a civilisation that cannot yet use it
+    const hidden = t.resource && RESOURCES[t.resource].reveal && !p.techs.includes(RESOURCES[t.resource].reveal!);
+    resource[i] = t.resource && !hidden ? RESOURCE_LIST.indexOf(t.resource) + 1 : 0;
     improvement[i] = t.improvement ? IMPROVEMENT_CODE[t.improvement] : 0;
     road[i] = t.road ? 1 : 0;
     hut[i] = t.hut ? 1 : 0;
@@ -263,6 +273,8 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
       vc.buyPrice = game.buyPrice(c);
       vc.maxPop = maxPop(c);
       vc.slots = { used: slotsUsed(c), max: buildingSlots(c) };
+      vc.governor = c.governor;
+      vc.suggest = suggestBuild(game, p, c);
       vc.radius = c.radius;
       const opts: BuildOption[] = [];
       const prodRate = Math.max(1, vc.yield.prod);
@@ -311,6 +323,8 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
     dealIncome: dealIncome(game, me),
     dealsLeft: Math.max(0, dealSlots(game, me) - dealPartners(game, me).length),
     weariness: Math.round(p.weariness * 10) / 10,
+    autoResearch: p.autoResearch,
+    suggestedTech: p.researching || !availableTechs(p).length ? null : aiChooseResearch(game, p, true),
     policyCost: game.nextPolicyCost(p),
     terrain, resource, improvement, road, hut, owner, state,
     cities, units,

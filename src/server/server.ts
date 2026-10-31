@@ -150,6 +150,7 @@ class Room {
       allowScience: this.settings.scienceVictory,
       aggression: this.settings.aggression,
       mapStyle: this.settings.mapStyle,
+      events: this.settings.events,
       players,
     });
     active.forEach((s, i) => {
@@ -413,6 +414,7 @@ wss.on('connection', (ws, req) => {
         if (typeof s.startAtWar === 'boolean') r.settings.startAtWar = s.startAtWar;
         if (typeof s.scienceVictory === 'boolean') r.settings.scienceVictory = s.scienceVictory;
         if (s.mapStyle === 'continent' || s.mapStyle === 'islands') r.settings.mapStyle = s.mapStyle;
+        if (s.events === 'off' || s.events === 'gentle' || s.events === 'normal') r.settings.events = s.events;
         if (s.aggression === 'calm' || s.aggression === 'normal' || s.aggression === 'fierce') r.settings.aggression = s.aggression;
         return r.broadcastRoom();
       }

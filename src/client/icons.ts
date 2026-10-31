@@ -353,6 +353,8 @@ const ALIAS: Record<string, string> = {
   shrine: 'temple', amphitheater: 'oracle', embassy: 'peace', cathedral: 'temple',
   spring_gardens: 'hanging_gardens', ziggurat: 'great_library', sun_temple: 'pyramids', great_bath: 'aqueduct', forum: 'market',
   satrapy: 'bank', stepped_pyramid: 'observatory', agora: 'oracle',
+  factory: 'workshop', hospital: 'health', laboratory: 'science', great_wall: 'walls', lighthouse: 'colossus', notre_dame: 'temple', crystal_palace: 'great_library',
+  coal: 'iron', oil: 'iron',
 };
 export function iconParts(name: string): IconPart[] {
   return I[name] ?? I[ALIAS[name]] ?? I.hex;

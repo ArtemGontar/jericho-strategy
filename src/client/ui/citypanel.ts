@@ -90,7 +90,9 @@ export function renderCityPanel(gs: GameScreen, panel: HTMLElement, c: ViewCity)
     h('div', { class: 'hint' }, `Click a highlighted tile on the map to pin a citizen to it (${c.locked?.length ?? 0}/${c.pop} pinned).`));
 
   // production
-  const prod = h('section', null, h('div', { class: 'eyebrow' }, 'Production'));
+  const gov = h('button', { class: `btn small ${c.governor ? 'active' : ''}`, type: 'button', title: c.governor ? 'A governor builds for this city whenever it has nothing queued. Click to take over.' : 'Hand this city to a governor, who picks what it builds whenever it has nothing queued.' }, icon('auto', 15), c.governor ? 'Governor on' : 'Governor');
+  gov.addEventListener('click', () => void gs.cmd({ t: 'governor', city: c.id, on: !c.governor }));
+  const prod = h('section', null, h('div', { class: 'slotline' }, h('div', { class: 'eyebrow' }, 'Production'), gov));
   if (head) {
     const info = itemInfo(head.kind, head.id);
     const pct = Math.min(100, ((c.prod ?? 0) / headCost) * 100);
@@ -111,6 +113,15 @@ export function renderCityPanel(gs: GameScreen, panel: HTMLElement, c: ViewCity)
       });
       prod.append(h('div', null, b));
     }
+  } else if (c.suggest) {
+    // nothing queued: offer the governor's choice in one tap
+    const sg = itemInfo(c.suggest.kind, c.suggest.id);
+    const go = h('button', { class: 'btn primary', type: 'button', title: sg.desc }, icon('star', 16), `Build ${sg.name}`);
+    go.addEventListener('click', async () => {
+      sfx('click');
+      await gs.cmd({ t: 'queue', city: c.id, op: 'set', kind: c.suggest!.kind, id: c.suggest!.id });
+    });
+    prod.append(h('div', { class: 'hint' }, 'Nothing is being built. A good next step:'), h('div', null, go), h('div', { class: 'hint' }, 'or pick something else below.'));
   } else prod.append(h('div', { class: 'hint' }, 'Nothing is being built. Pick something below.'));
   (c.queue ?? []).slice(1).forEach((q, i) => {
     const info = itemInfo(q.kind, q.id);
@@ -138,9 +149,10 @@ export function renderCityPanel(gs: GameScreen, panel: HTMLElement, c: ViewCity)
       sfx('click');
       await gs.cmd({ t: 'queue', city: c.id, op: 'add', kind: o.kind, id: o.id });
     });
+    const suggested = !!c.suggest && c.suggest.kind === o.kind && c.suggest.id === o.id;
     const r = h('div', { class: `item pick ${queued ? 'dim' : ''}`, title: info.desc },
       artIcon(info.icon, 26, 'big'),
-      h('div', null, h('div', { class: 'nm' }, info.name), h('div', { class: 'ds' }, info.desc)),
+      h('div', null, h('div', { class: 'nm' }, info.name, suggested ? h('span', { class: 'tag' }, 'Suggested') : null), h('div', { class: 'ds' }, info.desc)),
       h('div', { class: 'cost num' }, `${o.cost}`, h('br'), `${o.turns}t`),
       add);
     r.addEventListener('click', async () => {
@@ -165,7 +177,8 @@ export function renderCityPanel(gs: GameScreen, panel: HTMLElement, c: ViewCity)
       tabs.append(b);
     }
     const list = h('div');
-    for (const o of groups[tab]) list.append(row(o));
+    const mine = groups[tab].slice().sort((a, b) => Number(!!c.suggest && c.suggest.kind === b.kind && c.suggest.id === b.id) - Number(!!c.suggest && c.suggest.kind === a.kind && c.suggest.id === a.id));
+    for (const o of mine) list.append(row(o));
     if (!groups[tab].length) list.append(h('div', { class: 'hint', style: { padding: '10px 0' } }, tab === 'wonders' ? 'No wonders available yet. Research more technologies.' : 'Nothing available.'));
     return h('section', null, tabs, list);
   };

@@ -311,6 +311,8 @@ try {
       else check(`${w}x${hgt}: city panel is a bottom sheet`, d.t > hgt * 0.3 && d.b >= hgt - 1);
       const slotText = await page.$eval('.drawer .slots', (e) => e.textContent ?? '').catch(() => '');
       check(`${w}x${hgt}: the city panel shows its building slots`, /Slots \d+ \/ \d+/.test(slotText), slotText);
+      const advisor = await page.evaluate(() => ({ governor: !!document.querySelector('.drawer .slotline .btn'), suggested: /Build /.test(document.querySelector('.drawer .btn.primary')?.textContent ?? '') }));
+      check(`${w}x${hgt}: the city panel offers a governor and a suggested build`, advisor.governor && advisor.suggested, JSON.stringify(advisor));
       const menuHas = await (async () => { await page.evaluate(() => (window as any).__jericho.screen.openModal('menu')); return page.evaluate(() => ['Your cities', 'Diplomacy', 'Message log'].every((t) => [...document.querySelectorAll('.overlay .menu-list button')].some((b) => b.textContent?.includes(t)))); })();
       check(`${w}x${hgt}: the menu reaches cities, diplomacy and the log`, menuHas);
       check(`${w}x${hgt}: no browser errors`, errors.length === 0, errors.slice(0, 2).join(' | '));

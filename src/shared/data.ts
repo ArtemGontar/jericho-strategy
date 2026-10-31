@@ -34,6 +34,8 @@ export interface ResourceDef {
   prod: number;
   gold: number;
   strategic: boolean;
+  /** invisible, and worth nothing, until its owner knows this technology (coal and oil: fossil fuel waits to be found and used) */
+  reveal?: string;
   /** a luxury: each kind a civilisation holds (or trades for) makes its people more content */
   luxury?: boolean;
   terrains: TerrainId[];
@@ -50,6 +52,8 @@ export const RESOURCES: Record<ResourceId, ResourceDef> = {
   wine:   { name: 'Wine',   icon: '🍇', food: 0, prod: 0, gold: 1, strategic: false, luxury: true, terrains: ['grass', 'plains'] },
   spices: { name: 'Spices', icon: '🌶️', food: 0, prod: 0, gold: 1, strategic: false, luxury: true, terrains: ['forest', 'desert', 'plains'] },
   gems:   { name: 'Gems',   icon: '💎', food: 0, prod: 0, gold: 2, strategic: false, luxury: true, terrains: ['hills', 'desert'] },
+  coal:   { name: 'Coal',   icon: '⚫', food: 0, prod: 2, gold: 0, strategic: false, reveal: 'industrialization', terrains: ['hills', 'plains', 'desert', 'tundra'] },
+  oil:    { name: 'Oil',    icon: '🛢️', food: 0, prod: 1, gold: 3, strategic: false, reveal: 'combustion', terrains: ['desert', 'plains', 'tundra', 'coast'] },
   pearls: { name: 'Pearls', icon: '🦪', food: 0, prod: 0, gold: 1, strategic: false, luxury: true, terrains: ['coast'] },
 };
 export const LUXURIES = (Object.keys(RESOURCES) as ResourceId[]).filter((r) => RESOURCES[r].luxury);
@@ -162,6 +166,10 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   amphitheater: B({ id: 'amphitheater', name: 'Amphitheater', icon: '🎭', cost: 70, upkeep: 1, tech: 'drama', content: 2, desc: '+2 contentment.' }),
   embassy:      B({ id: 'embassy', name: 'Embassy', icon: '🕊️', cost: 60, upkeep: 1, tech: 'diplomacy', gold: 1, desc: '+1 gold, and one more trade agreement. Two embassies count.' }),
   cathedral:    B({ id: 'cathedral', name: 'Cathedral', icon: '⛪', cost: 120, upkeep: 2, tech: 'theology', needs: 'temple', culture: 1, content: 3, desc: '+3 contentment, +1 culture. Requires a Temple.' }),
+  // the industrial age: more output and healthier cities, at a price
+  factory:      B({ id: 'factory', name: 'Factory', icon: '🏭', cost: 150, upkeep: 3, tech: 'industrialization', needs: 'workshop', prod: 5, desc: '+5 production. Requires a Workshop.' }),
+  hospital:     B({ id: 'hospital', name: 'Hospital', icon: '🏥', cost: 110, upkeep: 2, tech: 'sanitation', food: 1, content: 1, desc: '+1 food, +1 contentment, and plague cannot strike this city.' }),
+  laboratory:   B({ id: 'laboratory', name: 'Laboratory', icon: '🔬', cost: 150, upkeep: 3, tech: 'electricity', needs: 'university', science: 6, desc: '+6 science. Requires a University.' }),
   // one building only a single civilisation can raise; it takes no slot, so it is always worth having
   spring_gardens:  B({ id: 'spring_gardens', name: 'Spring Gardens', icon: '🌿', cost: 50, upkeep: 0, tech: 'pottery', food: 3, content: 1, free: true, civ: 'jericho', desc: 'Jericho only. +3 food, +1 contentment. Takes no slot.' }),
   ziggurat:        B({ id: 'ziggurat', name: 'Ziggurat', icon: '🛕', cost: 70, upkeep: 1, tech: 'writing', science: 3, culture: 1, free: true, civ: 'sumer', desc: 'Sumer only. +3 science, +1 culture. Takes no slot.' }),
@@ -171,6 +179,10 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   satrapy:         B({ id: 'satrapy', name: 'Satrapy', icon: '🏺', cost: 80, upkeep: 1, tech: 'currency', gold: 2, prod: 2, free: true, civ: 'persia', desc: 'Persia only. +2 gold, +2 production. Takes no slot.' }),
   stepped_pyramid: B({ id: 'stepped_pyramid', name: 'Stepped Pyramid', icon: '🔺', cost: 90, upkeep: 1, tech: 'mathematics', science: 2, culture: 2, free: true, civ: 'maya', desc: 'Maya only. +2 science, +2 culture. Takes no slot.' }),
   agora:           B({ id: 'agora', name: 'Agora', icon: '🏛️', cost: 80, upkeep: 0, tech: 'philosophy', science: 2, gold: 1, content: 2, free: true, civ: 'greece', desc: 'Greece only. +2 contentment, +2 science, +1 gold. Takes no slot.' }),
+  great_wall:      B({ id: 'great_wall', name: 'Great Wall', icon: '🧱', cost: 190, upkeep: 0, tech: 'construction', wonder: true, culture: 2, content: 2, desc: 'Wonder: +2 culture, +2 contentment.' }),
+  lighthouse:      B({ id: 'lighthouse', name: 'Great Lighthouse', icon: '🗼', cost: 170, upkeep: 0, tech: 'sailing', wonder: true, coastal: true, food: 2, gold: 3, culture: 2, desc: 'Wonder (coastal city): +2 food, +3 gold, +2 culture.' }),
+  notre_dame:      B({ id: 'notre_dame', name: 'Notre Dame', icon: '⛪', cost: 230, upkeep: 0, tech: 'theology', wonder: true, culture: 6, content: 3, desc: 'Wonder: +6 culture, +3 contentment.' }),
+  crystal_palace:  B({ id: 'crystal_palace', name: 'Crystal Palace', icon: '🏛️', cost: 260, upkeep: 0, tech: 'industrialization', wonder: true, prod: 6, science: 3, culture: 3, desc: 'Wonder: +6 production, +3 science, +3 culture.' }),
   pyramids:        B({ id: 'pyramids', name: 'Pyramids', icon: '🔺', cost: 170, upkeep: 0, tech: 'masonry', wonder: true, prod: 4, culture: 3, desc: 'Wonder: +4 production, +3 culture.' }),
   great_library:   B({ id: 'great_library', name: 'Great Library', icon: '🏛️', cost: 190, upkeep: 0, tech: 'writing', wonder: true, science: 8, culture: 3, desc: 'Wonder: +8 science, +3 culture.' }),
   hanging_gardens: B({ id: 'hanging_gardens', name: 'Hanging Gardens', icon: '🌳', cost: 190, upkeep: 0, tech: 'construction', wonder: true, food: 4, culture: 3, desc: 'Wonder: +4 food, +3 culture.' }),
@@ -183,13 +195,13 @@ export const WONDER_IDS = (Object.keys(BUILDINGS) as BuildingId[]).filter((b) =>
 export interface TechDef {
   id: TechId;
   name: string;
-  era: 0 | 1 | 2 | 3;
+  era: 0 | 1 | 2 | 3 | 4;
   cost: number;
   pre: TechId[];
   desc: string;
 }
-const T = (id: TechId, name: string, era: 0 | 1 | 2 | 3, cost: number, pre: TechId[], desc: string): TechDef => ({ id, name, era, cost, pre, desc });
-export const ERA_NAMES = ['Ancient', 'Classical', 'Medieval', 'Renaissance'];
+const T = (id: TechId, name: string, era: 0 | 1 | 2 | 3 | 4, cost: number, pre: TechId[], desc: string): TechDef => ({ id, name, era, cost, pre, desc });
+export const ERA_NAMES = ['Ancient', 'Classical', 'Medieval', 'Renaissance', 'Industrial'];
 export const TECHS: TechDef[] = [
   T('pottery', 'Pottery', 0, 25, [], 'Granary'),
   T('mining', 'Mining', 0, 25, [], 'Mines, Workshop'),
@@ -199,13 +211,13 @@ export const TECHS: TechDef[] = [
   T('masonry', 'Masonry', 0, 30, [], 'Walls, Pyramids'),
   T('writing', 'Writing', 0, 35, ['pottery'], 'Library, Great Library'),
   T('wheel', 'The Wheel', 0, 35, ['husbandry'], 'Roads'),
-  T('sailing', 'Sailing', 0, 35, ['pottery'], 'Trireme, Harbor'),
+  T('sailing', 'Sailing', 0, 35, ['pottery'], 'Trireme, Harbor, Lighthouse'),
   T('ceremony', 'Ceremony', 0, 30, [], 'Shrine: an early way to keep people content'),
   T('ironworking', 'Iron Working', 1, 70, ['bronze'], 'Swordsman'),
   T('mathematics', 'Mathematics', 1, 70, ['archery', 'masonry'], 'Catapult'),
   T('currency', 'Currency', 1, 70, ['bronze'], 'Market'),
   T('philosophy', 'Philosophy', 1, 80, ['writing'], 'Temple, Oracle'),
-  T('construction', 'Construction', 1, 80, ['masonry', 'wheel'], 'Aqueduct, Hanging Gardens'),
+  T('construction', 'Construction', 1, 80, ['masonry', 'wheel'], 'Aqueduct, Hanging Gardens, Great Wall: buildings survive earthquakes'),
   T('drama', 'Drama and Poetry', 1, 75, ['writing'], 'Amphitheater'),
   T('diplomacy', 'Diplomacy', 1, 80, ['writing', 'currency'], 'Embassy: one more trade agreement'),
   T('education', 'Education', 2, 130, ['philosophy'], 'University'),
@@ -214,12 +226,16 @@ export const TECHS: TechDef[] = [
   T('chivalry', 'Chivalry', 2, 150, ['feudalism', 'husbandry'], 'Knight'),
   T('navigation', 'Navigation', 2, 140, ['sailing', 'mathematics'], 'Caravel, ocean voyages, one more trade agreement'),
   T('medicine', 'Medicine', 2, 140, ['philosophy', 'construction'], 'Citizens weigh less on contentment'),
-  T('theology', 'Theology', 2, 150, ['philosophy', 'drama'], 'Cathedral'),
+  T('theology', 'Theology', 2, 150, ['philosophy', 'drama'], 'Cathedral, Notre Dame'),
   T('banking', 'Banking', 2, 150, ['currency', 'education'], 'Bank'),
   T('gunpowder', 'Gunpowder', 3, 230, ['feudalism', 'engineering'], 'Musketman'),
   T('metallurgy', 'Metallurgy', 3, 260, ['gunpowder', 'mathematics'], 'Cannon, Frigate'),
   T('astronomy', 'Astronomy', 3, 230, ['education'], 'Observatory'),
-  T('enlightenment', 'Enlightenment', 3, 400, ['astronomy', 'banking', 'gunpowder'], 'Science victory'),
+  T('industrialization', 'Industrialization', 4, 170, ['metallurgy', 'banking'], 'Factory, Crystal Palace, and coal that can be dug'),
+  T('sanitation', 'Sanitation', 4, 150, ['medicine', 'industrialization'], 'Hospital: no more plague'),
+  T('electricity', 'Electricity', 4, 170, ['industrialization', 'astronomy'], 'Laboratory'),
+  T('combustion', 'Combustion', 4, 170, ['industrialization', 'navigation'], 'Oil that can be pumped'),
+  T('enlightenment', 'Enlightenment', 4, 230, ['astronomy', 'banking', 'industrialization'], 'Science victory'),
 ];
 export const TECH_BY_ID: Record<string, TechDef> = Object.fromEntries(TECHS.map((t) => [t.id, t]));
 export const FINAL_TECH = 'enlightenment';

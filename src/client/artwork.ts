@@ -22,7 +22,7 @@ const UNIT_SPRITE: Record<string, string> = {
 const BUILDING_SPRITE: Record<string, string> = {
   granary: 'granary', workshop: 'workshop', market: 'market', library: 'archivemuseum', temple: 'culturalhall',
   university: 'university', bank: 'exchangehouse', barracks: 'barracks',
-  embassy: 'administration', cathedral: 'council', forum: 'administration', agora: 'school',
+  embassy: 'administration', cathedral: 'council', forum: 'administration', agora: 'school', hospital: 'hospital', laboratory: 'school', factory: 'workshop',
 };
 
 export function spriteUrl(id: string): string | undefined {

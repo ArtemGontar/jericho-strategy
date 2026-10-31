@@ -72,7 +72,7 @@ function showTitle(): void {
     savedGames: hasSavedGame(),
     onSaved: () => showSavedGames(),
     // one tap: a random civilisation against two computers on a small map, stopping at turn 60
-    onQuick: () => startLocal({ name: savedName() || 'Player', civ: null, opponents: 2, aiLevel: 'normal', size: 'small', speed: 'quick', seed: null, turnLimit: 60, startAtWar: false, scienceVictory: true, aggression: 'normal', mapStyle: 'continent', friends: [] }, 'solo'),
+    onQuick: () => startLocal({ name: savedName() || 'Player', civ: null, opponents: 2, aiLevel: 'normal', size: 'small', speed: 'quick', seed: null, turnLimit: 60, startAtWar: false, scienceVictory: true, aggression: 'normal', mapStyle: 'continent', events: 'gentle', friends: [] }, 'solo'),
     rejoin: online ? online.code : null,
     onNew: () => showSetup('solo'),
     onHotseat: () => showSetup('hotseat'),
@@ -126,7 +126,7 @@ function startLocal(cfg: SoloConfig, mode: 'solo' | 'hotseat'): void {
   for (let i = 0; i < cfg.opponents; i++) players.push({ name: 'Computer', ai: true, aiLevel: cfg.aiLevel });
   const n = players.length;
   const size = cfg.size === 'auto' ? undefined : cfg.size;
-  const game = Game.create({ seed: cfg.seed ?? undefined, size: size ?? (n <= 3 ? 'small' : n <= 5 ? 'medium' : 'large'), speed: cfg.speed, turnLimit: cfg.turnLimit, startAtWar: cfg.startAtWar, allowScience: cfg.scienceVictory, aggression: cfg.aggression, mapStyle: cfg.mapStyle, players });
+  const game = Game.create({ seed: cfg.seed ?? undefined, size: size ?? (n <= 3 ? 'small' : n <= 5 ? 'medium' : 'large'), speed: cfg.speed, turnLimit: cfg.turnLimit, startAtWar: cfg.startAtWar, allowScience: cfg.scienceVictory, aggression: cfg.aggression, mapStyle: cfg.mapStyle, events: cfg.events, players });
   game.players.forEach((p) => {
     if (p.ai) p.name = `${game.civOf(p.id).leader} (AI)`;
   });
