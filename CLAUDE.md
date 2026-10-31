@@ -2,8 +2,16 @@
 
 ## Pushing to GitHub
 
-- The default Git login on this machine is a work account that cannot write to this repository.
-- Push with the token in `.artemgontar-gh-token` (repository root, ignored by Git).
+### Cloud sessions (claude.ai/code)
+
+- Use the environment's own GitHub access. Do not look for or ask for `.artemgontar-gh-token`; it does not exist there.
+- Push with `git push -u origin <branch>`. If git cannot push, use the GitHub connector tools (`mcp__github__*`, for example `push_files`).
+- Push `main` and the working branch together when the user asks to push.
+
+### Local machine only
+
+- The default Git login on the user's own computer is a work account that cannot write to this repository.
+- There, push with the token in `.artemgontar-gh-token` (repository root, ignored by Git).
 - Never print the token, never write it to a Git config, remote URL, or log, and never commit it.
 - Pass it for one command only:
 
@@ -14,7 +22,7 @@ git -c credential.helper= -c "http.https://github.com/.extraheader=AUTHORIZATION
 ```
 
 - Push `main` and the working branch together when the user asks to push.
-- If the file is missing, tell the user. Do not look for other credentials.
+- If the file is missing on a local machine, tell the user. Do not look for other credentials.
 
 ## Running the app
 
