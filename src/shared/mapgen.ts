@@ -1,6 +1,6 @@
 import { hexDistance, neighborsOf, tilesWithin, type Pos } from './hex';
 import { Rng } from './rng';
-import { RESOURCES, TERRAIN } from './data';
+import { LUXURIES, RESOURCES, TERRAIN } from './data';
 import type { ResourceId, TerrainId, Tile } from './types';
 
 function makeNoise(rng: Rng): (x: number, y: number) => number {
@@ -224,6 +224,11 @@ function tryGenerate(w: number, h: number, players: number, seed: number, style:
   placeResource('horses', 0.05);
   placeResource('iron', 0.05);
   placeResource('gold', 0.04);
+  // luxuries are scarcer: every civilisation has a reason to trade
+  placeResource('wine', 0.035);
+  placeResource('spices', 0.03);
+  placeResource('gems', 0.03);
+  placeResource('pearls', 0.05);
 
   // --- start positions: spread over the main landmass, each with decent surroundings
   const quality = (t: Tile): number => {
@@ -314,6 +319,16 @@ function tryGenerate(w: number, h: number, players: number, seed: number, style:
       for (const t of near) if (t.terrain === 'mountain') t.terrain = 'hills';
     }
   }
+  // luxuries: each start gets one kind within reach, and neighbours get different kinds, so trading is how you get the rest
+  const lux = LUXURIES.slice();
+  starts.forEach((s, i) => {
+    const want = lux[i % lux.length];
+    const reach = tilesWithin(s.x, s.y, 4, w, h).map((p) => tiles[idx(p.x, p.y)]).filter((t) => !(t.x === s.x && t.y === s.y));
+    if (reach.some((t) => t.resource === want)) return;
+    const def = RESOURCES[want];
+    const spot = rng.pick(reach.filter((t) => !t.resource && def.terrains.includes(t.terrain)));
+    if (spot) spot.resource = want;
+  });
   // tribal villages: scattered over the land, never near a start
   const hutCount = Math.round((w * h) / 70);
   const land = tiles.filter((t) => ['grass', 'plains', 'desert', 'forest', 'hills', 'tundra'].includes(t.terrain) && !t.resource);

@@ -3,7 +3,7 @@ import { Rng } from './rng';
 import { generateMap } from './mapgen';
 import {
   BUILDINGS, CITY_BASE_HP, CIVS, CIV_BY_ID, FINAL_TECH, IMPROVEMENTS, MAP_SIZES, MAX_PLAYERS, MIN_CITY_DISTANCE,
-  PEACE_MIN_TURNS, POLICIES, POLICY_BY_ID, TECHS, TERRAIN, UNITS, UNIT_HP, UNIT_UPGRADES, XP_LEVELS, policyCost,
+  PEACE_MIN_TURNS, POLICIES, POLICY_BY_ID, RESOURCES, TECHS, TERRAIN, UNITS, UNIT_HP, UNIT_UPGRADES, XP_LEVELS, policyCost,
 } from './data';
 import {
   assignWorkedTiles, availableTechs, canBuildBuilding, canBuildUnit, cityYield, foodNeeded, hasBuilding, itemCost,
@@ -11,6 +11,7 @@ import {
 } from './economy';
 import { findPath, stepCost, tileBlockedFor } from './path';
 import { resolveAttack, cityStrength, bombardTargets, captureCity } from './combat';
+import { MAX_DEALS, SANCTION_TURNS, dealGold, dealPartners } from './civ';
 import { aiTakeTurn, aiAutoExplore, aiAutoWorker, aiChooseResearch } from './ai';
 import type {
   AiLevel, AiPersonality, BuildingId, City, CmdResult, Focus, GameSettings, GameState, Note, Player,
@@ -32,6 +33,10 @@ export type Command =
   | { t: 'peace'; to: number }
   | { t: 'accept'; proposal: number; accept: boolean }
   | { t: 'war'; to: number }
+  | { t: 'deal'; to: number }
+  | { t: 'cancelDeal'; with: number }
+  | { t: 'sanction'; on: number }
+  | { t: 'lift'; on: number }
   | { t: 'gift'; to: number; amount: number }
   | { t: 'policy'; id: string }
   | { t: 'tile'; city: number; x: number; y: number }
@@ -150,6 +155,10 @@ export class Game {
         score: 0,
         lastDefeat: -99,
         eliminatedTurn: -1,
+        weariness: 0,
+        content: 9,
+        aggression: -99,
+        restless: false,
       };
     });
     const relations: Relation[][] = players.map((a) => players.map((b) => (a.id === b.id ? 'peace' : 'unmet')));
@@ -169,6 +178,8 @@ export class Game {
       relations,
       relationSince,
       proposals: [],
+      deals: [],
+      sanctions: [],
       wonders: {},
       notes: [],
       winner: null,
@@ -211,10 +222,16 @@ export class Game {
     for (const t of this.s.tiles) if (t.hut === undefined) t.hut = false;
     for (const u of this.s.units) if (u.xp === undefined) u.xp = 0;
     for (const c of this.s.cities) if (!c.locked) c.locked = [];
+    if (!this.s.deals) this.s.deals = [];
+    if (!this.s.sanctions) this.s.sanctions = [];
     for (const p of this.s.players) {
       if (!p.policies) p.policies = [];
       if (!p.policyChoices) p.policyChoices = [];
       if (!p.forgone) p.forgone = [];
+      if (p.weariness === undefined) p.weariness = 0;
+      if (p.content === undefined) p.content = 9;
+      if (p.aggression === undefined) p.aggression = -99;
+      if (p.restless === undefined) p.restless = false;
     }
   }
 
@@ -302,7 +319,22 @@ export class Game {
 
   hasResource(playerId: number, res: ResourceId): boolean {
     for (const t of this.s.tiles) if (t.owner === playerId && t.resource === res) return true;
+    // a trade agreement shares the horses and iron of the partner
+    if (RESOURCES[res].strategic) {
+      for (const o of dealPartners(this, playerId)) for (const t of this.s.tiles) if (t.owner === o && t.resource === res) return true;
+    }
     return false;
+  }
+
+  hasDeal(a: number, b: number): boolean {
+    return this.s.deals.some((d) => (d.a === a && d.b === b) || (d.a === b && d.b === a));
+  }
+  isSanctioned(by: number, on: number): boolean {
+    return this.s.sanctions.some((x) => x.by === by && x.on === on);
+  }
+  addWeariness(pid: number, amount: number): void {
+    const p = this.s.players[pid];
+    if (p) p.weariness = Math.max(0, Math.min(12, p.weariness + amount));
   }
 
   playerCities(pid: number): City[] { return this.s.cities.filter((c) => c.owner === pid); }
@@ -492,6 +524,10 @@ export class Game {
       case 'peace': res = this.cmdPeace(p, cmd.to); break;
       case 'accept': res = this.cmdAccept(p, cmd.proposal, cmd.accept); break;
       case 'war': res = this.cmdWar(p, cmd.to); break;
+      case 'deal': res = this.cmdDeal(p, cmd.to); break;
+      case 'cancelDeal': res = this.cmdCancelDeal(p, cmd.with); break;
+      case 'sanction': res = this.cmdSanction(p, cmd.on); break;
+      case 'lift': res = this.cmdLift(p, cmd.on); break;
       case 'gift': res = this.cmdGift(p, cmd.to, cmd.amount); break;
       case 'policy': res = this.cmdPolicy(p, cmd.id); break;
       case 'tile': res = this.cmdTile(p, cmd.city, cmd.x, cmd.y); break;
@@ -902,6 +938,7 @@ export class Game {
     const ratio = theirs / Math.max(1, mine);
     let p = base + (ratio - 1) * 0.25;
     if (this.s.turn - ai.lastDefeat < 10) p += 0.3;
+    if (ai.weariness > 4) p += 0.25; // a tired people want peace
     p = Math.max(0.03, Math.min(0.95, p));
     return this.rng.chance(p);
   }
@@ -923,8 +960,99 @@ export class Game {
     if (i < 0) return { ok: false, error: 'That proposal no longer exists.' };
     const pr = this.s.proposals[i];
     this.s.proposals.splice(i, 1);
+    if (pr.kind === 'deal') {
+      if (accept && this.dealBlocker(pr.from, pr.to) === null) this.signDeal(pr.from, pr.to);
+      else this.note([pr.from], `${p.name} turned down your trade agreement.`, 'bad');
+      return { ok: true };
+    }
     if (accept && this.relation(pr.from, pr.to) === 'war') this.signPeace(pr.from, pr.to);
     else this.note([pr.from], `${p.name} rejected your peace proposal.`, 'bad');
+    return { ok: true };
+  }
+
+  // ------------------------------------------------------------------ trade agreements and sanctions
+  /** Why these two cannot sign a trade agreement right now, or null when they can. */
+  dealBlocker(a: number, b: number): string | null {
+    const pa = this.s.players[a];
+    const pb = this.s.players[b];
+    if (!pa || !pb || !pa.alive || !pb.alive || a === b) return 'Invalid player.';
+    if (this.relation(a, b) !== 'peace') return 'You can only trade with a civilisation you are at peace with.';
+    if (this.hasDeal(a, b)) return 'You already trade with them.';
+    if (this.isSanctioned(a, b) || this.isSanctioned(b, a)) return 'Sanctions forbid it.';
+    if (dealPartners(this, a).length >= MAX_DEALS) return `You already have ${MAX_DEALS} trade agreements.`;
+    if (dealPartners(this, b).length >= MAX_DEALS) return `${pb.name} already has ${MAX_DEALS} trade agreements.`;
+    return null;
+  }
+
+  private cmdDeal(p: Player, to: number): CmdResult {
+    const o = this.s.players[to];
+    const why = this.dealBlocker(p.id, to);
+    if (why) return { ok: false, error: why };
+    if (this.s.proposals.some((x) => x.kind === 'deal' && ((x.from === p.id && x.to === to) || (x.from === to && x.to === p.id)))) return { ok: false, error: 'A trade agreement is already on the table.' };
+    if (o.ai) {
+      if (this.aiAcceptsDeal(o, p)) this.signDeal(p.id, to);
+      else this.note([p.id], `${o.name} is not interested in trading right now.`, 'bad');
+      return { ok: true };
+    }
+    this.s.proposals.push({ id: this.s.nextId++, from: p.id, to, kind: 'deal', turn: this.s.turn });
+    this.note([to], `${p.name} proposes a trade agreement. Open the diplomacy panel to answer.`, 'info');
+    return { ok: true };
+  }
+
+  private aiAcceptsDeal(ai: Player, from: Player): boolean {
+    let chance = ai.personality === 'builder' ? 0.92 : ai.personality === 'balanced' ? 0.78 : 0.5;
+    // trading with someone who struck first is distasteful, and with someone we are already wary of
+    if (this.s.turn - from.aggression < 20) chance -= 0.45;
+    if (this.isSanctioned(from.id, ai.id)) chance = 0;
+    return this.rng.chance(Math.max(0.05, chance));
+  }
+
+  signDeal(a: number, b: number): void {
+    const [x, y] = a < b ? [a, b] : [b, a];
+    this.s.deals.push({ a: x, b: y, since: this.s.turn });
+    this.s.proposals = this.s.proposals.filter((q) => !(q.kind === 'deal' && ((q.from === a && q.to === b) || (q.from === b && q.to === a))));
+    const g = dealGold(this, a, b);
+    refreshPlayer(this, a);
+    refreshPlayer(this, b);
+    this.note([a, b], `Trade agreement signed: ${this.playerName(a)} and ${this.playerName(b)} each earn ${g} gold a turn and share their luxuries.`, 'good');
+  }
+
+  /** End a trade agreement. `why` is told to both sides. */
+  endDeal(a: number, b: number, why: 'war' | 'sanctions' | 'chosen' | 'lost'): void {
+    const i = this.s.deals.findIndex((d) => (d.a === a && d.b === b) || (d.a === b && d.b === a));
+    if (i < 0) return;
+    this.s.deals.splice(i, 1);
+    refreshPlayer(this, a);
+    refreshPlayer(this, b);
+    const text = why === 'war' ? 'War ended' : why === 'sanctions' ? 'Sanctions ended' : why === 'lost' ? 'The partner is gone, so' : 'Ended';
+    this.note([a, b], `${text}: the trade agreement between ${this.playerName(a)} and ${this.playerName(b)}.`, 'info');
+  }
+
+  private cmdCancelDeal(p: Player, other: number): CmdResult {
+    if (!this.hasDeal(p.id, other)) return { ok: false, error: 'You have no trade agreement with them.' };
+    this.endDeal(p.id, other, 'chosen');
+    return { ok: true };
+  }
+
+  private cmdSanction(p: Player, on: number): CmdResult {
+    const o = this.s.players[on];
+    if (!o || !o.alive || on === p.id) return { ok: false, error: 'Invalid player.' };
+    if (this.relation(p.id, on) === 'unmet') return { ok: false, error: 'You have not met them.' };
+    if (this.isSanctioned(p.id, on)) return { ok: false, error: 'Your sanctions are already in force.' };
+    this.s.sanctions.push({ by: p.id, on, since: this.s.turn });
+    this.endDeal(p.id, on, 'sanctions');
+    this.s.proposals = this.s.proposals.filter((q) => !(q.kind === 'deal' && ((q.from === p.id && q.to === on) || (q.from === on && q.to === p.id))));
+    refreshPlayer(this, on);
+    this.note([], `${p.name} imposed sanctions on ${o.name}.`, 'war');
+    return { ok: true };
+  }
+
+  private cmdLift(p: Player, on: number): CmdResult {
+    const i = this.s.sanctions.findIndex((x) => x.by === p.id && x.on === on);
+    if (i < 0) return { ok: false, error: 'You have no sanctions on them.' };
+    this.s.sanctions.splice(i, 1);
+    refreshPlayer(this, on);
+    this.note([], `${p.name} lifted its sanctions on ${this.playerName(on)}.`, 'good');
     return { ok: true };
   }
 
@@ -1086,7 +1214,10 @@ export class Game {
   }
 
   declareWar(a: number, b: number): void {
+    // striking someone we were at peace with is remembered, and the world may punish it
+    if (this.relation(a, b) === 'peace') this.s.players[a].aggression = this.s.turn;
     this.setRelation(a, b, 'war');
+    this.endDeal(a, b, 'war');
     this.s.proposals = this.s.proposals.filter((x) => !((x.from === a && x.to === b) || (x.from === b && x.to === a)));
     this.note([], `${this.playerName(a)} declared war on ${this.playerName(b)}!`, 'war');
   }
@@ -1109,6 +1240,20 @@ export class Game {
     // 4. new turn bookkeeping
     this.s.turn++;
     this.s.proposals = this.s.proposals.filter((x) => this.s.turn - x.turn < 6 && this.s.players[x.from].alive && this.s.players[x.to].alive);
+    // sanctions lapse unless they are imposed again
+    for (const x of this.s.sanctions.slice()) {
+      if (this.s.turn - x.since >= SANCTION_TURNS) {
+        this.s.sanctions = this.s.sanctions.filter((y) => y !== x);
+        this.note([x.by, x.on], `The sanctions of ${this.playerName(x.by)} on ${this.playerName(x.on)} have run out.`, 'info');
+      }
+    }
+    // war tires a people; peace rests them
+    for (const p of this.s.players) {
+      if (!p.alive) continue;
+      const atWar = this.s.players.some((o) => o.alive && o.id !== p.id && this.relation(p.id, o.id) === 'war');
+      if (atWar) this.addWeariness(p.id, 0.15);
+      else if (p.weariness > 0) this.addWeariness(p.id, -1);
+    }
     for (const u of this.s.units) {
       const def = UNITS[u.type];
       u.mp = def.moves * 2 + ((def.scout || def.naval) && this.s.players[u.owner].policies.includes('exploration') ? 2 : 0);
@@ -1157,6 +1302,8 @@ export class Game {
       5: 'Tip: set Workers to Auto (A) and Scouts to Explore (A) so you can focus on the big decisions.',
       9: 'Tip: you cannot attack a civilisation you are at peace with. Open Diplomacy (D) to declare war once the treaty is 10 turns old.',
       14: 'Tip: queue several items in a city with the + button, and spend spare gold on Buy to finish them early.',
+      22: 'Tip: every city and citizen makes your people a little more restless. Luxuries (wine, spices, gems, pearls) keep them content: settle near them or trade for them. The heart at the top shows how you are doing.',
+      38: 'Tip: in Diplomacy you can sign trade agreements (gold for both, and you share luxuries) or impose sanctions on a civilisation you want to hurt without going to war.',
     };
     const t = tips[this.s.turn];
     if (!t) return;
@@ -1181,6 +1328,16 @@ export class Game {
 
   private economyTurn(p: Player): void {
     refreshPlayer(this, p.id);
+    // say so, once, when the people turn restless and when they recover
+    if (!p.ai) {
+      if (p.content < 0 && !p.restless) {
+        p.restless = true;
+        this.note([p.id], 'Your people are restless: cities grow and produce less. Luxuries, temples and trade agreements help (click the heart at the top).', 'bad');
+      } else if (p.content >= 1 && p.restless) {
+        p.restless = false;
+        this.note([p.id], 'Your people are content again.', 'good');
+      }
+    }
     const aiMult = p.ai ? (p.aiLevel === 'easy' ? 0.8 : p.aiLevel === 'hard' ? 1.15 : 1) : 1;
     // gold
     p.gold += p.income.gold;
@@ -1382,6 +1539,8 @@ export class Game {
         for (const u of this.s.units.filter((x) => x.owner === p.id)) this.removeUnit(u);
         for (const t of this.s.tiles) if (t.owner === p.id) t.owner = -1;
         this.s.proposals = this.s.proposals.filter((x) => x.from !== p.id && x.to !== p.id);
+        this.s.deals = this.s.deals.filter((d) => d.a !== p.id && d.b !== p.id);
+        this.s.sanctions = this.s.sanctions.filter((x) => x.by !== p.id && x.on !== p.id);
         this.note([], `${p.name} has been eliminated!`, 'war');
         changed = true;
       }

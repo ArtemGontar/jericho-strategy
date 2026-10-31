@@ -269,10 +269,25 @@ export class Props {
               }
               break;
             case 'iron':
-            case 'gold': {
+            case 'gold':
+            case 'gems': {
               put('oreRocks', Prefab.oreRocks, this.hardMat, compose(rsx, gy - 0.01, rsz, rng() * 6, 1.5));
-              const col = res === 'gold' ? '#ffcf3a' : '#d9692c';
+              const col = res === 'gold' ? '#ffcf3a' : res === 'gems' ? '#58d0ff' : '#d9692c';
               put(`crystal:${res}`, () => Prefab.crystal(col), this.glowMat, compose(rsx, gy + 0.03, rsz, rng() * 6, 1.6));
+              break;
+            }
+            // wine, spices and pearls: a small cluster of glowing goods in their own colour
+            case 'wine':
+            case 'spices':
+            case 'pearls': {
+              const col = res === 'wine' ? '#a8325f' : res === 'spices' ? '#e8822a' : '#f3efe6';
+              for (let k = 0; k < 4; k++) {
+                const a = k * 1.7 + rng();
+                const rr = 0.12 + rng() * 0.2;
+                const px = rsx + Math.cos(a) * rr;
+                const pz = rsz + Math.sin(a) * rr * 0.8;
+                put(`crystal:${res}`, () => Prefab.crystal(col), this.glowMat, compose(px, Math.max(ground(px, pz), 0) + 0.02, pz, rng() * 6, 1.2 + rng() * 0.6));
+              }
               break;
             }
             case 'cattle':

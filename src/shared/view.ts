@@ -3,13 +3,14 @@ import {
   availableTechs, canBuildBuilding, canBuildUnit, cityYield, foodNeeded, itemCost, maxPop, techCost, type CityYield,
 } from './economy';
 import { cityStrength } from './combat';
+import { MAX_DEALS, contentment, dealIncome, dealPartners, luxuryAccess, ownLuxuries, type Contentment } from './civ';
 import type { Game, GameEvent } from './game';
 import type {
   BuildingId, Focus, GameSettings, Note, Proposal, Relation, ResourceId, TerrainId, UnitOrder, UnitTypeId, WorkKind,
 } from './types';
 
 export const TERRAIN_LIST: TerrainId[] = ['ocean', 'coast', 'grass', 'plains', 'desert', 'tundra', 'forest', 'hills', 'mountain'];
-export const RESOURCE_LIST: ResourceId[] = ['wheat', 'cattle', 'fish', 'deer', 'horses', 'iron', 'gold'];
+export const RESOURCE_LIST: ResourceId[] = ['wheat', 'cattle', 'fish', 'deer', 'horses', 'iron', 'gold', 'wine', 'spices', 'gems', 'pearls'];
 
 export interface ViewPlayer {
   id: number;
@@ -26,6 +27,13 @@ export interface ViewPlayer {
   /** turns the current relation has lasted */
   relationAge: number;
   power: number;
+  /** we have a trade agreement with them */
+  deal: boolean;
+  /** we have sanctions on them / they have sanctions on us */
+  sanctionedByMe: boolean;
+  sanctionsMe: boolean;
+  /** the luxury kinds they hold (only once met) */
+  luxuries: ResourceId[];
 }
 
 export interface ViewUnit {
@@ -114,6 +122,14 @@ export interface GameView {
   forgone: string[];
   /** how many policies can still be offered */
   policiesLeft: number;
+  /** how content the people are, and why (see civ.ts) */
+  content: Contentment;
+  /** luxuries we hold and luxuries we enjoy through trade agreements */
+  luxuries: { own: ResourceId[]; traded: ResourceId[] };
+  /** gold the trade agreements bring in each turn, and how many more we may sign */
+  dealIncome: number;
+  dealsLeft: number;
+  weariness: number;
   /** culture needed for the next policy */
   policyCost: number;
   // map: parallel arrays, index = y * width + x
@@ -190,6 +206,10 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
     relation: game.relation(me, o.id),
     relationAge: s.turn - s.relationSince[me][o.id],
     power: Math.round(game.militaryPower(o.id)),
+    deal: o.id !== me && game.hasDeal(me, o.id),
+    sanctionedByMe: game.isSanctioned(me, o.id),
+    sanctionsMe: game.isSanctioned(o.id, me),
+    luxuries: o.id !== me && game.relation(me, o.id) !== 'unmet' ? ownLuxuries(game, o.id) : [],
   }));
 
   const units: ViewUnit[] = [];
@@ -283,6 +303,11 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
     policyChoices: p.policyChoices.slice(),
     forgone: p.forgone.slice(),
     policiesLeft: game.openPolicies(p).length,
+    content: contentment(game, me),
+    luxuries: luxuryAccess(game, me),
+    dealIncome: dealIncome(game, me),
+    dealsLeft: Math.max(0, MAX_DEALS - dealPartners(game, me).length),
+    weariness: Math.round(p.weariness * 10) / 10,
     policyCost: game.nextPolicyCost(p),
     terrain, resource, improvement, road, hut, owner, state,
     cities, units,

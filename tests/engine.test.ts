@@ -60,7 +60,7 @@ describe('basic play', () => {
   });
 
   it('moves along a path over multiple turns', () => {
-    const game = Game.create({ seed: 9, players: [{ name: 'Me', ai: false }, { name: 'Bot', ai: true }] });
+    const game = Game.create({ seed: 10, players: [{ name: 'Me', ai: false }, { name: 'Bot', ai: true }] });
     const warrior = game.units.find((u) => u.owner === 0 && u.type === 'warrior')!;
     const start = { x: warrior.x, y: warrior.y };
     // find a passable tile ~6 away that we can see

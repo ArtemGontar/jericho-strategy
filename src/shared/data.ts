@@ -34,6 +34,8 @@ export interface ResourceDef {
   prod: number;
   gold: number;
   strategic: boolean;
+  /** a luxury: each kind a civilisation holds (or trades for) makes its people more content */
+  luxury?: boolean;
   terrains: TerrainId[];
 }
 
@@ -45,7 +47,12 @@ export const RESOURCES: Record<ResourceId, ResourceDef> = {
   horses: { name: 'Horses', icon: '🐎', food: 0, prod: 1, gold: 0, strategic: true,  terrains: ['grass', 'plains'] },
   iron:   { name: 'Iron',   icon: '⛏️', food: 0, prod: 1, gold: 0, strategic: true,  terrains: ['hills', 'plains', 'desert'] },
   gold:   { name: 'Gold',   icon: '💰', food: 0, prod: 0, gold: 3, strategic: false, terrains: ['hills', 'desert', 'plains'] },
+  wine:   { name: 'Wine',   icon: '🍇', food: 0, prod: 0, gold: 1, strategic: false, luxury: true, terrains: ['grass', 'plains'] },
+  spices: { name: 'Spices', icon: '🌶️', food: 0, prod: 0, gold: 1, strategic: false, luxury: true, terrains: ['forest', 'desert', 'plains'] },
+  gems:   { name: 'Gems',   icon: '💎', food: 0, prod: 0, gold: 2, strategic: false, luxury: true, terrains: ['hills', 'desert'] },
+  pearls: { name: 'Pearls', icon: '🦪', food: 0, prod: 0, gold: 1, strategic: false, luxury: true, terrains: ['coast'] },
 };
+export const LUXURIES = (Object.keys(RESOURCES) as ResourceId[]).filter((r) => RESOURCES[r].luxury);
 
 export const IMPROVEMENTS: Record<WorkKind, { name: string; icon: string; turns: number; tech: TechId | null; terrains: TerrainId[] }> = {
   farm: { name: 'Farm', icon: '🌱', turns: 5, tech: null, terrains: ['grass', 'plains', 'desert', 'tundra'] },

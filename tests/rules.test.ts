@@ -326,8 +326,8 @@ describe('exploration, promotion, policies and upgrades', () => {
     c.buildings.push('market', 'library');
     const gold = cityYield(g, c).gold, sci = cityYield(g, c).science;
     p.policies.push('merchants', 'scribes');
-    expect(cityYield(g, c).gold).toBe(gold + 1);
-    expect(cityYield(g, c).science).toBe(sci + 1);
+    expect(cityYield(g, c).gold).toBeCloseTo(gold + 1, 5);
+    expect(cityYield(g, c).science).toBeCloseTo(sci + 1, 5);
     const need = foodNeeded(g, 3, 0);
     p.policies.push('hearth');
     expect(foodNeeded(g, 3, 0)).toBeLessThan(need);

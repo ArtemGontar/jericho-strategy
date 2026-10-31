@@ -1,6 +1,7 @@
 import { hexDistance, tilesWithin } from './hex';
 import { BUILDINGS, CIV_BY_ID, FOCUS_WEIGHTS, IMPROVEMENT_YIELD, RESOURCES, TECHS, TECH_BY_ID, TERRAIN, UNITS } from './data';
 import type { BuildingId, City, Player, Tile } from './types';
+import { contentment, dealIncome, growthFactor, outputFactor, sanctionersOf } from './civ';
 import type { Game } from './game';
 
 /** Global knobs: how expensive technology (per era) and production items are relative to the base tables. */
@@ -155,8 +156,17 @@ export function cityYield(game: Game, city: City): CityYield {
     if (hasBuilding(city, 'library')) science += 1;
   }
   if (city.capital) gold += 3;
+  // restless people produce and grow less; thriving ones a little more
+  const content = game.players[city.owner].content;
+  const of = outputFactor(content);
+  prod *= of;
+  gold *= of;
+  science *= of;
+  culture *= Math.min(1, of); // restless people make less art, but thriving ones do not win the culture race by themselves
   const eat = city.pop * 2;
-  return { food, prod, gold, science, culture, upkeep, eat, surplus: food - eat };
+  let surplus = food - eat;
+  if (surplus > 0) surplus *= growthFactor(content);
+  return { food: eat + surplus, prod, gold, science, culture, upkeep, eat, surplus };
 }
 
 export function unitUpkeep(game: Game, playerId: number): number {
@@ -206,6 +216,7 @@ export function refreshPlayer(game: Game, playerId: number): void {
   const p = game.players[playerId];
   if (!p.alive) return;
   assignWorkedTiles(game, playerId);
+  p.content = contentment(game, playerId).value;
   let gold = 0;
   let science = 0;
   let culture = 0;
@@ -223,6 +234,9 @@ export function refreshPlayer(game: Game, playerId: number): void {
   if (civ.id === 'indus') gold = Math.round(gold * 1.1);
   if (p.policies.includes('scholarship')) science = Math.round(science * 1.1);
   if (p.policies.includes('coinage')) gold = Math.round(gold * 1.1);
+  // trade agreements pay; sanctions bite
+  gold += dealIncome(game, playerId);
+  gold = Math.round(gold * (1 - 0.06 * Math.min(4, sanctionersOf(game, playerId).length)));
   const net = gold - upkeep - unitUpkeep(game, playerId);
   p.income = { gold: net, science, culture };
 }

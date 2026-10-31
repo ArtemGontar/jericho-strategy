@@ -227,6 +227,14 @@ try {
     await page.waitForFunction(() => (window as any).__jericho?.screen?.view);
     const lim = await page.evaluate(() => (window as any).__jericho.screen.view.settings.turnLimit);
     check('Quick game starts a 60-turn game', lim === 60, `turn limit ${lim}`);
+    // contentment: the heart is in the top bar and opens its breakdown
+    const heart = await page.$('.content-chip');
+    check('the contentment heart is in the top bar', !!heart);
+    await page.tap('.content-chip');
+    await page.waitForSelector('.overlay .contentlist');
+    const parts = await page.$$eval('.overlay .contentlist .line', (l) => l.length);
+    check('tapping it shows what the people feel and why', parts >= 2, `${parts} lines`);
+    await page.evaluate(() => (window as any).__jericho.screen.closeModal());
     // the leave confirmation is a visible dialog in the middle of the screen
     await page.evaluate(() => (window as any).__jericho.screen.openModal('menu'));
     await page.tap('button:has-text("Leave game")');

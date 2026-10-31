@@ -6,6 +6,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { Game } from '../src/shared/game';
+import { THRIVING } from '../src/shared/civ';
 import { BUILDINGS, UNITS, TECHS, POLICIES, FINAL_TECH } from '../src/shared/data';
 
 if (process.argv[2] === '--sum') {
@@ -29,7 +30,7 @@ for (let g = start; g < start + games; g++) {
   const game = Game.create({ seed, size, players: Array.from({ length: n }, (_, i) => ({ name: `AI${i}`, ai: true, aiLevel: level })), turnLimit: maxTurns, mapStyle: style });
   const firstCity: number[] = Array(n).fill(-1);
   let contact = -1, firstWar = -1, leader = -1, leadChanges = 0, enl = -1, attacks = 0;
-  const timeline: Array<{ t: number; cities: number[]; score: number[] }> = [];
+  const timeline: Array<{ t: number; cities: number[]; score: number[]; content: number[]; deals: number; sanctions: number; weary: number[] }> = [];
   const seenUnits = new Set<number>();
   const built: Record<string, number> = {};
   while (!game.s.over && game.turn < maxTurns + 3) {
@@ -53,7 +54,7 @@ for (let g = start; g < start + games; g++) {
       const best = sc.indexOf(Math.max(...sc));
       if (leader >= 0 && best !== leader) leadChanges++;
       leader = best;
-      timeline.push({ t, cities: game.players.map((p) => game.playerCities(p.id).length), score: sc });
+      timeline.push({ t, cities: game.players.map((p) => game.playerCities(p.id).length), score: sc, content: game.players.map((p) => (p.alive ? p.content : 0)), deals: game.s.deals.length, sanctions: game.s.sanctions.length, weary: game.players.map((p) => p.weariness) });
     }
   }
   game.updateScores();
@@ -66,6 +67,7 @@ for (let g = start; g < start + games; g++) {
     for (const x of p.policies) polUse[x] = (polUse[x] ?? 0) + 1;
   }
   const wars = game.s.notes.filter((x) => x.kind === 'war');
+  const dealNotes = game.s.notes.filter((x) => x.text.includes('Trade agreement signed')).length;
   const fc = firstCity.filter((x) => x >= 0);
   console.log(JSON.stringify({
     g, seed, n, size, level, style, end: game.turn, victory: game.s.victory, winner: game.s.winner,
@@ -73,6 +75,7 @@ for (let g = start; g < start + games; g++) {
     contact, firstWar, enl, leadChanges, attacks,
     declared: wars.filter((x) => x.text.includes('declared')).length, captured: wars.filter((x) => x.text.includes('captured')).length,
     eliminated: wars.filter((x) => x.text.includes('eliminated')).length,
+    sanctioned: wars.filter((x) => x.text.includes('imposed sanctions')).length, dealNotes,
     finalCities: game.players.map((p) => game.playerCities(p.id).length), finalScore: game.players.map((p) => p.score),
     timeline, built, bld, techUse, polUse,
   }));
@@ -109,6 +112,22 @@ function summarise(rows: any[]): void {
     const m = (a: number[]) => (a.reduce((x, y) => x + y, 0) / Math.max(1, a.length)).toFixed(2);
     if (cs.length) console.log(`turn ${T}: games still running ${cs.length}, mean cities/civ ${m(cs)}, biggest civ ${m(cmax)} cities, leader/2nd score ${m(gaps)}`);
   }
+  // contentment, trade and sanctions: how the people feel, and how much the civilisations trade
+  for (const T of [30, 60, 90, 120, 150]) {
+    const cs: number[] = [];
+    let deals = 0, sanc = 0, n = 0;
+    for (const r of rows) {
+      const f = r.timeline.find((x: any) => x.t === T);
+      if (!f || !f.content) continue;
+      for (let i = 0; i < f.content.length; i++) if (f.cities[i] > 0) cs.push(f.content[i]);
+      deals += f.deals; sanc += f.sanctions; n++;
+    }
+    if (!cs.length) continue;
+    const sorted = cs.slice().sort((a, b) => a - b);
+    const restless = cs.filter((x) => x < 0).length, thriving = cs.filter((x) => x >= THRIVING).length;
+    console.log(`turn ${T}: contentment median ${sorted[sorted.length >> 1].toFixed(1)} (min ${sorted[0].toFixed(1)}, max ${sorted[sorted.length - 1].toFixed(1)}); restless ${pct(restless, cs.length)}, thriving ${pct(thriving, cs.length)}; trade agreements in force ${(deals / Math.max(1, n)).toFixed(1)}, sanctions ${(sanc / Math.max(1, n)).toFixed(1)}`);
+  }
+  console.log(`agreements signed per game ${mean(rows, (r) => r.dealNotes ?? 0)}, sanctions imposed per game ${mean(rows, (r) => r.sanctioned ?? 0)}`);
   const ranks = rows.filter((r) => r.winner != null).map((r) => {
     const f = r.timeline.find((x: any) => x.t === 50);
     return f ? [...f.score].sort((a: number, b: number) => b - a).indexOf(f.score[r.winner]) : -1;

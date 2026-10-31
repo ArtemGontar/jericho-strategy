@@ -1,7 +1,7 @@
 import type { Pos } from './hex';
 
 export type TerrainId = 'ocean' | 'coast' | 'grass' | 'plains' | 'desert' | 'tundra' | 'forest' | 'hills' | 'mountain';
-export type ResourceId = 'wheat' | 'cattle' | 'fish' | 'deer' | 'horses' | 'iron' | 'gold';
+export type ResourceId = 'wheat' | 'cattle' | 'fish' | 'deer' | 'horses' | 'iron' | 'gold' | 'wine' | 'spices' | 'gems' | 'pearls';
 export type ImprovementId = 'farm' | 'mine';
 export type WorkKind = 'farm' | 'mine' | 'road';
 export type UnitTypeId =
@@ -131,13 +131,21 @@ export interface Player {
   /** last turn the player lost a city / was attacked, used by AI */
   lastDefeat: number;
   eliminatedTurn: number;
+  /** tiredness of war: grows with fighting and losses, fades in peace, and lowers contentment */
+  weariness: number;
+  /** contentment as last computed (see civ.ts) */
+  content: number;
+  /** last turn this civilisation declared war on someone it was at peace with */
+  aggression: number;
+  /** the people were restless at the last check (so the player is told once when that changes) */
+  restless: boolean;
 }
 
 export interface Proposal {
   id: number;
   from: number;
   to: number;
-  kind: 'peace';
+  kind: 'peace' | 'deal';
   turn: number;
 }
 
@@ -186,6 +194,10 @@ export interface GameState {
   /** turn on which the current relation between a and b started */
   relationSince: number[][];
   proposals: Proposal[];
+  /** trade agreements: a < b */
+  deals: Array<{ a: number; b: number; since: number }>;
+  /** sanctions: `by` refuses to trade with `on` and hurts it */
+  sanctions: Array<{ by: number; on: number; since: number }>;
   wonders: Partial<Record<BuildingId, number>>;
   notes: Note[];
   /** the Enlightenment countdown: set when a civilisation learns the final technology */

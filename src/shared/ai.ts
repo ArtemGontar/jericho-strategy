@@ -3,6 +3,7 @@ import { BUILDINGS, FINAL_TECH, IMPROVEMENTS, MIN_CITY_DISTANCE, PEACE_MIN_TURNS
 import { availableTechs, canBuildBuilding, canBuildUnit, hasBuilding, itemCost, tileYield } from './economy';
 import { canEnterTerrain, findPath, tileBlockedFor } from './path';
 import { previewAttack } from './combat';
+import { dealPartners, luxuryAccess } from './civ';
 import type { City, Player, Tile, Unit, UnitTypeId, WorkKind } from './types';
 import type { Game } from './game';
 
@@ -272,6 +273,17 @@ export function aiAutoWorker(game: Game, u: Unit): void {
 // ---------------------------------------------------------------------------------------------
 // Settling
 
+const enjoyedCache = new Map<number, { turn: number; set: Set<string> }>();
+/** The luxury kinds this player already has or trades for (cached for the turn: sites are scored many times). */
+function enjoyed(game: Game, p: Player): Set<string> {
+  const hit = enjoyedCache.get(p.id);
+  if (hit && hit.turn === game.turn) return hit.set;
+  const a = luxuryAccess(game, p.id);
+  const set = new Set<string>([...a.own, ...a.traded]);
+  enjoyedCache.set(p.id, { turn: game.turn, set });
+  return set;
+}
+
 function siteScore(game: Game, p: Player, x: number, y: number, from: Pos): number {
   const t = game.tile(x, y);
   if (!TERRAIN[t.terrain].land || t.terrain === 'mountain') return -1;
@@ -291,6 +303,7 @@ function siteScore(game: Game, p: Player, x: number, y: number, from: Pos): numb
     const y2 = tileYield(qt);
     s += y2.food * 1.3 + y2.prod * 1.0 + y2.gold * 0.5;
     if (qt.resource && RESOURCES[qt.resource].strategic) s += 1.5;
+    if (qt.resource && RESOURCES[qt.resource].luxury && !enjoyed(game, p).has(qt.resource)) s += 3.5;
     if (qt.city >= 0) s -= 2;
     if (qt.owner === p.id) s -= 0.3;
   }
@@ -662,14 +675,16 @@ export function aiPlanCity(game: Game, p: Player, city: City): void {
     add('unit', d, 10 + th * 3);
   }
   if (workers < Math.max(1, Math.floor(myCities.length * 0.8)) && queuedIn(game, p.id, 'unit', 'worker') === 0) add('unit', 'worker', 8);
-  if (site && city.pop >= 2 && settlers < 2) add('unit', 'settler', 9.5 - myCities.length * 0.4);
+  const crowded = p.content < -3; // every new city makes the people more restless
+  if (site && !crowded && city.pop >= 2 && settlers < 2) add('unit', 'settler', 9.5 - myCities.length * 0.4);
   if (site && city.pop === 1 && settlers < 1 && myCities.length < 3) add('unit', 'settler', 6);
   // buildings
   add('building', 'granary', 3.2);
   add('building', 'library', 6 * sciWeight);
   add('building', 'workshop', city.pop >= 3 ? 4.6 : 2.5);
   add('building', 'market', 5.2);
-  add('building', 'temple', 4.1 * cultureWeight);
+  // restless people need temples; a content people can do without
+  add('building', 'temple', 4.1 * cultureWeight + Math.max(0, 3 - p.content) * 0.8);
   add('building', 'university', 6.4 * sciWeight);
   add('building', 'bank', 5);
   add('building', 'observatory', 5);
@@ -791,6 +806,8 @@ function warDesire(game: Game, p: Player, o: Player): number {
   const base = p.personality === 'warlord' ? 0.12 : p.personality === 'balanced' ? 0.07 : 0.03;
   const edge = Math.max(0, Math.min(2.5, (ratio - 0.8) / 0.8));
   let prob = base * edge * LEVEL_WARLIKE[p.aiLevel ?? 'normal'] * AGGRESSION[game.s.settings.aggression];
+  // a war-weary or restless people do not go looking for another
+  if (p.weariness > 3 || p.content < -2) prob *= 0.3;
   if (leader) prob = Math.max(prob * 3, 0.05 * AGGRESSION[game.s.settings.aggression]);
   return Math.min(0.5, prob);
 }
@@ -821,6 +838,40 @@ function runDiplomacy(game: Game, p: Player): void {
       if (game.rng.chance(warDesire(game, p, o))) exec(game, p.id, { t: 'war', to: o.id });
     }
   }
+  runTrade(game, p, others);
+}
+
+/** Trade agreements with neighbours at peace, and sanctions on those who break the peace or are about to win. */
+function runTrade(game: Game, p: Player, others: Player[]): void {
+  const mine = luxuryAccess(game, p.id);
+  const have = new Set<string>([...mine.own, ...mine.traded]);
+  const chance = p.personality === 'builder' ? 0.22 : p.personality === 'balanced' ? 0.12 : 0.05;
+  for (const o of others) {
+    if (game.relation(p.id, o.id) !== 'peace' || game.hasDeal(p.id, o.id)) continue;
+    // a partner with a luxury we lack is worth much more than one with nothing new
+    const wanted = game.players[o.id] && luxuryAccess(game, o.id).own.some((r) => !have.has(r));
+    if (game.rng.chance(chance * (wanted ? 2.5 : 1))) exec(game, p.id, { t: 'deal', to: o.id });
+  }
+  const aggressive = p.personality === 'builder' ? 0.08 : p.personality === 'balanced' ? 0.04 : 0.01;
+  const mySanctions = game.s.sanctions.filter((x) => x.by === p.id).length;
+  for (const o of others) {
+    if (o.id === p.id) continue;
+    const rel = game.relation(p.id, o.id);
+    const sanctioned = game.isSanctioned(p.id, o.id);
+    const recentAggressor = game.turn - o.aggression <= 12;
+    const frontRunner = (!!game.s.enlightenment && game.s.enlightenment.owner === o.id) || game.s.hegemony?.owner === o.id || game.s.domination?.owner === o.id;
+    if (!sanctioned && rel !== 'war' && rel !== 'unmet' && mySanctions < 1) {
+      // someone who struck a neighbour at peace is shunned by those who would rather trade: most of all by that neighbour's partners
+      const victims = game.players.filter((v) => v.alive && v.id !== o.id && v.id !== p.id && game.relation(o.id, v.id) === 'war');
+      const friend = victims.some((v) => game.hasDeal(p.id, v.id));
+      if (recentAggressor && victims.length && game.rng.chance(aggressive * (friend ? 3 : 1))) exec(game, p.id, { t: 'sanction', on: o.id });
+      else if (frontRunner && game.rng.chance(aggressive * 0.4)) exec(game, p.id, { t: 'sanction', on: o.id });
+    } else if (sanctioned) {
+      const since = game.turn - (game.s.sanctions.find((x) => x.by === p.id && x.on === o.id)?.since ?? game.turn);
+      if (since >= 12 && !recentAggressor && !frontRunner && game.rng.chance(0.2)) exec(game, p.id, { t: 'lift', on: o.id });
+    }
+  }
+  void dealPartners;
 }
 
 // ---------------------------------------------------------------------------------------------

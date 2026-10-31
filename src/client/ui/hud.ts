@@ -7,6 +7,7 @@ import { civColor, tileYieldFromView } from '../render';
 import { isMuted, setMuted } from '../audio';
 import { artIcon, leaderUrl } from '../artwork';
 import { icon } from '../icons';
+import { THRIVING } from '../../shared/civ';
 import { clear, floatingOrders, fmtSigned, h, isCompact, put, tickNumber } from './dom';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -77,6 +78,7 @@ export function renderTopbar(gs: GameScreen, el: HTMLElement): void {
       h('div', { class: 'stat', title: 'Science per turn' }, icon('science', 20, 'sci'), h('span', { class: 'num' }, `+${v.income.science}`)),
       h('span', { class: 'sep' }),
       h('div', { class: 'stat', title: v.cultureGoal ? `Culture per turn. Total ${v.culture} of ${v.cultureGoal} needed for cultural hegemony (and a 20% lead over every rival).` : 'Culture per turn' }, icon('culture', 20, 'cult'), h('span', { class: 'num' }, `+${v.income.culture}`)),
+      contentChip(gs),
       idleUnits(gs),
       v.settings.turnTimer > 0 ? h('span', { class: 'sep' }) : null,
       v.settings.turnTimer > 0 ? h('div', { class: 'stat', title: 'Time left in this turn' }, icon('turn', 20), h('span', { class: 'num', id: 'timerlabel' }, '--')) : null,
@@ -98,6 +100,23 @@ export function renderTopbar(gs: GameScreen, el: HTMLElement): void {
     h('div', { class: 'turnline', 'aria-hidden': 'true' }, h('i', { style: { transform: `scaleX(${Math.min(1, v.turn / Math.max(1, v.settings.turnLimit))})` } })),
   );
   gs.updateTimerLabel();
+}
+
+/** How content the people are: a heart and a number, red when they are restless. Click for the breakdown. */
+function contentChip(gs: GameScreen): HTMLElement {
+  const v = gs.view;
+  const c = v.content.value;
+  const state = c < 0 ? 'restless' : c >= THRIVING ? 'thriving' : 'content';
+  const b = h('button', {
+    class: `stat click content-chip ${state}`,
+    type: 'button',
+    title: c < 0 ? `Contentment ${fmtSigned(Math.round(c))}: your people are restless, so cities grow and produce less. Click to see why.` : c >= THRIVING ? `Contentment ${Math.round(c)}: your people thrive. Click for details.` : `Contentment ${Math.round(c)}: your people are content. Click for details.`,
+  }, icon('health', 20), h('span', { class: 'num' }, String(Math.round(c))));
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    gs.openModal('content');
+  });
+  return b;
 }
 
 /** Units still waiting for orders; clicking (or pressing . / N) jumps to the next one. */

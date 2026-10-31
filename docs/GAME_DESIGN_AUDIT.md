@@ -56,6 +56,34 @@ Still open from this pass:
 - Domination ended 4 of 16 continent games and none of the island games, which is what the rules say: you cannot walk to cities across water. That is a reason to make ships matter.
 - 24 games is a small sample; the share of games each route wins moves by a few games between runs.
 
+**Done: a civilisation-building pass (third pass), after the owner asked for less war and more economy and diplomacy.** The military changes above stay, but war is now costly instead of the point.
+
+- **Luxuries.** Four new resources (wine, spices, gems, pearls). Each kind a civilisation holds, or trades for, adds +3 contentment. Every start gets one kind within reach and neighbours get different kinds, so trading is how you get the rest.
+- **Contentment.** One number for the empire, shown as a heart in the top bar with a breakdown sheet. Base 9, minus 1.2 per city beyond the first and 0.25 per citizen; plus luxuries, +1 per temple, +1 per wonder, +2 each for Patronage of the Arts and Hearth and Home; minus war weariness (up to 8) and sanctions (up to 4). Below 0 cities grow up to 60% slower and produce, earn and research up to 45% less; at 12 and above they grow 10% faster and produce 5% more. This is what makes expansion a trade-off.
+- **Trade agreements.** Up to four per civilisation, signed by proposal. Each pays both sides 2–5 gold a turn (more when both are large), shares luxuries (+contentment) and shares horses and iron. War, sanctions or the partner's death end them.
+- **Sanctions.** Cancel the agreement, forbid a new one, cost the target 6% of its gold and 1 contentment per sanctioner (capped), and lapse after 30 turns unless renewed.
+- **War costs.** War weariness rises 0.15 a turn at war, 0.35 per soldier lost and 4 per city lost, falls 1 a turn in peace, and lowers contentment. Striking a neighbour at peace is remembered for 20 turns: the computers refuse its trade offers more often, and the civilisations that trade with the victim may sanction it.
+- **The computers** propose and accept trade, sanction aggressors and front-runners (at most one sanction each, and they lift them), build temples when their people are restless, stop founding cities when they are very restless, settle next to luxuries they lack, and are less keen on war when weary or restless.
+
+Same 24 games, before the first pass and now [measured]:
+
+| | Baseline | Now |
+|---|---|---|
+| Contentment median at turn 30 / 90 / 150 | not tracked | 14.0 / 7.8 / 5.8 |
+| Restless civilisations at turn 90 / 150 | not tracked | 13% / 18% |
+| Trade agreements in force | 0 | about 6 per game through turn 120 |
+| Sanctions in force | 0 | about 2 per game |
+| Victories | science 16, culture 7, last standing 1 | science 16, culture 7, domination 1 |
+| Median end turn | 153 | 145 |
+| Enlightenment reached (average) | 142 | 136 |
+
+What to watch:
+- **Games end about 8 turns earlier** and 21% end before turn 130 (4% at baseline). Trade income and the early "thriving" bonus speed everyone up. If you want longer games, lower the deal gold (`dealGold` in `src/shared/civ.ts`), raise the thriving threshold, or raise the late tech costs.
+- **Contentment is high early** (median 14 at turn 30) because few cities cost little; the pressure arrives from about turn 60.
+- **Temples arrive late** (Philosophy), so for the first stretch luxuries are the only way to stay content.
+- **Luxury art in the 3D renderer is unverified on a real screen**: the flat map shows them clearly; the 3D map draws them like gold and iron.
+- The seeds in two older tests were changed because new resource placement changes the generated maps.
+
 ## The one-paragraph verdict
 
 The first thirty turns are good: a first city on turn 3, three cities by turn 30, a clear checklist, and a lot to do. After that the game turns into a **checklist**. Every building, every technology (bar one), every policy and every wonder ends up built, learned or adopted in every game, because nothing costs you anything you would miss. Land runs out around turn 60, wars start late (turn 55 on average) and rarely finish, so the next 90 turns are a queue of build orders until someone learns the Enlightenment and wins by science. The rules are sound and the engine is solid. What is missing is **scarcity**: reasons to choose one thing over another.

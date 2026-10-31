@@ -248,7 +248,9 @@ export function resolveAttack(game: Game, att: Unit, x: number, y: number): CmdR
   if (killedAtt) {
     game.events.push({ kind: 'death', type: att.type, owner: att.owner, at: from, mask: game.tile(from.x, from.y).visible });
     game.removeUnit(att);
+    game.addWeariness(attackerOwner, 0.35);
   }
+  if (killedDef && defOwner >= 0 && defType !== 'city' && !UNITS[defType].civilian) game.addWeariness(defOwner, 0.35);
   finishAttack(game, att, from, to, ranged, dmgDef, dmgAtt, defOwner, defType, killedDef, killedAtt, mask());
   if (!killedAtt) game.gainXp(att, killedDef ? 9 : 4);
   // melee winners advance into an emptied tile
@@ -334,6 +336,8 @@ export function captureCity(game: Game, city: City, newOwner: number): void {
   }
   if (!game.cities.some((c) => c.owner === newOwner && c.capital)) city.capital = true;
   game.players[old].lastDefeat = game.turn;
+  game.addWeariness(old, 4);
+  game.addWeariness(newOwner, 1);
   game.note([], `${game.playerName(newOwner)} captured ${city.name} from ${game.playerName(old)}!`, 'war', { x: city.x, y: city.y });
   refreshPlayer(game, old);
   refreshPlayer(game, newOwner);

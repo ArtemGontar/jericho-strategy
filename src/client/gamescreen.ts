@@ -20,7 +20,7 @@ import type { GameTransport } from './transport';
 import { renderCityPanel } from './ui/citypanel';
 import { currentEra, renderLenses, renderMedallions, renderTileInfo, renderTopbar, renderTurnControl, renderUnitBar, pushNote } from './ui/hud';
 import { ERA_NAMES } from '../shared/data';
-import { showCities, showDiplomacy, showHelp, showLog, showMenu, showSave, showPolicies, showTechTree, showVictory } from './ui/screens';
+import { showCities, showDiplomacy, showHelp, showLog, showMenu, showSave, showContent, showPolicies, showTechTree, showVictory } from './ui/screens';
 
 export interface GameScreenOptions {
   /** called when the user leaves to the main menu */
@@ -1196,6 +1196,7 @@ export class GameScreen {
       case 'log': return showLog(this);
       case 'menu': return showMenu(this);
       case 'save': return showSave(this);
+      case 'content': return showContent(this);
       case 'help': return showHelp(this);
       case 'policies': return showPolicies(this);
       case 'victory': return showVictory(this);

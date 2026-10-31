@@ -14,6 +14,8 @@ import { askConfirm, btn, clear, h, put, turnsLeft } from './dom';
 import { currentEra, emblem } from './hud';
 import { browserStore, type LocalTransport } from '../transport';
 import { inviteButtons } from './menus';
+import { THRIVING, growthFactor, outputFactor } from '../../shared/civ';
+import { LUXURIES, RESOURCES } from '../../shared/data';
 import { SAVE_IDS, listSaves, slotName } from '../saves';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -260,9 +262,21 @@ export function showDiplomacy(gs: GameScreen, focusId?: number): HTMLElement {
         h('div', null, h('small', null, 'Score'), h('b', { class: 'num' }, String(sel.score))),
         h('div', null, h('small', null, 'Cities'), h('b', { class: 'num' }, String(sel.cityCount))),
         h('div', null, h('small', null, 'Army'), h('b', null, strength))));
+    if (sel.relation !== 'unmet' && sel.alive) {
+      const mineAll = new Set<string>([...v.luxuries.own, ...v.luxuries.traded]);
+      const theyHave = sel.luxuries;
+      const lack = theyHave.filter((r) => !mineAll.has(r));
+      const status = sel.sanctionsMe ? 'They have sanctions on you' : sel.sanctionedByMe ? 'You have sanctions on them' : sel.deal ? 'Trade agreement in force' : 'No trade agreement';
+      detail.append(h('div', { class: 'tradebox' },
+        h('div', { class: `trade-status ${sel.deal ? 'on' : sel.sanctionsMe || sel.sanctionedByMe ? 'off' : ''}` }, icon('trade', 16), status),
+        theyHave.length
+          ? h('div', { class: 'lux' }, h('small', { class: 'muted' }, 'They hold'), ...theyHave.map((r) => h('span', { class: mineAll.has(r) ? 'gone' : '' }, icon(r, 16), RESOURCES[r].name)))
+          : h('div', { class: 'muted', style: { fontSize: '13px' } }, 'They hold no luxuries.'),
+        lack.length && !sel.deal ? h('div', { class: 'muted', style: { fontSize: '13px' } }, `A trade agreement would give you ${lack.map((r) => RESOURCES[r].name).join(', ')} (+3 contentment each).`) : null));
+    }
     for (const p of v.proposals.filter((q) => q.to === v.me && q.from === sel.id)) {
       detail.append(h('div', { class: 'row', style: { display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' } },
-        icon('peace', 20, 'pos'), h('span', null, `${sel.name} proposes peace.`),
+        icon(p.kind === 'deal' ? 'trade' : 'peace', 20, 'pos'), h('span', null, p.kind === 'deal' ? `${sel.name} proposes a trade agreement.` : `${sel.name} proposes peace.`),
         btn('Accept', async () => { await gs.cmd({ t: 'accept', proposal: p.id, accept: true }); }, 'small primary'),
         btn('Decline', async () => { await gs.cmd({ t: 'accept', proposal: p.id, accept: false }); }, 'small')));
     }
@@ -279,7 +293,19 @@ export function showDiplomacy(gs: GameScreen, focusId?: number): HTMLElement {
         b.disabled = !can;
         actions.append(b);
       }
+      if (sel.relation === 'peace') {
+        if (sel.deal) actions.append(btn('End trade agreement', async () => { await gs.cmd({ t: 'cancelDeal', with: sel.id }); }, ''));
+        else {
+          const waiting = v.proposals.some((q) => q.kind === 'deal' && q.from === v.me && q.to === sel.id);
+          const why = sel.sanctionsMe || sel.sanctionedByMe ? 'Sanctions forbid trade.' : v.dealsLeft <= 0 ? 'You have no free trade agreements.' : waiting ? 'Waiting for an answer.' : '';
+          const b = btn(waiting ? 'Trade offered…' : 'Propose trade agreement', async () => { await gs.cmd({ t: 'deal', to: sel.id }); }, 'primary', why || `Both of you earn gold each turn and share luxuries. You can hold ${v.dealsLeft} more.`);
+          b.disabled = !!why;
+          actions.append(b);
+        }
+      }
       if (sel.relation !== 'unmet') {
+        if (sel.sanctionedByMe) actions.append(btn('Lift sanctions', async () => { await gs.cmd({ t: 'lift', on: sel.id }); }, '', 'Allow trade with them again'));
+        else actions.append(btn('Impose sanctions', async () => { if (await askConfirm(`Impose sanctions on ${sel.name}? Trade stops, they lose gold and contentment, and you lose any agreement with them.`, 'Impose')) await gs.cmd({ t: 'sanction', on: sel.id }); }, 'danger', 'Cut off trade and hurt their economy without going to war'));
         for (const amt of [25, 100]) {
           const g = btn([icon('gift', 16), `Gift ${amt}`], async () => { await gs.cmd({ t: 'gift', to: sel.id, amount: amt }); }, '', `Give ${amt} gold to ${sel.name}`);
           g.disabled = v.gold < amt;
@@ -369,6 +395,42 @@ export function showMenu(gs: GameScreen): HTMLElement {
     if (await askConfirm(gs.transport.kind === 'local' ? 'Leave to the main menu? Your game is saved automatically each turn.' : 'Leave the game? You can rejoin with the room code.', 'Leave')) gs.opts.onExit();
   })));
   return sheet('Menu', body, () => gs.closeModal(), { narrow: true, scene: 'settings' });
+}
+
+// ------------------------------------------------------------------ contentment
+/** Why the people are as content as they are, what it does, and what to do about it. */
+export function showContent(gs: GameScreen): HTMLElement {
+  const v = gs.view;
+  const c = v.content.value;
+  const outputPct = Math.round((outputFactor(c) - 1) * 100);
+  const growthPct = Math.round((growthFactor(c) - 1) * 100);
+  const lines = v.content.parts.map((p) => h('div', { class: 'line' }, h('span', null, p.label), h('b', { class: p.value < 0 ? 'neg' : 'pos' }, `${p.value > 0 ? '+' : ''}${p.value}`)));
+  const verdict = c < 0
+    ? h('p', { class: 'verdict bad' }, `Your people are restless. Cities grow ${Math.abs(growthPct)}% slower and produce, earn and research ${Math.abs(outputPct)}% less.`)
+    : c >= THRIVING
+      ? h('p', { class: 'verdict good' }, `Your people thrive. Cities grow ${growthPct}% faster and produce, earn and research ${outputPct}% more.`)
+      : h('p', { class: 'verdict' }, `Your people are content. At ${THRIVING} they thrive; below 0 they turn restless.`);
+  const have = new Set<string>([...v.luxuries.own, ...v.luxuries.traded]);
+  const lux = h('div', { class: 'lux' });
+  for (const id of LUXURIES) {
+    const mine = v.luxuries.own.includes(id);
+    const traded = v.luxuries.traded.includes(id);
+    lux.append(h('span', { class: have.has(id) ? '' : 'gone' }, icon(id, 18), RESOURCES[id].name, mine ? ' (yours)' : traded ? ' (traded)' : ' (missing)'));
+  }
+  const tips: string[] = [];
+  if (c < THRIVING) {
+    if (have.size < LUXURIES.length) tips.push('Each kind of luxury you hold or trade for adds +3. Open Diplomacy and sign a trade agreement with a neighbour who has what you lack.');
+    tips.push('Temples add +1 each (Philosophy). Wonders add +1 each. Patronage of the Arts and Hearth and Home add +2.');
+  }
+  if (v.weariness >= 1) tips.push('War weariness comes from fighting and losing units and cities. It fades with peace.');
+  if (c < 0) tips.push('Slowing down helps too: every new city and every citizen costs a little contentment.');
+  return sheet('Contentment', [
+    h('div', { class: 'contentlist' }, ...lines, h('div', { class: 'line total' }, h('span', null, 'Total'), h('b', { class: c < 0 ? 'neg' : 'pos' }, `${c > 0 ? '+' : ''}${Math.round(c * 10) / 10}`))),
+    verdict,
+    h('div', { class: 'eyebrow' }, 'Luxuries'), lux,
+    ...(v.dealIncome > 0 ? [h('p', { class: 'muted', style: { margin: '0' } }, `Trade agreements bring in ${v.dealIncome} gold a turn.`)] : []),
+    ...tips.map((t) => h('p', { class: 'muted', style: { margin: '0', fontSize: '14px' } }, t)),
+  ], () => gs.closeModal(), { narrow: true, scene: 'archive' });
 }
 
 // ------------------------------------------------------------------ save

@@ -617,6 +617,34 @@ export function resourceSprite(res: ResourceId): Sprite {
         }
         break;
       }
+      // luxuries: a few shining goods in their own colour (gems also sit on rock)
+      case 'gems':
+      case 'wine':
+      case 'spices':
+      case 'pearls': {
+        const colour = res === 'gems' ? '#58d0ff' : res === 'wine' ? '#a8325f' : res === 'spices' ? '#e8822a' : '#f3efe6';
+        shadow(ctx, 0, 7, 17, 4.5, 0.3);
+        const r2 = new Rng(res.length * 7);
+        const dots: Array<[number, number, number]> = [[-8, 3, 6], [8, 4, 5.5], [0, -3, 7], [-2, 6, 4.5]];
+        for (const [dx, dy, dr] of dots) {
+          const jx = dx + (r2.next() - 0.5) * 3;
+          const g = ctx.createRadialGradient(jx - dr * 0.3, dy - dr * 0.3, 1, jx, dy, dr);
+          g.addColorStop(0, '#ffffff');
+          g.addColorStop(0.35, colour);
+          g.addColorStop(1, 'rgba(0,0,0,0.55)');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          if (res === 'gems') {
+            ctx.moveTo(jx, dy - dr);
+            ctx.lineTo(jx + dr, dy);
+            ctx.lineTo(jx, dy + dr * 0.9);
+            ctx.lineTo(jx - dr, dy);
+            ctx.closePath();
+          } else ctx.arc(jx, dy, dr, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        break;
+      }
     }
   });
 }
