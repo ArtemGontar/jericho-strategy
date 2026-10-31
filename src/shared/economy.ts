@@ -54,9 +54,10 @@ export function maxPop(city: City): number {
   return hasBuilding(city, 'aqueduct') ? 18 : 8;
 }
 
-export function foodNeeded(game: Game, pop: number): number {
+export function foodNeeded(game: Game, pop: number, owner?: number): number {
   const base = 15 + 6 * (pop - 1) + Math.pow(pop - 1, 1.7);
-  return Math.max(8, Math.round(base * game.speedMult));
+  const hearth = owner !== undefined && game.players[owner].policies.includes('hearth') ? 0.85 : 1;
+  return Math.max(8, Math.round(base * game.speedMult * hearth));
 }
 
 export function cityCenterYield(game: Game, city: City): Yield {
@@ -113,6 +114,7 @@ export function cityYield(game: Game, city: City): CityYield {
   const civ = civOf(game, city.owner);
   const y = cityCenterYield(game, city);
   const harbour = hasBuilding(city, 'harbor');
+  const seafaring = game.players[city.owner].policies.includes('seafaring');
   let food = y.food;
   let prod = y.prod;
   let gold = y.gold;
@@ -123,6 +125,7 @@ export function cityYield(game: Game, city: City): CityYield {
     gold += t.gold;
     // a harbour makes the sea more fertile
     if (harbour && !TERRAIN[game.tiles[idx].terrain].land) food += 1;
+    if (seafaring && !TERRAIN[game.tiles[idx].terrain].land) food += 1;
   }
   let science = 3 + Math.floor(city.pop * 0.7) + (city.capital ? 2 : 0);
   let culture = 1;
@@ -142,6 +145,9 @@ export function cityYield(game: Game, city: City): CityYield {
   if (pol.includes('patronage')) culture += 2;
   if (pol.includes('bureaucracy')) upkeep = Math.max(0, upkeep - 1);
   if (pol.includes('trade_routes')) gold += city.capital ? 4 : 1;
+  if (pol.includes('merchants')) gold += (hasBuilding(city, 'market') ? 1 : 0) + (hasBuilding(city, 'bank') ? 2 : 0);
+  if (pol.includes('scribes')) science += (hasBuilding(city, 'library') ? 1 : 0) + (hasBuilding(city, 'university') ? 2 : 0);
+  if (pol.includes('monuments')) culture += 2 * city.buildings.filter((b) => BUILDINGS[b].wonder).length;
   if (civ.id === 'maya') culture += 2;
   if (civ.id === 'greece') {
     gold += 2;
@@ -185,10 +191,12 @@ export function itemCost(game: Game, playerId: number, kind: 'unit' | 'building'
     const pol = game.players[playerId].policies;
     if (pol.includes('drill') && !UNITS[id as keyof typeof UNITS].civilian) base *= 0.8;
     if (pol.includes('pioneers') && id === 'settler') base *= 0.7;
+    if (pol.includes('seafaring') && UNITS[id as keyof typeof UNITS].naval) base *= 0.75;
   } else {
     const b = BUILDINGS[id as BuildingId];
     base = b.cost;
     if (civ.id === 'egypt' && b.wonder) base *= 0.85;
+    if (b.wonder && game.players[playerId].policies.includes('monuments')) base *= 0.75;
   }
   return Math.max(5, Math.round(base * PROD_COST_FACTOR * game.speedMult));
 }

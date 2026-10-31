@@ -190,14 +190,17 @@ export function showPolicies(gs: GameScreen): HTMLElement {
           }
         }, 'primary')));
     }
-    body.push(h('div', { class: 'eyebrow' }, 'Your culture has inspired a new policy'), choices);
+    body.push(
+      h('div', { class: 'eyebrow' }, 'Your culture has inspired a new policy'),
+      h('p', { class: 'muted', style: { margin: '0' } }, 'Choose one. The others are lost for the rest of this game.'),
+      choices);
   } else {
     const speed = v.settings.speed === 'quick' ? 0.67 : 1;
     const prev = v.policies.length ? policyCost(v.policies.length - 1, speed) : 0;
     const pct = Math.max(0, Math.min(100, ((v.culture - prev) / Math.max(1, v.policyCost - prev)) * 100));
     body.push(
-      v.policies.length >= POLICIES.length
-        ? h('p', { class: 'muted' }, 'You have adopted every policy.')
+      v.policiesLeft === 0
+        ? h('p', { class: 'muted' }, 'No policies are left to offer you.')
         : h('div', { class: 'meter', style: { display: 'grid', gap: '6px' } },
           h('div', { class: 'row', style: { display: 'flex', justifyContent: 'space-between' } }, h('span', null, 'Next policy'), h('span', { class: 'num cult' }, `${v.culture} / ${v.policyCost} culture`)),
           h('div', { class: 'bar' }, h('i', { style: { width: `${pct}%`, background: 'var(--cult)' } })),
@@ -210,6 +213,14 @@ export function showPolicies(gs: GameScreen): HTMLElement {
   }
   if (!v.policies.length) adopted.append(h('div', { class: 'hint' }, 'No policies adopted yet.'));
   body.push(h('div', { class: 'eyebrow' }, 'Adopted'), adopted);
+  if (v.forgone.length) {
+    const lost = h('div', { class: 'forgone' });
+    for (const id of v.forgone) {
+      const p = POLICIES.find((x) => x.id === id);
+      if (p) lost.append(h('span', null, p.name));
+    }
+    body.push(h('div', { class: 'eyebrow' }, 'Passed over'), lost);
+  }
   return sheet('Policies', body, () => gs.closeModal(), { narrow: !v.policyChoices.length, scene: 'archive' });
 }
 

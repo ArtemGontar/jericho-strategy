@@ -539,6 +539,9 @@ input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 1px va
 .choice p { margin: 0; color: var(--text2); font-size: 14px; line-height: 1.45; min-height: 3em; }
 @media (max-width: 700px) { .choices { grid-template-columns: 1fr; } .choice { border-left: 0; border-top: 1px solid var(--line-soft); } .choice:first-child { border-top: 0; } }
 
+.forgone { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 13px; }
+.forgone span { text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, 0.25); }
+
 /* diplomacy master/detail */
 .diplo { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 380px; }
 .diplo .list { border-right: 1px solid var(--line-soft); }

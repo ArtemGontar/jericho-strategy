@@ -4,6 +4,29 @@ This is about the game itself: pacing, decisions, mechanics, units, the AI and h
 
 **Method.** 24 AI-only games (`scripts/fun.ts`, seeds 7000–7253, 2–8 players, easy/normal/hard, continents and islands, 200-turn limit), a static read of every rule table (`src/shared/data.ts`, `economy.ts`, `combat.ts`) and of the AI's production and war code (`ai.ts`). No human has played these builds in a controlled test, so everything about *feel* is reasoning from the numbers, tagged **[measured]** when it comes from the simulations or the tables and **[reasoned]** when it is a judgement.
 
+## Status
+
+**Done: item 1, policies you lose by not choosing** (owner's choice: a relaxed builder, so the contest-with-wars items wait).
+
+- Each offer is three policies; taking one **loses the other two for the rest of the game**. The player's screen says so and lists what was passed over.
+- Six new policies (Merchant Guilds, Scribes and Copyists, Monument Builders, Veteran Corps, Seafaring, Hearth and Home), so the pool is 18 and a game adopts about six.
+- The culture curve is steeper (`45 × n^2.2`) so the picks arrive across the whole game instead of all by turn 100.
+- The computers choose by personality (builder, warlord, balanced), earliest on their list first, instead of taking whatever was offered.
+
+Same 24 games, before and after [measured]:
+
+| | Before | After |
+|---|---|---|
+| Times each policy was adopted | 110–120 for every one of 12 | 5 to 70 across 18 (agrarian 69, scholarship 70, scribes 52, merchants 40; exploration 5, seafaring 5) |
+| Victories | science 16, culture 7, last standing 1 | science 19, culture 4, last standing 1 |
+| Median end turn | 153 | 158 |
+| Captures per game | 1.6 | 2.4 |
+| Leader ÷ second at turn 120 | 1.36 | 1.18 |
+
+What to watch: **culture wins fell from 7 to 4**, because Patronage of the Arts (+2 culture per city) is now a choice that few computers make. If the second route to victory should stay as common as before, raise culture elsewhere or give the culture policies to the builder personality earlier. **Exploration and Seafaring are rarely chosen**, even by a computer with no reason to avoid them: they are weak next to the economy policies, so they need a stronger effect. The other leader-gap and capture changes are within the noise of 24 games and should not be read as effects.
+
+Saves from before this change keep working: players get an empty "passed over" list, and the next offer comes at the new, higher threshold.
+
 ## The one-paragraph verdict
 
 The first thirty turns are good: a first city on turn 3, three cities by turn 30, a clear checklist, and a lot to do. After that the game turns into a **checklist**. Every building, every technology (bar one), every policy and every wonder ends up built, learned or adopted in every game, because nothing costs you anything you would miss. Land runs out around turn 60, wars start late (turn 55 on average) and rarely finish, so the next 90 turns are a queue of build orders until someone learns the Enlightenment and wins by science. The rules are sound and the engine is solid. What is missing is **scarcity**: reasons to choose one thing over another.

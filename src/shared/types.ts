@@ -120,6 +120,8 @@ export interface Player {
   policies: string[];
   /** policies on offer right now (empty when none is pending) */
   policyChoices: string[];
+  /** policies passed over in an earlier offer: lost for the rest of the game */
+  forgone: string[];
   endedTurn: boolean;
   /** whether the account behind this slot is connected (online games) */
   connected: boolean;

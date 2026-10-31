@@ -254,10 +254,21 @@ export const POLICIES: PolicyDef[] = [
   { id: 'conscription', name: 'Field Medicine', icon: 'health', desc: 'Units heal 10 more HP per turn.' },
   { id: 'trade_routes', name: 'Caravan Routes', icon: 'trade', desc: '+4 gold in the capital and +1 gold in every other city.' },
   { id: 'pioneers', name: 'Pioneer Spirit', icon: 'settler', desc: 'Settlers cost 30% less and workers build 25% faster.' },
+  { id: 'merchants', name: 'Merchant Guilds', icon: 'market', desc: '+1 gold for every Market and +2 for every Bank.' },
+  { id: 'scribes', name: 'Scribes and Copyists', icon: 'library', desc: '+1 science for every Library and +2 for every University.' },
+  { id: 'monuments', name: 'Monument Builders', icon: 'wonder', desc: 'Wonders cost 25% less and give +2 culture more.' },
+  { id: 'veterans', name: 'Veteran Corps', icon: 'level', desc: 'Every new soldier starts as a veteran, with or without Barracks.' },
+  { id: 'seafaring', name: 'Seafaring', icon: 'trireme', desc: '+1 food from every worked water tile. Ships cost 25% less.' },
+  { id: 'hearth', name: 'Hearth and Home', icon: 'food', desc: 'Cities need 15% less food to grow.' },
 ];
 export const POLICY_BY_ID: Record<string, PolicyDef> = Object.fromEntries(POLICIES.map((p) => [p.id, p]));
+/**
+ * Culture needed for the next policy, as a running total. Each offer is a choice of three and the two you pass over are
+ * lost for the rest of the game, so about six policies are adopted in a game: this curve spreads them over its length
+ * (roughly turns 25, 45, 65, 90, 120 and 150).
+ */
 export function policyCost(adopted: number, speedMult: number): number {
-  return Math.round(28 * Math.pow(adopted + 1, 1.5) * speedMult);
+  return Math.round(45 * Math.pow(adopted + 1, 2.2) * speedMult);
 }
 
 /** Experience needed for each promotion level (level 1, 2, 3). */

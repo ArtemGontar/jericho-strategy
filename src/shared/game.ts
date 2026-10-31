@@ -71,6 +71,13 @@ export interface NewGameOptions {
 
 export const STATE_VERSION = 1;
 
+/** What each kind of computer player reaches for first when offered a policy (earlier is better). */
+const AI_POLICY_PREF: Record<string, string[]> = {
+  warlord: ['drill', 'veterans', 'fortification', 'conscription', 'craftsmen', 'pioneers', 'agrarian', 'merchants', 'exploration', 'hearth'],
+  builder: ['scholarship', 'scribes', 'agrarian', 'patronage', 'monuments', 'coinage', 'merchants', 'hearth', 'bureaucracy', 'trade_routes', 'pioneers'],
+  balanced: ['craftsmen', 'agrarian', 'scholarship', 'pioneers', 'coinage', 'merchants', 'scribes', 'hearth', 'trade_routes', 'bureaucracy'],
+};
+
 export class Game {
   s: GameState;
   rng: Rng;
@@ -136,6 +143,7 @@ export class Game {
         culture: 0,
         policies: [],
         policyChoices: [],
+        forgone: [],
         endedTurn: slot.ai,
         connected: !slot.ai,
         income: { gold: 0, science: 0, culture: 0 },
@@ -206,6 +214,7 @@ export class Game {
     for (const p of this.s.players) {
       if (!p.policies) p.policies = [];
       if (!p.policyChoices) p.policyChoices = [];
+      if (!p.forgone) p.forgone = [];
     }
   }
 
@@ -981,20 +990,29 @@ export class Game {
     return policyCost(p.policies.length, this.speedMult);
   }
 
+  /** Policies that can still be offered: not adopted, not passed over. */
+  openPolicies(p: Player): string[] {
+    return POLICIES.filter((x) => !p.policies.includes(x.id) && !p.forgone.includes(x.id)).map((x) => x.id);
+  }
+
   private offerPolicy(p: Player): void {
-    if (p.policyChoices.length || p.policies.length >= POLICIES.length) return;
-    if (p.culture < this.nextPolicyCost(p)) return;
-    const open = POLICIES.filter((x) => !p.policies.includes(x.id)).map((x) => x.id);
+    if (p.policyChoices.length) return;
+    const open = this.openPolicies(p);
+    if (!open.length || p.culture < this.nextPolicyCost(p)) return;
     this.rng.shuffle(open);
     p.policyChoices = open.slice(0, 3);
     if (p.ai) {
-      const pref = p.personality === 'warlord' ? ['drill', 'fortification', 'conscription', 'craftsmen'] : p.personality === 'builder' ? ['agrarian', 'scholarship', 'coinage', 'patronage'] : ['craftsmen', 'scholarship', 'agrarian', 'coinage'];
-      const pick = p.policyChoices.find((id) => pref.includes(id)) ?? p.policyChoices[0];
+      const pref = AI_POLICY_PREF[p.personality] ?? AI_POLICY_PREF.balanced;
+      // the earliest on the personality's list; anything else only when nothing listed is on offer
+      const rank = (id: string) => { const i = pref.indexOf(id); return i < 0 ? 99 : i; };
+      const pick = p.policyChoices.slice().sort((a, b) => rank(a) - rank(b))[0];
       this.adoptPolicy(p, pick);
-    } else this.note([p.id], 'Your culture has inspired a new policy — choose one!', 'tech');
+    } else this.note([p.id], 'Your culture has inspired a new policy. Choose one: the others are lost for this game.', 'tech');
   }
 
   private adoptPolicy(p: Player, id: string): void {
+    // the ones passed over are gone for good: that is what makes the choice a choice
+    for (const other of p.policyChoices) if (other !== id && !p.forgone.includes(other)) p.forgone.push(other);
     p.policies.push(id);
     p.policyChoices = [];
     if (!p.ai) this.note([p.id], `Adopted ${POLICY_BY_ID[id].name}: ${POLICY_BY_ID[id].desc}`, 'good');
@@ -1198,7 +1216,7 @@ export class Game {
     const y = cityYield(this, c);
     // growth
     c.food += y.surplus;
-    const need = foodNeeded(this, c.pop);
+    const need = foodNeeded(this, c.pop, c.owner);
     if (c.food >= need) {
       if (c.pop < maxPop(c)) {
         c.pop++;
@@ -1243,7 +1261,7 @@ export class Game {
       if (head.id === 'settler' && c.pop < 2) return;
       c.prod -= cost;
       c.queue.shift();
-      const level = hasBuilding(c, 'barracks') && !UNITS[head.id as UnitTypeId].civilian ? 1 : 0;
+      const level = (hasBuilding(c, 'barracks') || p.policies.includes('veterans')) && !UNITS[head.id as UnitTypeId].civilian ? 1 : 0;
       this.addUnit(p.id, head.id as UnitTypeId, c.x, c.y, level);
       if (head.id === 'settler') c.pop = Math.max(1, c.pop - 1);
       this.note([p.id], `${c.name} built ${UNITS[head.id as UnitTypeId].name}.`, 'good', { x: c.x, y: c.y });

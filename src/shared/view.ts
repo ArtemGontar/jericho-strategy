@@ -110,6 +110,10 @@ export interface GameView {
   culture: number;
   policies: string[];
   policyChoices: string[];
+  /** passed over in an earlier offer: lost for this game */
+  forgone: string[];
+  /** how many policies can still be offered */
+  policiesLeft: number;
   /** culture needed for the next policy */
   policyCost: number;
   // map: parallel arrays, index = y * width + x
@@ -224,7 +228,7 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
     if (mine) {
       vc.mine = true;
       vc.food = c.food;
-      vc.foodNeeded = foodNeeded(game, c.pop);
+      vc.foodNeeded = foodNeeded(game, c.pop, c.owner);
       vc.prod = c.prod;
       vc.queue = c.queue.map((q) => ({ kind: q.kind, id: q.id, cost: itemCost(game, me, q.kind, q.id) }));
       vc.buildings = c.buildings.slice();
@@ -275,6 +279,8 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
     culture: Math.floor(p.culture),
     policies: p.policies.slice(),
     policyChoices: p.policyChoices.slice(),
+    forgone: p.forgone.slice(),
+    policiesLeft: game.openPolicies(p).length,
     policyCost: game.nextPolicyCost(p),
     terrain, resource, improvement, road, hut, owner, state,
     cities, units,

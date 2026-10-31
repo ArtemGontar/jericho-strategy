@@ -3,7 +3,7 @@ import { Game } from '../src/shared/game';
 import { buildView } from '../src/shared/view';
 import { ViewMap } from '../src/shared/viewpath';
 import { BUILDINGS, FINAL_TECH, TERRAIN } from '../src/shared/data';
-import { techCost } from '../src/shared/economy';
+import { cityYield, foodNeeded, itemCost, techCost } from '../src/shared/economy';
 
 function twoHumans(seed = 21, extra: Partial<Parameters<typeof Game.create>[0]> = {}) {
   const g = Game.create({ seed, size: 'small', players: [{ name: 'A', ai: false }, { name: 'B', ai: false }], ...extra });
@@ -289,6 +289,51 @@ describe('exploration, promotion, policies and upgrades', () => {
     expect(p.policies).toHaveLength(1);
     expect(p.policyChoices).toHaveLength(0);
     void incomeBefore;
+  });
+
+  it('the policies you pass over are lost for the game, so a game adopts a handful of them', () => {
+    const g = twoHumans(43);
+    const p = g.players[0];
+    p.culture = 1e9;
+    const seen = new Set<string>();
+    let picks = 0;
+    for (let i = 0; i < 40 && g.openPolicies(p).length; i++) {
+      g.exec(0, { t: 'end' });
+      g.exec(1, { t: 'end' });
+      if (!p.policyChoices.length) continue;
+      const offered = p.policyChoices.slice();
+      for (const id of offered) expect(seen.has(id)).toBe(false); // nothing is offered twice
+      offered.forEach((id) => seen.add(id));
+      const pick = offered[0];
+      expect(g.exec(0, { t: 'policy', id: pick }).ok).toBe(true);
+      picks++;
+      // the others are gone: they cannot be adopted later, and they are recorded
+      for (const other of offered.slice(1)) {
+        expect(p.forgone).toContain(other);
+        expect(g.openPolicies(p)).not.toContain(other);
+      }
+    }
+    expect(picks).toBeGreaterThanOrEqual(5);
+    expect(picks).toBeLessThanOrEqual(7);
+    expect(p.policies.length + p.forgone.length).toBe(18);
+    expect(new Set([...p.policies, ...p.forgone]).size).toBe(18);
+  });
+
+  it('the new policies do what they say', () => {
+    const g = twoHumans(47);
+    const c = g.playerCities(0)[0];
+    const p = g.players[0];
+    c.buildings.push('market', 'library');
+    const gold = cityYield(g, c).gold, sci = cityYield(g, c).science;
+    p.policies.push('merchants', 'scribes');
+    expect(cityYield(g, c).gold).toBe(gold + 1);
+    expect(cityYield(g, c).science).toBe(sci + 1);
+    const need = foodNeeded(g, 3, 0);
+    p.policies.push('hearth');
+    expect(foodNeeded(g, 3, 0)).toBeLessThan(need);
+    const wonder = itemCost(g, 0, 'building', 'pyramids');
+    p.policies.push('monuments');
+    expect(itemCost(g, 0, 'building', 'pyramids')).toBeLessThan(wonder);
   });
 
   it('pinned tiles are always worked, and units upgrade for gold', () => {
