@@ -7,7 +7,7 @@ import { civColor, tileYieldFromView } from '../render';
 import { isMuted, setMuted } from '../audio';
 import { artIcon, leaderUrl } from '../artwork';
 import { icon } from '../icons';
-import { clear, fmtSigned, h, put, tickNumber } from './dom';
+import { clear, floatingOrders, fmtSigned, h, isCompact, put, tickNumber } from './dom';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -71,19 +71,20 @@ export function renderTopbar(gs: GameScreen, el: HTMLElement): void {
   const era = currentEra(v.techs);
   put(el,
     h('div', { class: 'pad-medals' }),
-    h('div', { class: 'stat', title: 'Treasury and income per turn' }, icon('gold', 20, 'coin'), goldNum, h('small', { class: v.income.gold >= 0 ? 'pos' : 'neg' }, fmtSigned(v.income.gold))),
-    h('span', { class: 'sep' }),
-    h('div', { class: 'stat', title: 'Science per turn' }, icon('science', 20, 'sci'), h('span', { class: 'num' }, `+${v.income.science}`)),
-    h('span', { class: 'sep' }),
-    h('div', { class: 'stat', title: v.cultureGoal ? `Culture per turn. Total ${v.culture} of ${v.cultureGoal} needed for cultural hegemony (and a 20% lead over every rival).` : 'Culture per turn' }, icon('culture', 20, 'cult'), h('span', { class: 'num' }, `+${v.income.culture}`)),
-    idleUnits(gs),
-    v.settings.turnTimer > 0 ? h('span', { class: 'sep' }) : null,
-    v.settings.turnTimer > 0 ? h('div', { class: 'stat', title: 'Time left in this turn' }, icon('turn', 20), h('span', { class: 'num', id: 'timerlabel' }, '--')) : null,
-    v.enlightenment ? h('span', { class: 'sep' }) : null,
-    v.enlightenment ? countdown(gs) : null,
-    v.hegemony ? h('span', { class: 'sep' }) : null,
-    v.hegemony ? hegemonyChip(gs) : null,
-    h('div', { class: 'grow' }),
+    h('div', { class: 'stats' },
+      h('div', { class: 'stat', title: 'Treasury and income per turn' }, icon('gold', 20, 'coin'), goldNum, h('small', { class: v.income.gold >= 0 ? 'pos' : 'neg' }, fmtSigned(v.income.gold))),
+      h('span', { class: 'sep' }),
+      h('div', { class: 'stat', title: 'Science per turn' }, icon('science', 20, 'sci'), h('span', { class: 'num' }, `+${v.income.science}`)),
+      h('span', { class: 'sep' }),
+      h('div', { class: 'stat', title: v.cultureGoal ? `Culture per turn. Total ${v.culture} of ${v.cultureGoal} needed for cultural hegemony (and a 20% lead over every rival).` : 'Culture per turn' }, icon('culture', 20, 'cult'), h('span', { class: 'num' }, `+${v.income.culture}`)),
+      idleUnits(gs),
+      v.settings.turnTimer > 0 ? h('span', { class: 'sep' }) : null,
+      v.settings.turnTimer > 0 ? h('div', { class: 'stat', title: 'Time left in this turn' }, icon('turn', 20), h('span', { class: 'num', id: 'timerlabel' }, '--')) : null,
+      v.enlightenment ? h('span', { class: 'sep' }) : null,
+      v.enlightenment ? countdown(gs) : null,
+      v.hegemony ? h('span', { class: 'sep' }) : null,
+      v.hegemony ? hegemonyChip(gs) : null,
+    ),
     rankings,
     h('div', { class: 'era', 'data-era': String(era), title: civ.bonus }, `Turn ${v.turn} / ${v.settings.turnLimit}`, h('b', null, `${ERA_NAMES[era]} Era`)),
     h('span', { class: 'sep' }),
@@ -124,6 +125,7 @@ function countdown(gs: GameScreen): HTMLElement {
   b.addEventListener('click', (ev) => {
     ev.stopPropagation();
     if (cap) gs.focus(cap.x, cap.y);
+    if (isCompact()) gs.toast(b.title); // the chip shrinks to an icon and a number on a phone
   });
   return b;
 }
@@ -134,10 +136,15 @@ function hegemonyChip(gs: GameScreen): HTMLElement {
   const e = v.hegemony!;
   const who = v.players[e.owner];
   const mine = e.owner === v.me;
-  return h('div', {
+  const chip = h('div', {
     class: `countdown ${mine ? 'mine' : 'foe'}`,
     title: mine ? `Your culture dominates. You win in ${e.turnsLeft} turns if the lead holds.` : `${who.name}'s culture dominates: they win in ${e.turnsLeft} turns unless a rival's culture catches up to within 10%, or their cities fall.`,
   }, icon('culture', 16), h('span', null, mine ? 'Culture lead' : `${CIV_BY_ID[who.civ].name} culture`), h('b', { class: 'num' }, String(e.turnsLeft)));
+  chip.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (isCompact()) gs.toast(chip.title);
+  });
+  return chip;
 }
 
 function roundFlat(name: string, title: string, fn: () => void, extra = ''): HTMLButtonElement {
@@ -187,7 +194,7 @@ export function pushNote(gs: GameScreen, host: HTMLElement, text: string, kind: 
   });
   host.append(n);
   // a phone has no room to spare: fewer notes, and they leave sooner
-  const phone = window.matchMedia('(max-width: 760px)').matches;
+  const phone = isCompact();
   while (host.children.length > (phone ? 3 : 7)) host.firstChild?.remove();
   const long = kind === 'war' || kind === 'wonder' || kind === 'tech';
   setTimeout(() => {
@@ -208,7 +215,7 @@ export function renderUnitBar(gs: GameScreen, el: HTMLElement): void {
   el.classList.remove('hidden');
   const v = gs.view;
   // on a big screen the order buttons float beside the unit; on a phone they stay in the bar
-  const floating = !window.matchMedia('(max-width: 760px)').matches;
+  const floating = floatingOrders();
   const def = UNITS[u.type];
   const col = civColor(v, u.owner);
   const hint = h('span', { class: 'hint' }, ' ');
@@ -341,7 +348,7 @@ export function renderTurnControl(gs: GameScreen, el: HTMLElement): void {
   const btn = h('button', { class: `nextturn ${ready ? 'ready' : ''}`, type: 'button', 'aria-label': st.label }, h('span', { class: 'halo' }), rim, h('span', { class: 'face' }, icon(iconName, 40)));
   btn.disabled = gs.busy;
   btn.addEventListener('click', () => gs.primaryAction());
-  put(el, btn, h('div', { class: 'turnlabel' }, st.label, st.sub ? h('small', null, st.sub) : null));
+  put(el, h('div', { class: 'turnno' }, `Turn ${gs.view.turn}`), btn, h('div', { class: 'turnlabel' }, st.label, st.sub ? h('small', null, st.sub) : null));
   if (st.kind !== 'end' && st.kind !== 'wait') el.append(h('button', { class: 'link', type: 'button', style: { fontSize: '12px' }, on: { click: () => void gs.endTurn() } }, 'End turn anyway'));
   if (gs.opts.hostActions && st.kind === 'wait') el.append(h('button', { class: 'link', type: 'button', style: { fontSize: '12px' }, on: { click: () => gs.opts.hostActions!.forceEnd() } }, 'Skip waiting (host)'));
 }
@@ -349,8 +356,8 @@ export function renderTurnControl(gs: GameScreen, el: HTMLElement): void {
 // ------------------------------------------------------------------ map dock (lenses)
 export function renderLenses(gs: GameScreen, el: HTMLElement): void {
   clear(el);
-  const mk = (name: string, title: string, on: boolean, fn: () => void) => {
-    const b = h('button', { class: `round ${on ? 'primary' : ''}`, type: 'button', title, 'aria-label': title }, icon(name, 18));
+  const mk = (name: string, title: string, on: boolean, fn: () => void, extra = '') => {
+    const b = h('button', { class: `round ${on ? 'primary' : ''} ${extra}`, type: 'button', title, 'aria-label': title }, icon(name, 18));
     b.addEventListener('click', () => {
       fn();
       renderLenses(gs, el);
@@ -359,9 +366,9 @@ export function renderLenses(gs: GameScreen, el: HTMLElement): void {
   };
   put(el,
     mk('food', 'Show tile yields (Y)', gs.showYields, () => gs.togglePref('yields')),
-    mk('grid', 'Grid lines (G)', gs.showGrid, () => gs.togglePref('grid')),
     mk('city', 'Centre on capital', false, () => { const c = gs.view.cities.find((x) => x.mine && x.capital) ?? gs.myCities()[0]; if (c) gs.focus(c.x, c.y); }),
-    mk(isMuted() ? 'mute' : 'sound', 'Sound (M)', !isMuted(), () => setMuted(!isMuted())),
+    mk('grid', 'Grid lines (G)', gs.showGrid, () => gs.togglePref('grid'), 'hide-phone'),
+    mk(isMuted() ? 'mute' : 'sound', 'Sound (M)', !isMuted(), () => setMuted(!isMuted()), 'hide-phone'),
   );
 }
 

@@ -299,6 +299,9 @@ export function showMenu(gs: GameScreen): HTMLElement {
   list.append(
     item('Resume', () => gs.closeModal(), true),
     item('Policies', () => gs.openModal('policies')),
+    item('Your cities', () => gs.openModal('cities')),
+    item('Diplomacy', () => gs.openDiplomacy()),
+    item('Message log', () => gs.openModal('log')),
     item('How to play', () => gs.openModal('help')),
   );
   const prefs = h('div', { class: 'menu-list compact' });

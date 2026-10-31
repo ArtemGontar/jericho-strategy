@@ -112,3 +112,14 @@ export function installMotion(): void {
     }
   }).observe(document.body, { childList: true, subtree: true });
 }
+
+// ------------------------------------------------------------------ layout modes
+// Keep these in step with the media queries in style.css.
+/** A phone held upright, a small tablet, or any window short enough that the desktop layout would not fit. */
+export const COMPACT_QUERY = '(max-width: 820px), (max-height: 520px)';
+/** A phone on its side: wide but very short. The order buttons float beside the unit and the city drawer is a side panel. */
+export const SHORT_QUERY = '(max-height: 520px)';
+export const isCompact = (): boolean => window.matchMedia?.(COMPACT_QUERY).matches ?? false;
+export const isShort = (): boolean => window.matchMedia?.(SHORT_QUERY).matches ?? false;
+/** Order buttons float beside the unit everywhere except a phone held upright, where they sit in the unit bar. */
+export const floatingOrders = (): boolean => !isCompact() || isShort();

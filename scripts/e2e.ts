@@ -230,6 +230,37 @@ try {
     check('no browser errors (phone)', errors.length === 0, errors.slice(0, 2).join(' | '));
   }
 
+  // phones of every shape: the top-bar buttons stay on screen, and a phone on its side keeps the map beside the city panel
+  console.log('Phone sizes');
+  if (!only || only === 'phone') {
+    for (const [w, hgt] of [[360, 640], [390, 844], [667, 375], [932, 430]] as const) {
+      const { page, errors } = await newPage(`phone ${w}x${hgt}`, { viewport: { width: w, height: hgt }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+      await page.goto(base);
+      await page.tap('button:has-text("New game")');
+      await page.tap('button:has-text("Begin")');
+      await page.waitForFunction(() => (window as any).__jericho?.screen?.view);
+      await page.waitForTimeout(500);
+      const bar = await page.evaluate(() => {
+        const vw = window.innerWidth;
+        const btns = [...document.querySelectorAll('.topbar .round')] as HTMLElement[];
+        const menu = document.querySelector('.topbar button[aria-label^="Menu"]')?.getBoundingClientRect();
+        return { overflow: document.documentElement.scrollWidth > vw + 1, offscreen: btns.filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && (r.right > vw + 0.5 || r.left < 0); }).length, menu: !!menu && menu.right <= vw && menu.width >= 36 };
+      });
+      check(`${w}x${hgt}: no horizontal overflow, top-bar buttons on screen`, !bar.overflow && bar.offscreen === 0 && bar.menu);
+      const unit = await page.evaluate(() => { const r = document.querySelector('.unitbar')?.getBoundingClientRect(); return r ? Math.round(r.height) : 0; });
+      if (hgt < 520) check(`${w}x${hgt}: unit card leaves most of the map free`, unit > 0 && unit < hgt * 0.34, `${unit}px of ${hgt}px`);
+      await page.tap('button[aria-label^="Found city"], .unitactions button[aria-label^="Found city"]');
+      await page.waitForSelector('.drawer:not(.hidden)');
+      await page.waitForTimeout(400);
+      const d = await page.evaluate(() => { const r = document.querySelector('.drawer')!.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: innerWidth, h: innerHeight }; });
+      if (hgt < 520) check(`${w}x${hgt}: city panel is a side panel and the map stays visible`, d.t < hgt * 0.2 && d.r < d.w * 0.55, `drawer ${Math.round(d.r)}px of ${d.w}px`);
+      else check(`${w}x${hgt}: city panel is a bottom sheet`, d.t > hgt * 0.3 && d.b >= hgt - 1);
+      const menuHas = await (async () => { await page.evaluate(() => (window as any).__jericho.screen.openModal('menu')); return page.evaluate(() => ['Your cities', 'Diplomacy', 'Message log'].every((t) => [...document.querySelectorAll('.overlay .menu-list button')].some((b) => b.textContent?.includes(t)))); })();
+      check(`${w}x${hgt}: the menu reaches cities, diplomacy and the log`, menuHas);
+      check(`${w}x${hgt}: no browser errors`, errors.length === 0, errors.slice(0, 2).join(' | '));
+    }
+  }
+
   // ------------------------------------------------------------------ 3D renderer
   console.log('3D renderer');
   if (only === 'gl' || (!only && process.env.E2E_GL)) {

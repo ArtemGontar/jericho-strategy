@@ -51,6 +51,10 @@ Room state (the whole game) is saved on the server after every turn, so a restar
 
 The 3D renderer needs WebGL 2. On a software renderer (no GPU) the game falls back to a flat 2D map by itself, and when frames run slow it lowers shadows and resolution on its own. **Menu → Graphics** forces *High / Medium / Low / Flat 2D*. For testing, add `?flat` to the address for the 2D map or `?gl` to force 3D.
 
+### Phones and tablets
+
+The interface adapts to touch screens in both orientations. Held upright, the unit card sits bottom-left beside the turn button and the city panel is a bottom sheet. On its side, the order buttons float beside the unit, the city panel becomes a side panel and the menu screens use two columns. Safe areas (notches, home bar) are respected. Cities, diplomacy and the message log are reachable from **Menu** when the top bar has no room for them. `npm run e2e:flat` checks four phone sizes.
+
 ### Controls
 
 | Input | Action |

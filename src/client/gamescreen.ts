@@ -13,7 +13,7 @@ import { cineMode } from './cinematics';
 import { renderGuide } from './ui/guide';
 import { HEX, HEX_W } from './sprites';
 import { sfx, isMuted, setMuted } from './audio';
-import { askConfirm, btn, clear, h, put } from './ui/dom';
+import { askConfirm, btn, clear, COMPACT_QUERY, h, isCompact, isShort, put, SHORT_QUERY } from './ui/dom';
 import type { GameTransport } from './transport';
 import { renderCityPanel } from './ui/citypanel';
 import { currentEra, renderLenses, renderMedallions, renderTileInfo, renderTopbar, renderTurnControl, renderUnitBar, pushNote } from './ui/hud';
@@ -145,6 +145,13 @@ export class GameScreen {
     };
     window.addEventListener('resize', onResize);
     this.cleanup.push(() => window.removeEventListener('resize', onResize));
+    // turning the phone changes which controls float on the map and which sit in bars: rebuild them
+    for (const q of [COMPACT_QUERY, SHORT_QUERY]) {
+      const mq = window.matchMedia(q);
+      const onLayout = () => { if (this.view) { this.refreshUI(); this.dirty = true; } };
+      mq.addEventListener('change', onLayout);
+      this.cleanup.push(() => mq.removeEventListener('change', onLayout));
+    }
     this.renderer.resize();
     this.loop = this.loop.bind(this);
     this.raf = requestAnimationFrame(this.loop);
@@ -201,8 +208,21 @@ export class GameScreen {
     pushNote(this, this.notes, text, kind, at);
   }
 
-  focus(x: number, y: number, smooth = true): void {
+  /** Where the middle of the uncovered map sits relative to the screen centre while the city drawer is open (screen pixels). */
+  private drawerShift(): { dx: number; dy: number } {
+    const { w, h } = this.cam;
+    if (!isCompact()) return { dx: 0, dy: 0 };
+    if (isShort()) return { dx: Math.min(360, w * 0.48) / 2, dy: 0 };
+    return { dx: 0, dy: (46 + h * 0.4) / 2 - h / 2 }; // the drawer covers the lower 60%
+  }
+
+  focus(x: number, y: number, smooth = true, forCity = false): void {
     const p = this.cam.worldOfTile(x, y);
+    if (forCity) {
+      const s = this.drawerShift();
+      p.x -= s.dx / this.cam.zoom;
+      p.y -= s.dy / (this.cam.zoom * this.cam.tilt);
+    }
     if (smooth) this.camTarget = p;
     else {
       this.cam.x = p.x;
@@ -445,9 +465,10 @@ export class GameScreen {
     const w = el.offsetWidth;
     const hgt = el.offsetHeight;
     const x = Math.max(8, Math.min(this.cam.w - w - 8, p.x - w / 2));
+    const short = isShort();
     let y = p.y + 14;
-    if (y + hgt > this.cam.h - 170) y = p.top - hgt - 34;
-    y = Math.max(64, y);
+    if (y + hgt > this.cam.h - (short ? 70 : 170)) y = p.top - hgt - 34;
+    y = Math.max(short ? 48 : 64, y);
     el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
     el.style.visibility = this.anim.busy || this.modal ? 'hidden' : '';
   }
@@ -1128,7 +1149,7 @@ export class GameScreen {
     this.attackTargets = new Set();
     this.closeModal();
     const c = this.openCity;
-    if (c) this.focus(c.x, c.y);
+    if (c) this.focus(c.x, c.y, true, true);
     this.refreshUI();
     this.dirty = true;
   }
