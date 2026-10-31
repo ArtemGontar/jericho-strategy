@@ -168,6 +168,7 @@ export async function sendSaveToServer(json: string): Promise<{ code: string; mi
   }
   const body = (await res.json().catch(() => ({}))) as { code?: string; minutes?: number; error?: string };
   if (!res.ok || !body.code) throw new Error(body.error ?? 'The server would not take it.');
+  try { localStorage.setItem('jericho.backedup', String(Date.now())); } catch { /* ignore */ }
   return { code: body.code, minutes: body.minutes ?? 60 };
 }
 

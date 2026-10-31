@@ -302,6 +302,6 @@ describe('civic techs and buildings', () => {
 
   it('the tree has the new branches, all reachable', () => {
     for (const id of ['ceremony', 'drama', 'diplomacy', 'medicine', 'theology']) expect(TECH_BY_ID[id]).toBeDefined();
-    for (const t of TECHS) for (const pre of t.pre) expect(TECH_BY_ID[pre], `${t.id} needs ${pre}`).toBeDefined();
+    for (const t of TECHS) for (const pre of [...t.pre, ...(t.any ?? [])]) expect(TECH_BY_ID[pre], `${t.id} needs ${pre}`).toBeDefined();
   });
 });

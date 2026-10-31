@@ -148,6 +148,8 @@ function summarise(rows: any[]): void {
   const evT = rows.reduce((a, r) => a + (r.evCount?.total ?? 0), 0), plT = rows.reduce((a, r) => a + (r.players ?? 0), 0);
   const evE = rows.reduce((a, r) => a + (r.evCount?.early ?? 0), 0);
   console.log(`events: ${(evT / Math.max(1, plT)).toFixed(1)} per civilisation per game (${evE} before turn 30 across all games)`);
+  const roads = ['electricity', 'sanitation', 'combustion'].map((t) => rows.reduce((a: number, r) => a + (r.techUse?.[t] ?? 0), 0));
+  console.log(`civilisations that learned each road to the Enlightenment: electricity ${roads[0]}, sanitation ${roads[1]}, combustion ${roads[2]}`);
   const eraAt = rows.flatMap((r) => r.eras ?? []);
   console.log(`highest era reached by each civilisation: ${[0, 1, 2, 3, 4].map((e) => `era ${e}: ${eraAt.filter((x: number) => x === e).length}`).join(', ')}`);
   const sims = rows.map((r) => r.similarity).filter((x) => x != null) as number[];

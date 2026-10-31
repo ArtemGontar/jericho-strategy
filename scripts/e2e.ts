@@ -235,6 +235,11 @@ try {
     await page.waitForFunction(() => (window as any).__jericho?.screen?.view);
     const lim = await page.evaluate(() => (window as any).__jericho.screen.view.settings.turnLimit);
     check('Quick game starts a 60-turn game', lim === 60, `turn limit ${lim}`);
+    // the coach points at the real control with a few words, and never blocks the screen
+    await page.waitForSelector('.coach-tip');
+    const coach = await page.evaluate(() => ({ text: document.querySelector('.coach-say')?.textContent ?? '', ring: getComputedStyle(document.querySelector('.coach-ring')!).display, blocks: getComputedStyle(document.querySelector('.coach-tip')!).pointerEvents }));
+    check('the coach says a few words and circles the control', coach.text.length > 0 && coach.text.length < 32 && coach.ring === 'block', JSON.stringify(coach));
+    check('and does not intercept taps', coach.blocks === 'none');
     // contentment: the heart is in the top bar and opens its breakdown
     const heart = await page.$('.content-chip');
     check('the contentment heart is in the top bar', !!heart);

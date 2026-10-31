@@ -20,7 +20,7 @@ import type { GameTransport } from './transport';
 import { renderCityPanel } from './ui/citypanel';
 import { currentEra, renderLenses, renderMedallions, renderTileInfo, renderTopbar, renderTurnControl, renderUnitBar, pushNote } from './ui/hud';
 import { ERA_NAMES } from '../shared/data';
-import { showCities, showDiplomacy, showHelp, showLog, showMenu, showSave, showContent, showPolicies, showTechTree, showVictory } from './ui/screens';
+import { showCities, showDiplomacy, showHelp, showLog, showMenu, showSave, showContent, showEvent, showPolicies, showTechTree, showVictory } from './ui/screens';
 
 export interface GameScreenOptions {
   /** called when the user leaves to the main menu */
@@ -63,6 +63,7 @@ export class GameScreen {
   busy = false;
   noteHistory: Array<{ id: number; turn: number; text: string; kind: string; at?: Pos }> = [];
   private lastNoteId = -1;
+  private askedKey = '';
   private inspectTimer: ReturnType<typeof setTimeout> | null = null;
   private lastTurn = 0;
   private lastEra = -1;
@@ -211,9 +212,22 @@ export class GameScreen {
     return res.ok;
   }
 
-  toast(text: string, kind = 'info', at?: Pos): void {
+  toast(text: string, kind = 'info', at?: Pos, action?: () => void): void {
     if (!text) return;
-    pushNote(this, this.notes, text, kind, at);
+    pushNote(this, this.notes, text, kind, at, action);
+  }
+
+  /** Saves live on this device only: once or twice in a long game, a note that sends a copy somewhere safe in one tap. */
+  private maybeNudgeBackup(turn: number): void {
+    if (this.transport.kind !== 'local' || (turn !== 12 && turn !== 70) || this.view.settings.turnLimit < 100) return;
+    try {
+      const last = Number(localStorage.getItem('jericho.backedup') ?? 0);
+      const nudged = Number(localStorage.getItem('jericho.nudged') ?? 0);
+      const day = 24 * 3600 * 1000;
+      if (Date.now() - last < 7 * day || Date.now() - nudged < 3 * day) return;
+      localStorage.setItem('jericho.nudged', String(Date.now()));
+    } catch { /* storage unavailable: still worth saying once */ }
+    this.toast('Back up this game: tap to send a copy', 'info', undefined, () => this.openModal('save'));
   }
 
   /** Where the middle of the uncovered map sits relative to the screen centre while the city drawer is open (screen pixels). */
@@ -272,6 +286,10 @@ export class GameScreen {
     const era = currentEra(v.techs);
     if (this.lastEra >= 0 && era > this.lastEra) this.showEraBanner(era);
     this.lastEra = era;
+    // a question has arrived: ask it, unless something else is open (the turn button will say "Decide" until it is answered)
+    const asked = v.pending ? `${v.pending.id}:${v.pending.turn}` : '';
+    if (asked && asked !== this.askedKey && !this.modalKind && !this.openCityId) { this.askedKey = asked; this.openModal('event'); }
+    if (!asked) this.askedKey = '';
     // selection upkeep
     if (this.selUnitId !== null && !this.selUnit) this.selUnitId = null;
     if (this.openCityId !== null && !this.openCity) this.closeCity();
@@ -289,6 +307,7 @@ export class GameScreen {
       this.pending = null;
       sfx('turn');
       turnAlert(v.turn);
+      this.maybeNudgeBackup(v.turn);
       this.toast(`Turn ${v.turn}`, 'info');
       this.autoSelect();
     }
@@ -1116,6 +1135,7 @@ export class GameScreen {
     const idleCity = this.myCities().find((c) => this.cityNeedsProduction(c));
     if (idleCity) return { label: 'Choose production', sub: idleCity.name, kind: 'city', action: () => { this.focus(idleCity.x, idleCity.y); this.openCityPanel(idleCity.id); } };
     if (!v.researching && v.availableTechs.length) return { label: 'Choose research', kind: 'research', action: () => this.openModal('tech') };
+    if (v.pending) return { label: 'Decide', sub: v.pending.options.map((o) => o.label).join(' or '), kind: 'policy', action: () => this.openModal('event') };
     if (v.policyChoices.length) return { label: 'Choose policy', kind: 'policy', action: () => this.openModal('policies') };
     const next = this.nextUnitNeedingOrders(this.selUnitId);
     if (next) return { label: 'Next unit', sub: `${this.myUnits().filter((u) => this.needsOrders(u)).length} waiting`, kind: 'unit', action: () => this.selectUnit(next.id, true) };
@@ -1202,6 +1222,7 @@ export class GameScreen {
       case 'menu': return showMenu(this);
       case 'save': return showSave(this);
       case 'content': return showContent(this);
+      case 'event': return showEvent(this);
       case 'help': return showHelp(this);
       case 'policies': return showPolicies(this);
       case 'victory': return showVictory(this);

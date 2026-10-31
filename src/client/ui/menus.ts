@@ -412,6 +412,7 @@ function slotRow(room: RoomInfo, s: RoomSlot, host: boolean, send: (m: Parameter
 // ------------------------------------------------------------------ saved games
 /** Hand a text file to the browser's download. */
 export function downloadText(name: string, text: string): void {
+  try { localStorage.setItem('jericho.backedup', String(Date.now())); } catch { /* ignore */ }
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
   const a = h('a', { href: url, download: name });
   document.body.append(a);

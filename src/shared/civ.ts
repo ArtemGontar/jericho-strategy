@@ -21,7 +21,7 @@ export function dealSlots(game: Game, pid: number): number {
   const p = game.players[pid];
   let embassies = 0;
   for (const c of game.s.cities) if (c.owner === pid && c.buildings.includes('embassy')) embassies++;
-  return MAX_DEALS + (p.techs.includes('navigation') ? 1 : 0) + Math.min(2, embassies);
+  return MAX_DEALS + (p.techs.includes('navigation') ? 1 : 0) + Math.min(2, embassies) + (p.policies.includes('open_society') ? 1 : 0);
 }
 /** sanctions lapse after this many turns unless they are imposed again */
 export const SANCTION_TURNS = 30;
@@ -79,7 +79,8 @@ export function dealGold(game: Game, a: number, b: number): number {
 
 export function dealIncome(game: Game, pid: number): number {
   let g = 0;
-  for (const o of dealPartners(game, pid)) if (game.players[o].alive) g += dealGold(game, pid, o);
+  const open = game.players[pid].policies.includes('open_society') ? 1 : 0;
+  for (const o of dealPartners(game, pid)) if (game.players[o].alive) g += dealGold(game, pid, o) + open;
   return g;
 }
 
@@ -111,6 +112,10 @@ export function contentment(game: Game, pid: number): Contentment {
   add(`Wonders (${wonders})`, wonders);
   if (p.policies.includes('patronage')) add('Patronage of the Arts', 2);
   if (p.policies.includes('hearth')) add('Hearth and Home', 2);
+  if (p.policies.includes('bread_circuses')) add('Bread and Circuses', 3);
+  if (p.policies.includes('public_health')) add('Public Health', 2);
+  if (p.policies.includes('industrial_policy')) add('Industrial Policy', -2);
+  if (p.policies.includes('state_religion')) add('State Religion', mine.reduce((n, c) => n + c.buildings.filter((b) => b === 'temple' || b === 'shrine' || b === 'cathedral').length, 0));
   add('War weariness', -Math.min(8, p.weariness));
   add('Sanctions', -Math.min(4, sanctionersOf(game, pid).length));
   const value = Math.round(parts.reduce((s, x) => s + x.value, 0) * 10) / 10;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '../src/shared/game';
-import { EVENT_CHANCE, EVENT_SPACING, EVENTS, FIRST_BAD_TURN, rollEvent, triggerEvent } from '../src/shared/events';
+import { EVENT_CHANCE, EVENT_SPACING, EVENTS, FIRST_BAD_TURN, rollEvent, settlePending, triggerEvent } from '../src/shared/events';
 import { tileYield } from '../src/shared/economy';
 import { buildView } from '../src/shared/view';
 import { RESOURCES, TERRAIN } from '../src/shared/data';
@@ -204,12 +204,155 @@ describe('the industrial age', () => {
     walk(FINAL_TECH);
     expect(need.has('industrialization')).toBe(true);
     expect(need.has('metallurgy')).toBe(true);
+    // and a fork: the last step is one of three roads
+    expect(TECH_BY_ID[FINAL_TECH].any).toEqual(['electricity', 'sanitation', 'combustion']);
     expect(TECH_BY_ID[FINAL_TECH].era).toBe(4);
     // the era's own techs unlock what they say
     for (const [tech, building] of [['industrialization', 'factory'], ['sanitation', 'hospital'], ['electricity', 'laboratory']] as const) expect(BUILDINGS[building].tech).toBe(tech);
     expect(TECHS.filter((t) => t.era === 4).length).toBeGreaterThanOrEqual(4);
-    // the optional end techs stay optional
-    expect(need.has('sanitation')).toBe(false);
-    expect(need.has('combustion')).toBe(false);
+    // none of the three roads is forced on everyone
+    for (const road of ['electricity', 'sanitation', 'combustion']) expect(need.has(road)).toBe(false);
+  });
+});
+
+describe('a fork in the tree', () => {
+  it('the last technology needs one of three roads, and any one will do', async () => {
+    const { availableTechs, techCost } = await import('../src/shared/economy');
+    const { TECH_BY_ID, FINAL_TECH } = await import('../src/shared/data');
+    const g = world(14);
+    const p = g.players[0];
+    // everything on the common way is known
+    const known = new Set<string>();
+    const add = (id: string) => { if (known.has(id)) return; known.add(id); for (const x of TECH_BY_ID[id].pre) add(x); };
+    add('astronomy'); add('banking'); add('industrialization');
+    p.techs.push(...known);
+    expect(availableTechs(p)).not.toContain(FINAL_TECH);
+    for (const road of ['electricity', 'sanitation', 'combustion']) {
+      const q = world(14).players[0];
+      const k = new Set<string>();
+      const walk = (id: string) => { if (k.has(id)) return; k.add(id); for (const x of TECH_BY_ID[id].pre) walk(x); };
+      walk('astronomy'); walk('banking'); walk('industrialization'); walk(road);
+      q.techs.push(...k);
+      expect(availableTechs(q), road).toContain(FINAL_TECH);
+    }
+    // the three roads cost about the same from the common way, so the choice is about what each leaves behind
+    const costs = ['electricity', 'sanitation', 'combustion'].map((road) => {
+      const q = world(14);
+      const k = new Set<string>();
+      const walk = (id: string) => { if (k.has(id)) return; k.add(id); for (const x of TECH_BY_ID[id].pre) walk(x); };
+      walk('astronomy'); walk('banking'); walk('industrialization');
+      q.players[0].techs.push(...k);
+      const own = new Set<string>();
+      const need = (id: string) => { if (own.has(id) || k.has(id)) return; own.add(id); for (const x of TECH_BY_ID[id].pre) need(x); };
+      need(road);
+      let c = 0;
+      for (const id of own) c += techCost(q, q.players[0], id);
+      return c;
+    });
+    expect(Math.max(...costs) / Math.min(...costs)).toBeLessThan(1.25);
+  });
+});
+
+describe('events that ask a question', () => {
+  /** Roll until a human has a question waiting. */
+  function asked(seed: number, id?: string) {
+    const g = world(seed);
+    g.s.turn = 90;
+    for (const c of g.playerCities(0)) { c.pop = 5; c.buildings.push('library'); }
+    g.players[0].researching = 'writing';
+    for (let i = 0; i < 4000; i++) {
+      g.players[0].lastEvent = -99;
+      g.players[0].pending = null;
+      rollEvent(g, g.players[0]);
+      const q = g.players[0].pending as { id: string } | null;
+      if (q && (!id || q.id === id)) return g;
+    }
+    return null;
+  }
+
+  it('wait for an answer, with two options, and apply the one chosen', () => {
+    const g = asked(20, 'envoy')!;
+    expect(g).not.toBeNull();
+    const p = g.players[0];
+    expect(p.pending!.options).toHaveLength(2);
+    expect(buildView(g, 0).pending?.id).toBe('envoy');
+    expect(g.exec(0, { t: 'choose', option: 5 }).ok).toBe(false);
+    expect(g.exec(0, { t: 'choose', option: -1 }).ok).toBe(false);
+    const gold = p.gold;
+    expect(g.exec(0, { t: 'choose', option: 0 }).ok).toBe(true);
+    expect(p.pending).toBeNull();
+    expect(p.gold).toBeGreaterThan(gold);
+    expect(g.exec(0, { t: 'choose', option: 0 }).ok).toBe(false); // nothing left to answer
+  });
+
+  it('settle themselves with their default if nobody answers, and never hold the game up', () => {
+    const g = asked(21, 'dispute')!;
+    expect(g).not.toBeNull();
+    const p = g.players[0];
+    const research = p.research, culture = p.culture;
+    p.pending!.turn = g.turn - 1;
+    settlePending(g, p);
+    expect(p.pending).toBeNull();
+    expect(p.research > research || p.culture > culture).toBe(true);
+    // a question from an earlier turn is also settled when the next turn is worked out
+    const h = asked(22, 'envoy')!;
+    h.players[0].pending!.turn = h.turn - 1;
+    h.exec(0, { t: 'end' });
+    h.exec(1, { t: 'end' });
+    expect(h.players[0].pending?.turn ?? h.turn).toBeGreaterThanOrEqual(h.turn - 1);
+  });
+
+  it('are answered at once for the computers, and a bad one waits for turn 30', () => {
+    const g = world(23, { players: [{ name: 'A', ai: false }, { name: 'B', ai: true }] });
+    g.s.turn = 90;
+    for (const c of g.playerCities(1)) c.pop = 5;
+    for (let i = 0; i < 1500; i++) { g.players[1].lastEvent = -99; rollEvent(g, g.players[1]); }
+    expect(g.players[1].pending).toBeNull();
+    const early = world(24);
+    early.s.turn = 20;
+    for (const c of early.playerCities(0)) c.pop = 5;
+    for (let i = 0; i < 3000; i++) { early.players[0].lastEvent = -99; early.players[0].pending = null; rollEvent(early, early.players[0]); const q = early.players[0].pending as { id: string } | null; if (q) expect(q.id).not.toBe('rumours'); }
+  });
+
+  it('a quarantine costs gold and saves the city; carrying on is a gamble', () => {
+    const g = asked(25, 'rumours');
+    if (!g) return; // needs a city that can fall ill: skip when the map offers none
+    const p = g.players[0];
+    p.gold = 100;
+    const pop = g.playerCities(0).reduce((s, c) => s + c.pop, 0);
+    g.exec(0, { t: 'choose', option: 0 });
+    expect(p.gold).toBeLessThan(100);
+    expect(g.playerCities(0).reduce((s, c) => s + c.pop, 0)).toBe(pop);
+  });
+});
+
+describe('later policies', () => {
+  it('are offered only once their technology is known, and each does its work', async () => {
+    const { POLICIES } = await import('../src/shared/data');
+    const { cityYield } = await import('../src/shared/economy');
+    const { contentment, dealSlots } = await import('../src/shared/civ');
+    const g = world(26);
+    const p = g.players[0];
+    const late = POLICIES.filter((x) => x.tech);
+    expect(late.length).toBeGreaterThanOrEqual(6);
+    for (const x of late) expect(g.openPolicies(p), x.id).not.toContain(x.id);
+    p.techs.push(...late.map((x) => x.tech!));
+    for (const x of late) expect(g.openPolicies(p), x.id).toContain(x.id);
+    const city = g.playerCities(0)[0];
+    city.buildings.push('university', 'factory', 'temple');
+    const base = cityYield(g, city);
+    const content = contentment(g, 0).value;
+    const slots = dealSlots(g, 0);
+    p.policies.push('academies');
+    expect(cityYield(g, city).science).toBeCloseTo(base.science + 2, 5);
+    p.policies.push('industrial_policy');
+    expect(cityYield(g, city).prod).toBeCloseTo(base.prod + 3, 5);
+    expect(contentment(g, 0).value).toBeCloseTo(content - 2, 5);
+    p.policies.push('bread_circuses');
+    expect(cityYield(g, city).prod).toBeLessThan(base.prod + 3);
+    p.policies.push('open_society');
+    expect(dealSlots(g, 0)).toBe(slots + 1);
+    p.policies.push('public_health');
+    expect(triggerEvent(g, p, 'plague')).toBeNull();
   });
 });

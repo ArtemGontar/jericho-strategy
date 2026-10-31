@@ -198,9 +198,11 @@ export interface TechDef {
   era: 0 | 1 | 2 | 3 | 4;
   cost: number;
   pre: TechId[];
+  /** when given, one of these is needed as well: a fork in the tree */
+  any?: TechId[];
   desc: string;
 }
-const T = (id: TechId, name: string, era: 0 | 1 | 2 | 3 | 4, cost: number, pre: TechId[], desc: string): TechDef => ({ id, name, era, cost, pre, desc });
+const T = (id: TechId, name: string, era: 0 | 1 | 2 | 3 | 4, cost: number, pre: TechId[], desc: string, any?: TechId[]): TechDef => ({ id, name, era, cost, pre, desc, ...(any ? { any } : {}) });
 export const ERA_NAMES = ['Ancient', 'Classical', 'Medieval', 'Renaissance', 'Industrial'];
 export const TECHS: TechDef[] = [
   T('pottery', 'Pottery', 0, 25, [], 'Granary'),
@@ -232,10 +234,11 @@ export const TECHS: TechDef[] = [
   T('metallurgy', 'Metallurgy', 3, 260, ['gunpowder', 'mathematics'], 'Cannon, Frigate'),
   T('astronomy', 'Astronomy', 3, 230, ['education'], 'Observatory'),
   T('industrialization', 'Industrialization', 4, 170, ['metallurgy', 'banking'], 'Factory, Crystal Palace, and coal that can be dug'),
-  T('sanitation', 'Sanitation', 4, 150, ['medicine', 'industrialization'], 'Hospital: no more plague'),
-  T('electricity', 'Electricity', 4, 170, ['industrialization', 'astronomy'], 'Laboratory'),
-  T('combustion', 'Combustion', 4, 170, ['industrialization', 'navigation'], 'Oil that can be pumped'),
-  T('enlightenment', 'Enlightenment', 4, 230, ['astronomy', 'banking', 'industrialization'], 'Science victory'),
+  T('sanitation', 'Sanitation', 4, 190, ['medicine', 'industrialization'], 'Hospital: no more plague. The road of health'),
+  T('electricity', 'Electricity', 4, 230, ['industrialization', 'astronomy'], 'Laboratory: the road of learning'),
+  T('combustion', 'Combustion', 4, 170, ['industrialization', 'navigation'], 'Oil that can be pumped. The road of the sea and of industry'),
+  // three roads to the end, each costing about the same and each leaving something different behind
+  T('enlightenment', 'Enlightenment', 4, 200, ['astronomy', 'banking', 'industrialization'], 'Science victory. Reached by one of three roads: Electricity, Sanitation or Combustion', ['electricity', 'sanitation', 'combustion']),
 ];
 export const TECH_BY_ID: Record<string, TechDef> = Object.fromEntries(TECHS.map((t) => [t.id, t]));
 export const FINAL_TECH = 'enlightenment';
@@ -288,6 +291,8 @@ export interface PolicyDef {
   name: string;
   icon: string;
   desc: string;
+  /** only offered to a civilisation that knows this technology: the later policies */
+  tech?: string;
 }
 export const POLICIES: PolicyDef[] = [
   { id: 'agrarian', name: 'Agrarian Reform', icon: 'farm', desc: '+1 food in every city.' },
@@ -308,6 +313,13 @@ export const POLICIES: PolicyDef[] = [
   { id: 'veterans', name: 'Veteran Corps', icon: 'level', desc: 'Every new soldier starts as a veteran, with or without Barracks.' },
   { id: 'seafaring', name: 'Seafaring', icon: 'trireme', desc: '+1 food and +1 gold from every worked water tile. Ships cost 25% less.' },
   { id: 'hearth', name: 'Hearth and Home', icon: 'food', desc: 'Cities need 15% less food to grow.' },
+  // later policies: each is offered once its technology is known, and each costs something
+  { id: 'bread_circuses', name: 'Bread and Circuses', icon: 'culture', tech: 'drama', desc: '+3 contentment, but 5% less production.' },
+  { id: 'open_society', name: 'Open Society', icon: 'trade', tech: 'diplomacy', desc: 'One more trade agreement, and +1 gold from each.' },
+  { id: 'public_health', name: 'Public Health', icon: 'health', tech: 'medicine', desc: '+2 contentment, and plague never strikes.' },
+  { id: 'academies', name: 'Academies', icon: 'science', tech: 'education', desc: '+2 science for every University and Laboratory.' },
+  { id: 'state_religion', name: 'State Religion', icon: 'temple', tech: 'theology', desc: '+1 contentment and +1 culture for every Temple, Shrine and Cathedral.' },
+  { id: 'industrial_policy', name: 'Industrial Policy', icon: 'production', tech: 'industrialization', desc: '+3 production for every Factory, but 2 less contentment.' },
 ];
 export const POLICY_BY_ID: Record<string, PolicyDef> = Object.fromEntries(POLICIES.map((p) => [p.id, p]));
 /**

@@ -134,6 +134,30 @@ What to watch:
 - **Events fire about once every 14 turns per civilisation.** If that feels busy, lower `EVENT_CHANCE` in `events.ts`.
 - **Culture still wins about a third of games;** the goal was raised once and may need another look after play-testing.
 
+**Done: a guided start, a fork in the tree, later choices and a back-up nudge (sixth pass),** after the owner asked for a first game that teaches by pointing, not by text, and for the remaining next steps.
+
+- **The coach** (`src/client/ui/guide.ts`) replaces the text checklist. A ring pulses on the actual control and a tip of two or three words sits beside it, with the key word in bold, a picture, and progress dots: *Pick what to **build***, *Choose **research***, *Send the scout to **explore***, *End the turn*, *Found a **second city***, *Sign a **trade** deal*. Each step ends by itself when the thing is done; the cross skips it; it finishes on its own after the basics (or turn 60). It scrolls a hidden control into view and never intercepts a tap.
+- **A fork in the tree.** The Enlightenment needs one of three roads: Electricity (learning, Laboratory), Sanitation (health, Hospital) or Combustion (the sea and industry, oil). They cost about the same from the common way; which is cheapest depends on what a civilisation already knows, and the computers lean by temperament.
+- **Later policies** join the offers as their technology is learned (Bread and Circuses, Open Society, Public Health, Academies, State Religion, Industrial Policy), each with a price.
+- **Three events ask a question**: scholars and priests disagree, an envoy arrives, sickness is rumoured. Two big buttons, a picture and a word or two each; ignored, they settle themselves next turn, so nobody waits, online or off.
+- **A back-up nudge**: once or twice in a long game, a note that opens the save sheet in one tap, never more than every three days and not if a copy was made within the week.
+- **Drawn icons** for the civic, industrial, wonder and unique buildings and for coal and oil, in place of borrowed ones.
+
+Same 24 games, baseline against now [measured]:
+
+| | Baseline | Now |
+|---|---|---|
+| Victories | science 16, culture 7, last standing 1 | science 13, culture 7, domination 2, score 2 |
+| Median end turn | 153 | 175 |
+| Civilisations reaching the Industrial era | impossible | 75 of 100 |
+| Road taken to the Enlightenment | one | electricity 16, sanitation 23, combustion 34 |
+| Events per civilisation per game | none | about 12 (all kind before turn 30) |
+
+What to watch:
+- **Games are now about 20 turns longer than the first baseline.** That is the added era and its choices. On the standard 200-turn limit most still end by a victory; a few reach the limit and end on score. Quick and Short are unchanged in feel.
+- **State Religion is rarely adopted** because it needs Theology, which few computers research.
+- **The coach is checked in a browser at four sizes** but has had no new-player test; its wording and order are the first thing to adjust after one.
+
 ## The one-paragraph verdict
 
 The first thirty turns are good: a first city on turn 3, three cities by turn 30, a clear checklist, and a lot to do. After that the game turns into a **checklist**. Every building, every technology (bar one), every policy and every wonder ends up built, learned or adopted in every game, because nothing costs you anything you would miss. Land runs out around turn 60, wars start late (turn 55 on average) and rarely finish, so the next 90 turns are a queue of build orders until someone learns the Enlightenment and wins by science. The rules are sound and the engine is solid. What is missing is **scarcity**: reasons to choose one thing over another.

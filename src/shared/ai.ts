@@ -1,6 +1,6 @@
 import { tilesWithin, type Pos } from './hex';
 import { BUILDINGS, FINAL_TECH, IMPROVEMENTS, MIN_CITY_DISTANCE, PEACE_MIN_TURNS, RESOURCES, TECHS, TECH_BY_ID, TERRAIN, UNITS } from './data';
-import { availableTechs, canBuildBuilding, canBuildUnit, hasBuilding, itemCost, tileYield } from './economy';
+import { availableTechs, canBuildBuilding, canBuildUnit, hasBuilding, itemCost, techCost, tileYield } from './economy';
 import { canEnterTerrain, findPath, tileBlockedFor } from './path';
 import { previewAttack } from './combat';
 import { dealPartners, luxuryAccess } from './civ';
@@ -10,18 +10,38 @@ import type { Game } from './game';
 // ---------------------------------------------------------------------------------------------
 // Research
 
-let finalClosure: Set<string> | null = null;
-function closureOfFinal(): Set<string> {
-  if (finalClosure) return finalClosure;
+/** Every technology on the way to the final one when the given roads are taken at each fork. */
+function closureVia(choice: (t: { id: string; any: string[] }) => string): Set<string> {
   const set = new Set<string>();
   const visit = (id: string) => {
     if (set.has(id)) return;
     set.add(id);
-    for (const p of TECH_BY_ID[id].pre) visit(p);
+    const t = TECH_BY_ID[id];
+    for (const p of t.pre) visit(p);
+    if (t.any) visit(choice({ id, any: t.any }));
   };
   visit(FINAL_TECH);
-  finalClosure = set;
   return set;
+}
+
+/**
+ * The technologies this civilisation is working towards: the road at each fork is the one that is cheapest from here, with
+ * a lean by temperament (builders to health, warlords to the sea and industry), so neighbours do not all take the same one.
+ */
+function closureOfFinal(game: Game, p: Player): Set<string> {
+  const lean: Record<string, number> = p.personality === 'builder' ? { sanitation: 0.95 } : p.personality === 'warlord' ? { combustion: 0.9 } : {};
+  return closureVia(({ any }) => {
+    let best = any[0];
+    let bestCost = Infinity;
+    for (const road of any) {
+      const need = closureVia(() => road);
+      let cost = 0;
+      for (const id of need) if (!p.techs.includes(id)) cost += techCost(game, p, id);
+      cost *= lean[road] ?? 1;
+      if (cost < bestCost) { bestCost = cost; best = road; }
+    }
+    return best;
+  });
 }
 
 const TECH_WEIGHT: Record<string, number> = {
@@ -37,7 +57,7 @@ const TECH_WEIGHT: Record<string, number> = {
 export function aiChooseResearch(game: Game, p: Player, quiet = false): string | null {
   const options = availableTechs(p);
   if (!options.length) return null;
-  const closure = closureOfFinal();
+  const closure = closureOfFinal(game, p);
   let best = options[0];
   let bestScore = -Infinity;
   for (const id of options) {

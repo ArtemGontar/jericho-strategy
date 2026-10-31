@@ -160,6 +160,10 @@ export function cityYield(game: Game, city: City): CityYield {
   if (pol.includes('patronage')) culture += 2;
   if (pol.includes('bureaucracy')) upkeep = Math.max(0, upkeep - 1);
   if (pol.includes('trade_routes')) gold += city.capital ? 4 : 1;
+  if (pol.includes('academies')) science += 2 * ((hasBuilding(city, 'university') ? 1 : 0) + (hasBuilding(city, 'laboratory') ? 1 : 0));
+  if (pol.includes('industrial_policy') && hasBuilding(city, 'factory')) prod += 3;
+  if (pol.includes('state_religion')) culture += ['temple', 'shrine', 'cathedral'].filter((b) => hasBuilding(city, b as BuildingId)).length;
+  if (pol.includes('bread_circuses')) prod *= 0.95;
   if (pol.includes('merchants')) gold += (hasBuilding(city, 'market') ? 1 : 0) + (hasBuilding(city, 'bank') ? 2 : 0);
   if (pol.includes('scribes')) science += (hasBuilding(city, 'library') ? 1 : 0) + (hasBuilding(city, 'university') ? 2 : 0);
   if (pol.includes('monuments')) culture += 2 * city.buildings.filter((b) => BUILDINGS[b].wonder).length;
@@ -256,7 +260,7 @@ export function refreshPlayer(game: Game, playerId: number): void {
 }
 
 export function availableTechs(player: Player): string[] {
-  return TECHS.filter((t) => !player.techs.includes(t.id) && t.pre.every((p) => player.techs.includes(p))).map((t) => t.id);
+  return TECHS.filter((t) => !player.techs.includes(t.id) && t.pre.every((p) => player.techs.includes(p)) && (!t.any || t.any.some((p) => player.techs.includes(p)))).map((t) => t.id);
 }
 
 export function canBuildUnit(game: Game, playerId: number, city: City, unitId: string): boolean {

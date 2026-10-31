@@ -226,10 +226,11 @@ export function renderMedallions(gs: GameScreen, el: HTMLElement): void {
 // ------------------------------------------------------------------ notifications
 const NOTE_ICON: Record<string, string> = { info: 'log', good: 'star', bad: 'shield', war: 'swords', tech: 'science', wonder: 'wonder' };
 
-export function pushNote(gs: GameScreen, host: HTMLElement, text: string, kind: string, at?: { x: number; y: number }): void {
+export function pushNote(gs: GameScreen, host: HTMLElement, text: string, kind: string, at?: { x: number; y: number }, action?: () => void): void {
   const n = h('div', { class: `note ${kind}` }, icon(NOTE_ICON[kind] ?? 'log', 20), h('div', null, text));
   n.addEventListener('click', () => {
     if (at) gs.focus(at.x, at.y);
+    action?.();
     n.classList.add('out');
     setTimeout(() => n.remove(), 240);
   });
@@ -237,7 +238,7 @@ export function pushNote(gs: GameScreen, host: HTMLElement, text: string, kind: 
   // a phone has no room to spare: fewer notes, and they leave sooner
   const phone = isCompact();
   while (host.children.length > (phone ? 3 : 7)) host.firstChild?.remove();
-  const long = kind === 'war' || kind === 'wonder' || kind === 'tech';
+  const long = kind === 'war' || kind === 'wonder' || kind === 'tech' || !!action;
   setTimeout(() => {
     n.classList.add('out');
     setTimeout(() => n.remove(), 240);

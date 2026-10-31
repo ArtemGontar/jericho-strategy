@@ -59,7 +59,7 @@ function layoutTree(): { nodes: Map<string, Placed>; width: number; height: numb
     const known = sub.get(t.id);
     if (known !== undefined) return known;
     let d = 0;
-    for (const p of t.pre) {
+    for (const p of [...t.pre, ...(t.any ?? [])]) {
       const pt = TECH_BY_ID[p];
       if (pt.era === t.era) d = Math.max(d, subOf(pt) + 1);
     }
@@ -78,7 +78,7 @@ function layoutTree(): { nodes: Map<string, Placed>; width: number; height: numb
     for (let c = 0; c < cols; c++) {
       const list = inEra.filter((t) => sub.get(t.id) === c);
       const bary = (t: TechDef) => {
-        const ys = t.pre.map((p) => nodes.get(p)?.y).filter((v): v is number => v !== undefined);
+        const ys = [...t.pre, ...(t.any ?? [])].map((p) => nodes.get(p)?.y).filter((v): v is number => v !== undefined);
         return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : Infinity;
       };
       list.sort((a, b) => bary(a) - bary(b) || TECHS.indexOf(a) - TECHS.indexOf(b));
@@ -116,7 +116,7 @@ export function showTechTree(gs: GameScreen): HTMLElement {
   }
   const stateOf = (t: TechDef) => (v.techs.includes(t.id) ? 'known' : v.researching === t.id ? 'cur' : v.availableTechs.includes(t.id) ? 'avail' : 'locked');
   for (const { t, x, y } of nodes.values()) {
-    for (const pre of t.pre) {
+    for (const pre of [...t.pre, ...(t.any ?? [])]) {
       const a = nodes.get(pre)!;
       const x1 = a.x + NODE_W;
       const y1 = a.y + NODE_H / 2;
@@ -126,14 +126,14 @@ export function showTechTree(gs: GameScreen): HTMLElement {
       const mid = Math.max(24, (x2 - x1) / 2);
       p.setAttribute('d', `M${x1} ${y1} C${x1 + mid} ${y1} ${x2 - mid} ${y2} ${x2} ${y2}`);
       const st = stateOf(t);
-      p.setAttribute('class', `link ${v.techs.includes(pre) && st === 'known' ? 'lit' : v.techs.includes(pre) && (st === 'avail' || st === 'cur') ? 'next' : ''}`);
+      p.setAttribute('class', `link ${t.any?.includes(pre) ? 'alt' : ''} ${v.techs.includes(pre) && st === 'known' ? 'lit' : v.techs.includes(pre) && (st === 'avail' || st === 'cur') ? 'next' : ''}`);
       svg.append(p);
     }
   }
   for (const { t, x, y } of nodes.values()) {
     const st = stateOf(t);
     const cost = v.techCosts[t.id];
-    const missing = t.pre.filter((p) => !v.techs.includes(p)).map((p) => TECH_BY_ID[p].name);
+    const missing = [...t.pre.filter((p) => !v.techs.includes(p)).map((p) => TECH_BY_ID[p].name), ...(t.any && !t.any.some((p) => v.techs.includes(p)) ? [`one of ${t.any.map((p) => TECH_BY_ID[p].name).join(', ')}`] : [])];
     const sub = st === 'known' ? 'Discovered' : st === 'cur' ? `${turnsLeft(v.researchCost - v.research, v.income.science)} turns left` : st === 'avail' ? `${cost} · ${turnsLeft(cost, v.income.science)} turns` : `Needs ${missing.join(', ')}`;
     const node = h('div', { class: `node ${st} ${v.suggestedTech === t.id && st === 'avail' ? 'suggest' : ''}`, style: `left:${x}px;top:${y}px;--era:${ERA_COLOR[t.era]}`, title: `Unlocks: ${t.desc}` },
       h('span', { class: 'badge' }, artIcon(TECH_ICON[t.id] ?? 'science', 22), st === 'known' ? h('i', { class: 'tick' }, icon('check', 9)) : null),
@@ -410,6 +410,24 @@ export function showMenu(gs: GameScreen): HTMLElement {
     if (await askConfirm(gs.transport.kind === 'local' ? 'Leave to the main menu? Your game is saved automatically each turn.' : 'Leave the game? You can rejoin with the room code.', 'Leave')) gs.opts.onExit();
   })));
   return sheet('Menu', body, () => gs.closeModal(), { narrow: true, scene: 'settings' });
+}
+
+// ------------------------------------------------------------------ a question
+/** A question with two answers: one line, two big buttons. Left alone, it answers itself next turn. */
+export function showEvent(gs: GameScreen): HTMLElement {
+  const q = gs.view.pending;
+  if (!q) return sheet('Decision', [h('p', { class: 'muted' }, 'Nothing to decide.')], () => gs.closeModal(), { narrow: true, scene: 'events' });
+  const buttons = h('div', { class: 'choicebtns' }, ...q.options.map((o, i) => {
+    const b = h('button', { class: 'choicebtn', type: 'button' }, h('span', { class: 'cb-art' }, icon(o.art, 34)), h('b', null, o.label), h('small', null, o.hint));
+    b.addEventListener('click', async () => {
+      if (await gs.cmd({ t: 'choose', option: i })) {
+        sfx('tech');
+        gs.closeModal();
+      }
+    });
+    return b;
+  }));
+  return sheet('Decide', [h('p', { class: 'ask' }, q.text), buttons, h('p', { class: 'muted', style: { margin: '0', fontSize: '12px', textAlign: 'center' } }, 'Not now? It is settled for you next turn.')], () => gs.closeModal(), { narrow: true, scene: 'events' });
 }
 
 // ------------------------------------------------------------------ contentment

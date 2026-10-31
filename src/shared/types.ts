@@ -106,6 +106,17 @@ export interface City {
 export type AiPersonality = 'builder' | 'warlord' | 'balanced';
 export type AiLevel = 'easy' | 'normal' | 'hard';
 
+export interface PendingEvent {
+  id: string;
+  /** one short line */
+  text: string;
+  /** the city it concerns, or -1 */
+  city: number;
+  at?: Pos;
+  turn: number;
+  options: Array<{ label: string; art: string; hint: string }>;
+}
+
 export interface Player {
   id: number;
   name: string;
@@ -147,6 +158,8 @@ export interface Player {
   lastEvent: number;
   /** research chooses itself whenever a technology is finished */
   autoResearch: boolean;
+  /** a question waiting for an answer (see events.ts); left alone, it answers itself next turn */
+  pending: PendingEvent | null;
 }
 
 export interface Proposal {

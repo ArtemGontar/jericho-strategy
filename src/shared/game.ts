@@ -11,7 +11,7 @@ import {
 } from './economy';
 import { findPath, stepCost, tileBlockedFor } from './path';
 import { resolveAttack, cityStrength, bombardTargets, captureCity } from './combat';
-import { rollEvent } from './events';
+import { chooseEvent, rollEvent, settlePending } from './events';
 import { SANCTION_TURNS, dealGold, dealPartners, dealSlots } from './civ';
 import { aiTakeTurn, aiAutoExplore, aiAutoWorker, aiChooseResearch, aiPlanCity } from './ai';
 import type {
@@ -40,6 +40,7 @@ export type Command =
   | { t: 'sell'; city: number; building: string }
   | { t: 'governor'; city: number; on: boolean }
   | { t: 'autoResearch'; on: boolean }
+  | { t: 'choose'; option: number }
   | { t: 'lift'; on: number }
   | { t: 'gift'; to: number; amount: number }
   | { t: 'policy'; id: string }
@@ -85,9 +86,9 @@ export const STATE_VERSION = 1;
 
 /** What each kind of computer player reaches for first when offered a policy (earlier is better). */
 const AI_POLICY_PREF: Record<string, string[]> = {
-  warlord: ['drill', 'veterans', 'fortification', 'conscription', 'craftsmen', 'pioneers', 'agrarian', 'merchants', 'exploration', 'hearth'],
-  builder: ['patronage', 'scholarship', 'monuments', 'scribes', 'agrarian', 'coinage', 'merchants', 'hearth', 'bureaucracy', 'trade_routes', 'pioneers', 'seafaring', 'exploration'],
-  balanced: ['craftsmen', 'agrarian', 'scholarship', 'patronage', 'pioneers', 'coinage', 'merchants', 'scribes', 'hearth', 'trade_routes', 'bureaucracy', 'seafaring', 'exploration'],
+  warlord: ['drill', 'veterans', 'fortification', 'industrial_policy', 'conscription', 'craftsmen', 'pioneers', 'agrarian', 'merchants', 'exploration', 'hearth'],
+  builder: ['patronage', 'academies', 'scholarship', 'state_religion', 'monuments', 'public_health', 'scribes', 'open_society', 'agrarian', 'bread_circuses', 'coinage', 'merchants', 'hearth', 'bureaucracy', 'trade_routes', 'pioneers', 'seafaring', 'exploration'],
+  balanced: ['craftsmen', 'agrarian', 'academies', 'scholarship', 'open_society', 'public_health', 'patronage', 'pioneers', 'coinage', 'merchants', 'scribes', 'hearth', 'trade_routes', 'bureaucracy', 'seafaring', 'exploration'],
 };
 
 export class Game {
@@ -169,6 +170,7 @@ export class Game {
         restless: false,
         lastEvent: -99,
         autoResearch: false,
+        pending: null,
       };
     });
     const relations: Relation[][] = players.map((a) => players.map((b) => (a.id === b.id ? 'peace' : 'unmet')));
@@ -252,6 +254,7 @@ export class Game {
       if (p.restless === undefined) p.restless = false;
       if (p.lastEvent === undefined) p.lastEvent = -99;
       if (p.autoResearch === undefined) p.autoResearch = false;
+      if (p.pending === undefined) p.pending = null;
     }
   }
 
@@ -557,6 +560,7 @@ export class Game {
       case 'sanction': res = this.cmdSanction(p, cmd.on); break;
       case 'sell': res = this.cmdSell(p, cmd.city, cmd.building); break;
       case 'governor': res = this.cmdGovernor(p, cmd.city, cmd.on); break;
+      case 'choose': res = chooseEvent(this, p, cmd.option); break;
       case 'autoResearch': p.autoResearch = !!cmd.on; if (p.autoResearch && !p.researching && availableTechs(p).length) p.researching = aiChooseResearch(this, p); res = { ok: true }; break;
       case 'lift': res = this.cmdLift(p, cmd.on); break;
       case 'gift': res = this.cmdGift(p, cmd.to, cmd.amount); break;
@@ -1177,7 +1181,7 @@ export class Game {
 
   /** Policies that can still be offered: not adopted, not passed over. */
   openPolicies(p: Player): string[] {
-    return POLICIES.filter((x) => !p.policies.includes(x.id) && !p.forgone.includes(x.id)).map((x) => x.id);
+    return POLICIES.filter((x) => !p.policies.includes(x.id) && !p.forgone.includes(x.id) && (!x.tech || p.techs.includes(x.tech))).map((x) => x.id);
   }
 
   private offerPolicy(p: Player): void {
@@ -1384,6 +1388,8 @@ export class Game {
   }
 
   private economyTurn(p: Player): void {
+    // a question left unanswered answers itself, so no one is ever kept waiting
+    if (p.pending && p.pending.turn < this.s.turn) settlePending(this, p);
     refreshPlayer(this, p.id);
     // say so, once, when the people turn restless and when they recover
     if (!p.ai) {

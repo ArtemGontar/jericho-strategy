@@ -7,7 +7,7 @@ import { aiChooseResearch, suggestBuild } from './ai';
 import { contentment, dealIncome, dealPartners, dealSlots, luxuryAccess, ownLuxuries, type Contentment } from './civ';
 import type { Game, GameEvent } from './game';
 import type {
-  BuildingId, Focus, GameSettings, Note, Proposal, Relation, ResourceId, TerrainId, UnitOrder, UnitTypeId, WorkKind,
+  BuildingId, Focus, GameSettings, Note, PendingEvent, Proposal, Relation, ResourceId, TerrainId, UnitOrder, UnitTypeId, WorkKind,
 } from './types';
 
 export const TERRAIN_LIST: TerrainId[] = ['ocean', 'coast', 'grass', 'plains', 'desert', 'tundra', 'forest', 'hills', 'mountain'];
@@ -140,6 +140,8 @@ export interface GameView {
   /** research chooses itself, and what it would choose next */
   autoResearch: boolean;
   suggestedTech: string | null;
+  /** a question waiting for the player's answer */
+  pending: PendingEvent | null;
   /** culture needed for the next policy */
   policyCost: number;
   // map: parallel arrays, index = y * width + x
@@ -324,6 +326,7 @@ export function buildView(game: Game, me: number, timerEnds = 0): GameView {
     dealsLeft: Math.max(0, dealSlots(game, me) - dealPartners(game, me).length),
     weariness: Math.round(p.weariness * 10) / 10,
     autoResearch: p.autoResearch,
+    pending: p.pending,
     suggestedTech: p.researching || !availableTechs(p).length ? null : aiChooseResearch(game, p, true),
     policyCost: game.nextPolicyCost(p),
     terrain, resource, improvement, road, hut, owner, state,

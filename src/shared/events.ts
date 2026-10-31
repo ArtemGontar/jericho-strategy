@@ -13,7 +13,7 @@
 import { BUILDINGS, LUXURIES, RESOURCES } from './data';
 import { foodNeeded, techCost } from './economy';
 import { luxuryAccess } from './civ';
-import type { City, Player, ResourceId, Tile } from './types';
+import type { City, CmdResult, PendingEvent, Player, ResourceId, Tile } from './types';
 import type { Game } from './game';
 
 export type EventsSetting = 'off' | 'gentle' | 'normal';
@@ -162,7 +162,7 @@ export const EVENTS: EventDef[] = [
     id: 'plague', kind: 'bad', minTurn: 35,
     plan: (c) => {
       const city = pick(c.game, c.cities.filter((x) => x.pop >= 3 && !x.buildings.includes('hospital')));
-      if (!city) return null;
+      if (!city || c.p.policies.includes('public_health')) return null;
       // medicine and sanitation make it rare
       const weight = 6 * (has(c.p, 'medicine') ? 0.4 : 1) * (has(c.p, 'sanitation') ? 0.3 : 1);
       return { weight, run: () => {
@@ -230,6 +230,106 @@ export const EVENTS: EventDef[] = [
     },
   },
 ];
+
+// ---------------------------------------------------------------------------------------------------- questions
+/**
+ * A few events ask something. The player sees two options with a picture and two words each; if the question is ignored it
+ * is answered the way `fallback` says when the next turn begins, so no one is ever held up. The computers just choose.
+ */
+interface Choice {
+  id: string;
+  kind: 'good' | 'bad';
+  minTurn: number;
+  /** the option taken when nobody answers */
+  fallback: number;
+  plan(c: Ctx): { weight: number; text: string; city?: City; options: PendingEvent['options'] } | null;
+  resolve(c: Ctx, option: number, city: City | null): { text: string; kind: 'good' | 'bad' | 'info' };
+}
+
+export const CHOICES: Choice[] = [
+  {
+    id: 'dispute', kind: 'good', minTurn: 20, fallback: 0,
+    plan: (c) => (c.p.researching ? { weight: 4, text: 'Scholars and priests disagree about what to fund.', options: [{ label: 'Libraries', art: 'library', hint: 'research' }, { label: 'Temples', art: 'temple', hint: 'culture' }] } : null),
+    resolve: (c, option) => {
+      const { game, p } = c;
+      if (option === 0 && p.researching) {
+        const bonus = Math.max(8, Math.round(techCost(game, p, p.researching) * 0.18));
+        p.research += bonus;
+        return { text: `The libraries win: +${bonus} research.`, kind: 'good' };
+      }
+      const culture = 20 + Math.round(game.turn / 3);
+      p.culture += culture;
+      return { text: `The temples win: +${culture} culture.`, kind: 'good' };
+    },
+  },
+  {
+    id: 'envoy', kind: 'good', minTurn: 12, fallback: 0,
+    plan: () => ({ weight: 4, text: 'An envoy from a distant land arrives.', options: [{ label: 'Take gifts', art: 'gold', hint: 'gold' }, { label: 'Learn from them', art: 'science', hint: 'research' }] }),
+    resolve: (c, option) => {
+      const { game, p } = c;
+      if (option === 0 || !p.researching) {
+        const gold = 25 + 15 * c.era;
+        p.gold += gold;
+        return { text: `The envoy's gifts: +${gold} gold.`, kind: 'good' };
+      }
+      const bonus = Math.max(8, Math.round(techCost(game, p, p.researching) * 0.2));
+      p.research += bonus;
+      return { text: `The envoy teaches your scholars: +${bonus} research.`, kind: 'good' };
+    },
+  },
+  {
+    id: 'rumours', kind: 'bad', minTurn: FIRST_BAD_TURN, fallback: 1,
+    plan: (c) => {
+      if (c.p.policies.includes('public_health')) return null;
+      const city = pick(c.game, c.cities.filter((x) => x.pop >= 3 && !x.buildings.includes('hospital')));
+      if (!city) return null;
+      const cost = 20 + 10 * c.era;
+      return { weight: 4, city, text: `Sickness is rumoured in ${city.name}.`, options: [{ label: 'Quarantine', art: 'health', hint: `${cost} gold` }, { label: 'Carry on', art: 'skip', hint: 'a risk' }] };
+    },
+    resolve: (c, option, city) => {
+      const { game, p } = c;
+      if (!city) return { text: 'The rumours fade.', kind: 'info' };
+      if (option === 0) {
+        const cost = Math.min(p.gold, 20 + 10 * c.era);
+        p.gold -= cost;
+        return { text: `${city.name} is quarantined for ${cost} gold. The sickness goes no further.`, kind: 'good' };
+      }
+      if (game.rng.chance(0.5) && city.pop >= 2) {
+        city.pop -= 1;
+        city.food = 0;
+        return { text: `The sickness spreads in ${city.name}: some of its people die.`, kind: 'bad' };
+      }
+      return { text: `The rumours in ${city.name} come to nothing.`, kind: 'info' };
+    },
+  },
+];
+const CHOICE_BY_ID: Record<string, Choice> = Object.fromEntries(CHOICES.map((x) => [x.id, x]));
+
+function ctxOf(game: Game, p: Player): Ctx {
+  return { game, p, cities: game.s.cities.filter((c) => c.owner === p.id), era: eraOf(game, p) };
+}
+
+/** Answer the waiting question. */
+export function chooseEvent(game: Game, p: Player, option: number): CmdResult {
+  const pending = p.pending;
+  if (!pending) return { ok: false, error: 'Nothing is waiting for an answer.' };
+  if (!Number.isInteger(option) || option < 0 || option >= pending.options.length) return { ok: false, error: 'That is not one of the options.' };
+  const def = CHOICE_BY_ID[pending.id];
+  p.pending = null;
+  if (!def) return { ok: true };
+  const city = game.s.cities.find((c) => c.id === pending.city && c.owner === p.id) ?? null;
+  const r = def.resolve(ctxOf(game, p), option, city);
+  if (!p.ai) game.note([p.id], r.text, r.kind, pending.at);
+  return { ok: true };
+}
+
+/** A question nobody answered gets its default. */
+export function settlePending(game: Game, p: Player): void {
+  const pending = p.pending;
+  if (!pending) return;
+  chooseEvent(game, p, CHOICE_BY_ID[pending.id]?.fallback ?? 0);
+}
+
 export const EVENT_BY_ID: Record<string, EventDef> = Object.fromEntries(EVENTS.map((e) => [e.id, e]));
 
 /** How hard fate is on the player: gentler when the opponents are set to easy, a little harsher when they are hard. */
@@ -288,6 +388,28 @@ export function rollEvent(game: Game, p: Player): EventResult | null {
     const plan = def.plan(ctx);
     if (!plan) continue;
     options.push({ weight: plan.weight * (def.kind === 'bad' ? fate * (setting === 'gentle' ? 0.6 : 1) : 1), plan, def });
+  }
+  // a few events ask something instead of just happening (never while a question is already waiting)
+  if (!p.pending) {
+    for (const def of CHOICES) {
+      if (game.turn < def.minTurn) continue;
+      if (def.kind === 'bad' && (game.turn < FIRST_BAD_TURN || cities.length < 2)) continue;
+      const q = def.plan(ctx);
+      if (!q) continue;
+      const wt = q.weight * (def.kind === 'bad' ? fate * (setting === 'gentle' ? 0.6 : 1) : 1);
+      const plan: Plan = {
+        weight: wt,
+        run: () => {
+          if (p.ai) {
+            const r = def.resolve(ctx, game.rng.chance(0.5) ? 0 : 1, q.city ?? null);
+            return { text: r.text, kind: r.kind };
+          }
+          p.pending = { id: def.id, text: q.text, city: q.city?.id ?? -1, at: q.city ? { x: q.city.x, y: q.city.y } : undefined, turn: game.turn, options: q.options };
+          return { text: q.text, at: q.city ? { x: q.city.x, y: q.city.y } : undefined, kind: 'info' };
+        },
+      };
+      options.push({ weight: plan.weight, plan, def: { id: def.id, kind: def.kind, minTurn: def.minTurn, plan: () => null } });
+    }
   }
   const total = options.reduce((s, o) => s + o.weight, 0);
   if (!total) return null;
