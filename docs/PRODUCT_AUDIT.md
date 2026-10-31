@@ -4,6 +4,23 @@ Written from the product owner's seat. `AUDIT.md`, `FUN_AUDIT.md` and `PERFORMAN
 
 **Evidence tags.** `[measured]` was run or counted in this repository. `[code]` was read in the source. `[inferred]` is reasoning from how browsers or players usually behave and needs a check on a real device or with real players. Nothing here comes from real players: the game has no analytics, so every claim about player behaviour is `[inferred]` by necessity (see direction 9).
 
+## Status
+
+Updated after the first round of work. The owner decided that **analytics and error reporting are not wanted**, so direction 9 and roadmap item 1 are dropped, not postponed. The recommendation about "measure before guessing" stands only as the playtest questions at the end.
+
+| Area | Done | Not done |
+|---|---|---|
+| Saves (7) | Versioned records with migration from the first release, autosave plus three slots, export and import as a file, a saved-games screen, plain messages for a full or refused store and for a save that cannot be opened (the file is kept), tests with a committed first-release save | Cloud save |
+| Quick games (2) | **Quick game** on the title screen (random civilisation, 2 computers, small map, 60 turns), a third game length, *Short · 60*, and phones default to *Quick · 120* in the setup form | Scaling costs for the 60-turn length (it plays at the quick pace) |
+| Friends first (5) | Native share sheet and copy for invites (lobby and menu), link-preview tags and a 1200×630 picture (absolute addresses when `SITE_URL` or Vercel's production address is known), a server check on the Play online screen that disables create and join and says so when no backend answers, a 60-turn option in online rooms, a tab-title marker, buzz and optional notification when a new turn starts while the tab is in the background | Real push notifications (needs a push service and a server key), asynchronous long timers, room passwords, kicking, spectators |
+| Phone basics (1, 6) | The first-game list became a one-line chip with touch wording, tile info is placed above the unit card with a background and clears itself, offline service worker, manifest `standalone` and `any` orientation, screen wake lock, vibration (own setting), smallest text sizes raised on phones | Reachability test with real hands; a real-device performance check of the 3D map |
+| Smaller items (8, 10, 11, 12) | Fonts bundled instead of loaded from Google, colour-blind palette (Okabe-Ito civilisation colours, blue and orange for good and bad, a mark on warring rivals), high-contrast option, build number in the menu, a daily 3D end-to-end job, deploy docs point to `main`, stricter type checking (the `noUnusedLocals` option was listed twice with `false` winning) | Translations (strings are still inline), a linter (typescript-eslint does not support TypeScript 7 yet), screenshot comparisons, a privacy page, a record of where each picture came from |
+
+Two corrections to the first version of this document:
+
+- **Tile info on touch.** The first version said tapping a tile shows nothing. It does show a strip, but the strip had no background, sat under the notification area and collided with toasts. That is what was fixed.
+- **Confirmation dialogs.** Found while testing: every `askConfirm` dialog (Leave game, declare war and attack, replace a save) had no styles at all. It rendered as a plain block at the top-left of the screen, underneath the open menu, so "Leave game" appeared to do nothing. Fixed; a browser test now checks the dialog is visible and centred.
+
 ## Summary
 
 JERICHO is already a complete, unusually polished browser strategy game for its size: 8 civilisations, 24 technologies in 4 eras, 17 units, 17 buildings and wonders, 12 policies, 3 victory routes, sea play, solo, hot-seat and online with friends, a 3D map with a flat fallback, and a hardened server. The engine is deterministic and tested. The weak spots are not in the game rules. They are around the game: how a stranger learns it, whether a game fits in a phone session, whether progress survives, whether friends can actually get in, and whether anyone can tell how it is going.
@@ -21,7 +38,7 @@ The five bets with the best return, in order:
 | Finding | Evidence | Impact | Suggestion |
 |---|---|---|---|
 | The "Getting started" checklist is hidden on every phone-sized screen, so the player who most needs it never sees it. | `[code]` `.guide { display: none }` in the phone rules (it was already hidden at 760 px and below before the mobile pass; now also on short landscape) | High on mobile | Show the current step as a one-line banner above the turn button on phones; tap to expand the list. |
-| Tapping a tile shows nothing about it. Terrain, yields, owner and resource are shown only on mouse hover, which touch does not have. | `[code]` `renderTileInfo` is driven by `this.hover`, which `onTap` sets only for non-touch input | High on mobile | A "tile inspector" strip on tap (long-press or tap an empty tile): terrain, yields, owner, improvement, defence bonus. |
+| ~~Tapping a tile shows nothing about it.~~ **Corrected:** it does show a strip, but it was unstyled, sat under the toasts and stayed forever. | `[measured]` screenshot after a tap | Medium on mobile | Done: the strip sits above the unit card on a background and clears after a few seconds. |
 | New players choose among 8 civilisations, 3 difficulties, 3 AI temperaments, 3 map options, 2 speeds, 2 victory modes, a seed and an opponent count before they have seen the game. | `[code]` setup screen | Medium | Offer **Quick start** on the title screen (random civilisation, normal, quick speed, 2 opponents) and keep the full form behind "Custom game". |
 | Only one tutorial surface exists, a text checklist. No scripted first game, no contextual hints when something unusual happens (first war, first policy, first wonder, first sea crossing). | `[code]` `ui/guide.ts` has 7 steps and nothing else | Medium | A guided 30-turn first scenario on a small fixed map (the seed field already makes this cheap), plus one-time "first time you…" hints. |
 | The manifest asks for landscape, fullscreen. An installed copy is therefore locked to landscape even though portrait is now a supported layout. | `[code]` `public/manifest.webmanifest`: `"orientation": "landscape"` | Medium | Change to `"orientation": "any"`, `"display": "standalone"` (fullscreen hides the status bar and, on some Androids, the system gestures). |
@@ -102,7 +119,7 @@ The layout pass fixed portrait and landscape. What remains is the platform aroun
 
 ## 9. Observability: knowing how the product is doing
 
-This is the largest gap, because it hides every other gap.
+**Dropped by the owner: no analytics and no error reporting.** The findings stay for the record. The build number now shows in Menu so a bug report can name a version.
 
 | Finding | Evidence | Suggestion |
 |---|---|---|
@@ -148,7 +165,7 @@ Effort: S = a day or two, M = about a week, L = several weeks. Impact is for a p
 ### Now (next two weeks)
 | # | Item | Direction | Effort | Why now |
 |---|---|---|---|---|
-| 1 | Event counter and client error reporting; build id in Menu | 9 | S | Everything else gets ranked with data. |
+| 1 | ~~Event counter and client error reporting~~ dropped; build id in Menu done | 9 | S | Decision: no analytics. |
 | 2 | Fix the silent failure on "Continue"; add save version field; show a message when a write fails | 7 | S | It can destroy a game and says nothing. |
 | 3 | Open Graph tags, native share for invites, check online works on the live site | 5, 12 | S | The core promise is playing with friends. |
 | 4 | Manifest to `orientation: any`, `display: standalone`; self-host fonts | 1, 11 | S | One-line fixes with a visible effect. |

@@ -3,6 +3,7 @@ import { buildView, filterEvents, type GameView } from '../shared/view';
 import { previewAttack, type AttackPreview } from '../shared/combat';
 import type { CmdResult } from '../shared/types';
 import type { ClientMsg, RoomInfo, ServerMsg } from '../shared/protocol';
+import { hasAnySave, makeRecord, newestReadable, readSave, removeSave, writeSave, type SaveId, type Store } from './saves';
 
 export interface GameTransport {
   readonly kind: 'local' | 'remote';
@@ -22,7 +23,14 @@ export interface GameTransport {
 }
 
 // --------------------------------------------------------------------------- local (solo + hot-seat)
-export const SAVE_KEY = 'jericho.save.v1';
+/** The browser's storage, or a stand-in that refuses everything when the browser hides it (some private modes). */
+export function browserStore(): Store {
+  try {
+    return window.localStorage;
+  } catch {
+    return { getItem: () => { throw new Error('no storage'); }, setItem: () => { throw new Error('no storage'); }, removeItem: () => { throw new Error('no storage'); } };
+  }
+}
 
 export class LocalTransport implements GameTransport {
   readonly kind = 'local' as const;
@@ -102,34 +110,62 @@ export class LocalTransport implements GameTransport {
 
   sendChat(): void {}
 
-  save(): void {
-    try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ humans: this.humans, state: this.game.toJSON() }));
-    } catch {
-      /* storage full or unavailable */
+  /** Called once when the browser refuses a save, so the player is told instead of believing the game is safe. */
+  onSaveFailed: (message: string) => void = () => {};
+  private saveWarned = false;
+
+  /** Write the autosave, or a numbered slot when asked. Returns whether it worked. */
+  save(id: SaveId = 'auto'): boolean {
+    const res = writeSave(browserStore(), id, makeRecord(this.game.toJSON(), this.humans));
+    if (res.ok) {
+      this.saveWarned = false;
+    } else if (id !== 'auto' || !this.saveWarned) {
+      this.saveWarned = true;
+      this.onSaveFailed(res.error);
     }
+    return res.ok;
   }
   clearSave(): void {
-    try { localStorage.removeItem(SAVE_KEY); } catch { /* ignore */ }
+    removeSave(browserStore(), 'auto');
   }
   close(): void {}
 }
 
-export function loadSavedGame(): LocalTransport | null {
+/** Open a saved game. A save that cannot be opened is reported and left in storage untouched. */
+export function loadSavedGame(id?: SaveId): { ok: true; transport: LocalTransport } | { ok: false; error: string } {
+  const store = browserStore();
+  const target = id ?? newestReadable(store)?.id;
+  if (!target) return { ok: false, error: 'There is no saved game to open.' };
+  const res = readSave(store, target);
+  if (!res.ok) return { ok: false, error: res.error };
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as { humans: number[]; state: ReturnType<Game['toJSON']> };
-    const game = Game.fromJSON(data.state);
-    if (game.s.over) return null;
-    return new LocalTransport(game, data.humans);
+    const game = Game.fromJSON(res.record.state);
+    if (game.s.over) return { ok: false, error: 'That game is already over.' };
+    return { ok: true, transport: new LocalTransport(game, res.record.humans) };
   } catch {
-    return null;
+    return { ok: false, error: 'The save could not be opened. It is kept, so you can export it.' };
   }
 }
 
 export function hasSavedGame(): boolean {
-  try { return !!localStorage.getItem(SAVE_KEY); } catch { return false; }
+  return hasAnySave(browserStore());
+}
+
+/** Is a game server answering at the address this page would use for online play? */
+export async function checkServer(timeoutMs = 6000): Promise<boolean> {
+  const url = RemoteTransport.healthUrl();
+  if (!url) return false;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
+    // a static host answers every path, so the body must be the server's own
+    return res.ok && (await res.text()).trim() === 'ok';
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // --------------------------------------------------------------------------- remote (WebSocket)
@@ -162,6 +198,19 @@ export class RemoteTransport implements GameTransport {
     if (baked) return baked;
     const proto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${proto}//${loc.host}/ws`;
+  }
+
+  /** Address of the server's health check, derived from the socket address. */
+  static healthUrl(wsUrl = RemoteTransport.defaultUrl()): string | null {
+    try {
+      const u = new URL(wsUrl);
+      u.protocol = u.protocol === 'wss:' ? 'https:' : 'http:';
+      u.pathname = '/healthz';
+      u.search = '';
+      return u.toString();
+    } catch {
+      return null;
+    }
   }
 
   connect(): Promise<void> {

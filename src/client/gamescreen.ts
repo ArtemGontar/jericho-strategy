@@ -13,12 +13,14 @@ import { cineMode } from './cinematics';
 import { renderGuide } from './ui/guide';
 import { HEX, HEX_W } from './sprites';
 import { sfx, isMuted, setMuted } from './audio';
+import { turnAlert, watchVisibility } from './alerts';
+import { keepAwake } from './wakelock';
 import { askConfirm, btn, clear, COMPACT_QUERY, h, isCompact, isShort, put, SHORT_QUERY } from './ui/dom';
 import type { GameTransport } from './transport';
 import { renderCityPanel } from './ui/citypanel';
 import { currentEra, renderLenses, renderMedallions, renderTileInfo, renderTopbar, renderTurnControl, renderUnitBar, pushNote } from './ui/hud';
 import { ERA_NAMES } from '../shared/data';
-import { showCities, showDiplomacy, showHelp, showLog, showMenu, showPolicies, showTechTree, showVictory } from './ui/screens';
+import { showCities, showDiplomacy, showHelp, showLog, showMenu, showSave, showPolicies, showTechTree, showVictory } from './ui/screens';
 
 export interface GameScreenOptions {
   /** called when the user leaves to the main menu */
@@ -59,6 +61,7 @@ export class GameScreen {
   busy = false;
   noteHistory: Array<{ id: number; turn: number; text: string; kind: string; at?: Pos }> = [];
   private lastNoteId = -1;
+  private inspectTimer: ReturnType<typeof setTimeout> | null = null;
   private lastTurn = 0;
   private lastEra = -1;
   private moments!: Moments;
@@ -132,6 +135,7 @@ export class GameScreen {
     transport.onView = (v, ev) => this.onView(v, ev);
     transport.onStatus = (ok) => this.connBanner.classList.toggle('hidden', ok);
     transport.onError = (m) => this.toast(m, 'bad');
+    if ('onSaveFailed' in transport) (transport as { onSaveFailed: (m: string) => void }).onSaveFailed = (m) => this.toast(m, 'bad');
     transport.onChat = (from, slot, text) => this.addChat(from, slot, text);
     transport.onCurtain = (name, done) => this.showCurtain(name, done);
 
@@ -146,6 +150,8 @@ export class GameScreen {
     window.addEventListener('resize', onResize);
     this.cleanup.push(() => window.removeEventListener('resize', onResize));
     // turning the phone changes which controls float on the map and which sit in bars: rebuild them
+    this.cleanup.push(watchVisibility());
+    this.cleanup.push(keepAwake());
     for (const q of [COMPACT_QUERY, SHORT_QUERY]) {
       const mq = window.matchMedia(q);
       const onLayout = () => { if (this.view) { this.refreshUI(); this.dirty = true; } };
@@ -277,6 +283,7 @@ export class GameScreen {
       this.lastTurn = v.turn;
       this.pending = null;
       sfx('turn');
+      turnAlert(v.turn);
       this.toast(`Turn ${v.turn}`, 'info');
       this.autoSelect();
     }
@@ -780,8 +787,17 @@ export class GameScreen {
     sfx('click');
     if (mode !== 'touch') this.hover = t;
     else {
+      // there is no hover on a touch screen: the tapped tile's strip stays a few seconds, then goes
       this.hover = t;
       this.refreshTileInfo();
+      if (this.inspectTimer) clearTimeout(this.inspectTimer);
+      this.inspectTimer = setTimeout(() => {
+        if (this.hover && this.hover.x === t.x && this.hover.y === t.y) {
+          this.hover = null;
+          this.refreshTileInfo();
+          this.dirty = true;
+        }
+      }, 6000);
     }
     const W = this.view.settings.width;
     const key = t.y * W + t.x;
@@ -1052,6 +1068,8 @@ export class GameScreen {
     renderTopbar(this, this.topbar);
     renderMedallions(this, this.medallions);
     renderUnitBar(this, this.unitbar);
+    // the tile strip sits just above the unit card, whatever height it has
+    this.root.style.setProperty('--unitbar-h', this.unitbar.classList.contains('hidden') ? '0px' : `${this.unitbar.offsetHeight}px`);
     renderTurnControl(this, this.turncontrol);
     renderLenses(this, this.lenses);
     renderGuide(this, this.guide);
@@ -1177,6 +1195,7 @@ export class GameScreen {
       case 'cities': return showCities(this);
       case 'log': return showLog(this);
       case 'menu': return showMenu(this);
+      case 'save': return showSave(this);
       case 'help': return showHelp(this);
       case 'policies': return showPolicies(this);
       case 'victory': return showVictory(this);

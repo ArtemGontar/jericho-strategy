@@ -260,7 +260,8 @@ function serveStatic(req: IncomingMessage, res: ServerResponse): void {
 function serveFile(req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname === '/healthz') {
-    res.writeHead(200, { 'content-type': 'text/plain' });
+    // a page on another host (the static frontend) asks this before offering online play
+    res.writeHead(200, { 'content-type': 'text/plain', 'access-control-allow-origin': '*', 'cache-control': 'no-store' });
     res.end('ok');
     return;
   }

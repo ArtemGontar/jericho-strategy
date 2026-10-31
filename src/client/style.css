@@ -1,3 +1,10 @@
+@import '@fontsource/cinzel/500.css';
+@import '@fontsource/cinzel/600.css';
+@import '@fontsource/cinzel/700.css';
+@import '@fontsource/source-sans-3/400.css';
+@import '@fontsource/source-sans-3/500.css';
+@import '@fontsource/source-sans-3/600.css';
+@import '@fontsource/source-sans-3/700.css';
 /* ---------------------------------------------------------------------------------------------
    JERICHO interface
    One idea: a dark stone-and-bronze strategy table. Surfaces are flat and translucent, separated by
@@ -34,6 +41,10 @@
   --bar-h: 46px;
   color-scheme: dark;
 }
+:root[data-cb=on] { --good: #56b4e9; --bad: #e69f00; --era2: #e69f00; }
+:root[data-cb=on] .rank.war::after { content: '!'; position: absolute; top: -2px; left: 0; width: 12px; height: 12px; border-radius: 50%; background: var(--bad); color: #1a1205; font-size: 10px; font-weight: 800; display: grid; place-items: center; }
+:root[data-contrast=high] { --muted: #b3bdcb; --text2: #ddd7c5; --line: rgba(212, 175, 90, 0.6); --line-soft: rgba(233, 225, 204, 0.26); }
+:root[data-contrast=high] .btn, :root[data-contrast=high] .round { border-color: var(--gold-lo); }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body, #app { height: 100%; margin: 0; background: var(--ink0); color: var(--text); font-family: var(--ui); font-size: 15px; overflow: hidden; }
 @supports (height: 100dvh) { html, body, #app { height: 100dvh; } } /* the visible height on a phone, not the one behind the browser bars */
@@ -246,6 +257,19 @@ input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 1px va
 @media (max-width: 800px) { .setup-grid { grid-template-columns: 1fr; } .setup-grid > .field.wide { grid-column: auto; } .civ-arrow { display: none; } .civ-card { flex-basis: 160px; } .civ-track::before, .civ-track::after { flex-basis: calc(50% - 80px); } .screen .sheet > footer .btn { min-width: 0; flex: 1; } }
 .sound-toggle { position: absolute; top: calc(16px + var(--sat)); right: calc(16px + var(--sar)); z-index: 5; width: 44px; height: 44px; }
 .sound-toggle[aria-pressed=false] { color: var(--muted); }
+.server-status { font-size: 13px; letter-spacing: 0.02em; padding: 8px 0; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line-soft); color: var(--text2); }
+.server-status > span { flex: 1; min-width: 0; }
+.server-status::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.server-status.up { color: var(--good); } .server-status.up::before { background: var(--good); }
+.server-status.down { color: #ffb2a8; } .server-status.down::before { background: var(--bad); }
+.server-status.checking::before { animation: pulse-gold 1.2s ease-in-out infinite; }
+.ok-line { color: var(--good); border-bottom: 1px solid rgba(130, 212, 141, 0.4); padding: 8px 0; }
+.save-list { display: grid; }
+.save-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+.save-info { display: grid; gap: 2px; min-width: 0; }
+.save-info b { font-family: var(--display); letter-spacing: 0.08em; text-transform: uppercase; font-size: 14px; }
+.save-row.broken .save-info span { color: #ffb2a8; }
+.save-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .error-line { color: #ffb2a8; border-bottom: 1px solid rgba(236, 108, 93, 0.4); padding: 8px 0; }
 
 /* lobby */
@@ -368,7 +392,6 @@ input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 1px va
 .guide li.now .mark { border-color: var(--gold-hi); color: var(--gold-hi); }
 .guide li.done .mark { background: var(--gold-hi); border-color: var(--gold-hi); color: #11151c; }
 .guide .cheer { margin: 4px 2px; font-size: 13px; color: var(--gold-hi); }
-@media (max-width: 760px) { .guide { display: none; } }
 .game:has(.drawer:not(.hidden)) .guide { display: none; }
 .countdown { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; border-bottom: 1px solid var(--gold-hi); color: var(--gold-hi); font: inherit; font-size: 13px; letter-spacing: 0.04em; padding: 4px 6px; cursor: pointer; animation: pulse-gold 1.8s ease-in-out infinite; }
 .countdown.foe { color: #ff9c8a; border-bottom-color: #ff9c8a; }
@@ -459,6 +482,13 @@ input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 1px va
 .tabrow button:hover { color: var(--text); }
 .chips { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 13px; color: var(--text2); }
 .chips span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* ---------- confirmation dialogs (askConfirm) ---------- */
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.modal-back { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: calc(16px + var(--sat)) calc(16px + var(--sar)) calc(16px + var(--sab)) calc(16px + var(--sal)); background: var(--scrim); animation: fade .15s; }
+.modal { width: min(440px, 100%); max-height: 100%; overflow: auto; background: linear-gradient(rgba(14, 20, 29, 0.98), rgba(8, 11, 17, 0.99)); border-top: 1px solid var(--gold); border-bottom: 1px solid var(--gold); box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(242, 217, 140, 0.18); animation: sheetIn .22s var(--ease) both; }
+.modal > .body { padding: 22px 22px 18px; display: grid; gap: 20px; }
+.modal .row { justify-content: flex-end; }
 
 /* ---------- full-screen overlays ---------- */
 .overlay:focus { outline: none; }
@@ -630,8 +660,23 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; padding: 0 6px; f
   .mapdock { display: flex; left: auto; right: calc(10px + var(--sar)); bottom: calc(176px + var(--sab)); }
   .minimap-wrap { display: none; }
   .lenses { gap: 8px; }
-  .tileinfo { bottom: auto; top: calc(var(--bar-h) + var(--sat) + 76px); left: calc(8px + var(--sal)); font-size: 12px; }
-  .guide { display: none; }
+  /* the tapped tile's strip sits just above the unit card, clear of the toasts at the top */
+  .tileinfo { top: auto; bottom: calc(var(--unitbar-h, 0px) + 10px + var(--sab)); left: calc(8px + var(--sal)); right: auto; width: fit-content; max-width: calc(100vw - 150px - var(--sal) - var(--sar)); font-size: 12px; gap: 3px 10px;
+    background: rgba(6, 9, 14, 0.9); border: 1px solid var(--line-soft); border-left: 2px solid var(--gold-lo); padding: 6px 10px; }
+  .tileinfo:empty { display: none; }
+  .tileinfo b { font-size: 12px; }
+  /* the getting-started list shrinks to one chip: the next thing to do */
+  .guide { display: block; left: calc(116px + var(--sal)); right: calc(8px + var(--sar)); top: calc(var(--bar-h) + var(--sat) + 6px); width: auto; padding: 0; background: none; }
+  .guide .head, .guide ol, .guide > .eyebrow { display: none; }
+  .guide .cheer { margin: 0; padding: 8px 12px; background: rgba(6, 9, 14, 0.88); border: 1px solid var(--line-soft); }
+  .guide-chip { display: flex; align-items: center; gap: 10px; padding: 6px 4px 6px 10px; background: rgba(6, 9, 14, 0.9); border: 1px solid var(--line); border-left: 2px solid var(--gold); }
+  .guide-chip .mark { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--gold-hi); color: var(--gold-hi); display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+  .guide-chip .what { flex: 1; min-width: 0; display: grid; gap: 1px; }
+  .guide-chip b { font-size: 13px; color: var(--text); }
+  .guide-chip small { font-size: 12px; line-height: 1.3; color: var(--text2); }
+  .guide-chip .of { font-size: 11px; color: var(--muted); flex: none; }
+  .guide-chip .round { flex: none; width: 34px; height: 34px; }
+  .game:has(.guide:not(.hidden)) .notes { top: calc(var(--bar-h) + var(--sat) + 76px); }
   .drawer { top: auto; height: 60%; width: 100%; border-right: 0; border-top: 1px solid var(--gold); }
   .drawer > header { flex: none; }
   .drawer .body { padding-bottom: calc(18px + var(--sab)); min-height: 0; }
@@ -647,7 +692,8 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; padding: 0 6px; f
   .screen .sheet > header { padding-right: 76px; }
   .screen .sheet > footer { position: sticky; bottom: 0; z-index: 3; background: rgba(8, 11, 17, 0.97); padding-bottom: calc(14px + var(--sab)); }
   .screen > .content { padding-top: calc(24px + var(--sat)); padding-bottom: calc(24px + var(--sab)); }
-  .eyebrow { font-size: 11px; }
+  .eyebrow, .turnno, .yieldrow small, .facts small, .note small, .rank small { font-size: 12px; }
+  .table th { font-size: 11px; }
   .sheet.scene-research > header { gap: 10px; }
   .sheet.scene-research > header h2 { flex: none; }
   .sheet.scene-research > header .muted { flex: 1; min-width: 0; font-size: 12px; text-align: right; line-height: 1.25; }
@@ -696,7 +742,9 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; padding: 0 6px; f
   .turncontrol .link { font-size: 11px !important; padding: 4px; }
   .mapdock { right: auto; bottom: auto; left: calc(8px + var(--sal)); top: calc(var(--bar-h) + var(--sat) + 54px); }
   .lenses { gap: 6px; }
-  .tileinfo { top: calc(var(--bar-h) + var(--sat) + 8px); left: calc(64px + var(--sal)); }
+  .guide { left: calc(108px + var(--sal)); right: auto; width: min(380px, 52vw); }
+  .guide-chip small { font-size: 11px; }
+  .game:has(.guide:not(.hidden)) .notes { top: calc(var(--bar-h) + var(--sat) + 70px); }
   /* the city drawer becomes a side panel so the map stays beside it */
   .drawer { top: calc(var(--bar-h) + var(--sat)); bottom: 0; height: auto; width: min(380px, calc(46vw + var(--sal))); padding-left: var(--sal); border-top: 0; border-right: 1px solid var(--gold-lo); }
   .drawer > header { padding: 10px 14px 8px; }

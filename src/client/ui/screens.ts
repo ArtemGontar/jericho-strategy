@@ -3,12 +3,18 @@ import { BUILDINGS, CIV_BY_ID, ERA_NAMES, POLICIES, TECHS, TECH_BY_ID, UNITS, po
 import type { TechDef } from '../../shared/data';
 import type { GameScreen } from '../gamescreen';
 import { LEVELS, getLevel, isMuted, setLevel, setMuted, sfx } from '../audio';
+import { colourBlindOn, highContrastOn, setColourBlind, setHighContrast } from '../access';
+import { hapticsAvailable, hapticsOn, setHaptics } from '../haptics';
+import { alertsOn, enableNotifications, setAlerts } from '../alerts';
 import { animSpeed, setAnimSpeed, type AnimSpeed } from '../anim';
 import { GRAPHICS_LABEL, graphicsPref, setGraphicsPref, type Graphics } from '../gl/prefs';
 import { artIcon } from '../artwork';
 import { icon } from '../icons';
 import { askConfirm, btn, clear, h, put, turnsLeft } from './dom';
 import { currentEra, emblem } from './hud';
+import { browserStore, type LocalTransport } from '../transport';
+import { inviteButtons } from './menus';
+import { SAVE_IDS, listSaves, slotName } from '../saves';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -298,6 +304,7 @@ export function showMenu(gs: GameScreen): HTMLElement {
   const list = h('div', { class: 'menu-list' });
   list.append(
     item('Resume', () => gs.closeModal(), true),
+    ...(gs.transport.kind === 'local' ? [item('Save game', () => gs.openModal('save'))] : []),
     item('Policies', () => gs.openModal('policies')),
     item('Your cities', () => gs.openModal('cities')),
     item('Diplomacy', () => gs.openDiplomacy()),
@@ -318,6 +325,22 @@ export function showMenu(gs: GameScreen): HTMLElement {
     }),
     setting('Cinematics', CINE_LABEL[cineMode()], () => { const o: CineMode[] = ['full', 'short', 'off']; setCineMode(o[(o.indexOf(cineMode()) + 1) % 3]); gs.openModal('menu'); }),
     setting('Animations', animSpeed(), () => { const o: AnimSpeed[] = ['normal', 'fast', 'instant']; setAnimSpeed(o[(o.indexOf(animSpeed()) + 1) % 3]); gs.openModal('menu'); }),
+    setting('Turn alerts', alertsOn() ? 'on' : 'off', async () => {
+      const on = !alertsOn();
+      setAlerts(on);
+      if (on) {
+        const shown = await enableNotifications();
+        gs.toast(shown ? 'You will get a notification when a turn is ready.' : 'The tab title and a buzz will tell you when a turn is ready.');
+      }
+      gs.openModal('menu');
+    }),
+    ...(hapticsAvailable() ? [setting('Vibration', hapticsOn() ? 'on' : 'off', () => { setHaptics(!hapticsOn()); gs.openModal('menu'); })] : []),
+    setting('Colour-blind palette', colourBlindOn() ? 'on' : 'off', async () => {
+      setColourBlind(!colourBlindOn());
+      if (await askConfirm('Colours change after a reload. Your game is saved. Reload now?', 'Reload')) location.reload();
+      else gs.openModal('menu');
+    }),
+    setting('High contrast', highContrastOn() ? 'on' : 'off', () => { setHighContrast(!highContrastOn()); gs.openModal('menu'); }),
     setting('Tile yields', gs.showYields ? 'on' : 'off', () => { gs.togglePref('yields'); gs.openModal('menu'); }),
     setting('Grid lines', gs.showGrid ? 'on' : 'off', () => { gs.togglePref('grid'); gs.openModal('menu'); }),
   );
@@ -328,12 +351,33 @@ export function showMenu(gs: GameScreen): HTMLElement {
     const link = `${location.origin}${location.pathname}?room=${invite.code}`;
     body.push(h('div', { style: { display: 'grid', gap: '6px', justifyItems: 'center', textAlign: 'center' } },
       h('div', { class: 'eyebrow' }, 'Room code'), h('div', { class: 'code', style: { fontSize: '34px' } }, invite.code),
-      btn('Copy invite link', () => { void navigator.clipboard?.writeText(link).catch(() => undefined); gs.toast('Invite link copied'); }, 'small')));
+      h('div', { class: 'row', style: { justifyContent: 'center' } }, ...inviteButtons(link, invite.code))));
   }
+  body.push(h('div', { class: 'muted fine', style: { textAlign: 'center' } }, `Build ${__BUILD_ID__}`));
   body.push(h('div', { class: 'menu-list' }, item('Leave game', async () => {
     if (await askConfirm(gs.transport.kind === 'local' ? 'Leave to the main menu? Your game is saved automatically each turn.' : 'Leave the game? You can rejoin with the room code.', 'Leave')) gs.opts.onExit();
   })));
   return sheet('Menu', body, () => gs.closeModal(), { narrow: true, scene: 'settings' });
+}
+
+// ------------------------------------------------------------------ save
+/** Pick a slot to keep a copy of this game in. The autosave is separate and is written at the end of every turn. */
+export function showSave(gs: GameScreen): HTMLElement {
+  const t = gs.transport as LocalTransport;
+  const have = new Map(listSaves(browserStore()).map((x) => [x.id, x]));
+  const rows = SAVE_IDS.filter((id) => id !== 'auto').map((id) => {
+    const sv = have.get(id);
+    const b = h('button', { type: 'button' }, h('span', null, slotName(id)), h('small', { class: 'val' }, sv?.ok ? sv.label : sv ? 'cannot be opened' : 'empty'));
+    b.addEventListener('click', async () => {
+      if (sv && !(await askConfirm(`Replace ${slotName(id).toLowerCase()}${sv.ok ? ` (${sv.label})` : ''} with this game?`, 'Replace'))) return;
+      if (t.save(id)) {
+        gs.toast(`Saved to ${slotName(id).toLowerCase()}`);
+        gs.closeModal();
+      }
+    });
+    return b;
+  });
+  return sheet('Save game', [h('p', { class: 'muted', style: { margin: '0' } }, 'The game also saves itself at the end of every turn. Slots keep a copy you choose.'), h('div', { class: 'menu-list compact' }, ...rows)], () => gs.closeModal(), { narrow: true, scene: 'settings' });
 }
 
 // ------------------------------------------------------------------ help

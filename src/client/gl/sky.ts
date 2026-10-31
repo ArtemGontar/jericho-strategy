@@ -34,7 +34,6 @@ export class Sky {
   private group = new Group();
   private clouds: Array<{ mesh: Mesh; speed: number; x: number; z: number; s: number }> = [];
   private extX = 40;
-  private extZ = 30;
   private built = false;
 
   constructor(scene: Scene) {
@@ -43,7 +42,6 @@ export class Sky {
 
   private build(extX: number, extZ: number): void {
     this.extX = extX;
-    this.extZ = extZ;
     for (const c of this.clouds) this.group.remove(c.mesh);
     this.clouds = [];
     const tex = cloudTexture();

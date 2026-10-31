@@ -23,6 +23,8 @@
     "fingerprint": "tsx scripts/fingerprint.ts"
   },
   "devDependencies": {
+    "@fontsource/cinzel": "^5.3.0",
+    "@fontsource/source-sans-3": "^5.3.1",
     "@types/node": "^26.6.5",
     "@types/three": "^0.170.0",
     "@types/ws": "^8.18.2",

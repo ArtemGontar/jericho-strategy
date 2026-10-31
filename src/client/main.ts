@@ -1,3 +1,4 @@
+import { applyAccessibility } from './access';
 import { startAmbience } from './audio';
 import './style.css';
 import { Game, type PlayerSlot } from '../shared/game';
@@ -7,7 +8,7 @@ import { LocalTransport, RemoteTransport, hasSavedGame, loadSavedGame } from './
 import { clear, h, installMotion } from './ui/dom';
 import { resetGuide } from './ui/guide';
 import { showHelp } from './ui/screens';
-import { lobbyScreen, onlineEntryScreen, savedName, setupScreen, titleScreen, type SoloConfig } from './ui/menus';
+import { lobbyScreen, onlineEntryScreen, savedGamesScreen, savedName, setupScreen, titleScreen, type SoloConfig } from './ui/menus';
 
 const app = document.getElementById('app')!;
 // browsers only allow sound after a gesture: start the ambience on the first click or key press
@@ -68,13 +69,18 @@ function showTitle(): void {
   const online = savedOnline();
   mount(titleScreen({
     continueGame: hasSavedGame(),
+    savedGames: hasSavedGame(),
+    onSaved: () => showSavedGames(),
+    // one tap: a random civilisation against two computers on a small map, stopping at turn 60
+    onQuick: () => startLocal({ name: savedName() || 'Player', civ: null, opponents: 2, aiLevel: 'normal', size: 'small', speed: 'quick', seed: null, turnLimit: 60, startAtWar: false, scienceVictory: true, aggression: 'normal', mapStyle: 'continent', friends: [] }, 'solo'),
     rejoin: online ? online.code : null,
     onNew: () => showSetup('solo'),
     onHotseat: () => showSetup('hotseat'),
     onOnline: () => showOnlineEntry(''),
     onContinue: () => {
-      const t = loadSavedGame();
-      if (t) startGame(t);
+      const r = loadSavedGame();
+      if (r.ok) startGame(r.transport);
+      else showSavedGames(r.error);
     },
     onRejoin: () => {
       if (online) void connectOnline(() => ({ t: 'join', code: online.code, name: online.name, token: online.token }), online.name);
@@ -86,6 +92,14 @@ function showTitle(): void {
       app.append(back);
     },
   }));
+}
+
+function showSavedGames(message: string | null = null): void {
+  mount(savedGamesScreen((id) => {
+    const r = loadSavedGame(id);
+    if (r.ok) startGame(r.transport);
+    else showSavedGames(r.error);
+  }, showTitle, message));
 }
 
 function showSetup(mode: 'solo' | 'hotseat'): void {
@@ -200,6 +214,7 @@ async function connectOnline(initial: () => ClientMsg, name: string): Promise<vo
 }
 
 // ----------------------------------------------------------------------------- boot
+applyAccessibility();
 installMotion();
 const roomParam = new URLSearchParams(location.search).get('room');
 const previous = savedOnline();
@@ -209,3 +224,8 @@ if (roomParam && previous && previous.code === roomParam.toUpperCase().slice(0, 
 } else if (roomParam) showOnlineEntry(roomParam.toUpperCase().slice(0, 6));
 else showTitle();
 void savedName;
+
+// offline support: the first visit stores what the game needs, so later visits open at once and solo play needs no network
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => { void navigator.serviceWorker.register('sw.js').catch(() => undefined); });
+}

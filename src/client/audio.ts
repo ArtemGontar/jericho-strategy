@@ -1,3 +1,4 @@
+import { haptic } from './haptics';
 /** Tiny synthesised sound effects — no asset files needed. */
 let ctx: AudioContext | null = null;
 let muted = false;
@@ -82,6 +83,7 @@ function noise(dur: number, vol = 0.1, delay = 0, hp = 800): void {
 }
 
 export function sfx(name: string): void {
+  haptic(name); // independent of the sound setting
   if (sfxLevel === 'off') return;
   switch (name) {
     case 'click': tone(540, 0.05, 'triangle', 0.05); break;

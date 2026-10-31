@@ -1,15 +1,33 @@
 {
   "name": "JERICHO",
   "short_name": "JERICHO",
-  "description": "Civilization-style strategy for you and your friends",
+  "description": "Found cities, discover the ages and outwit your friends. Strategy for 1–8 players.",
   "start_url": "./",
-  "display": "fullscreen",
-  "orientation": "landscape",
+  "display": "standalone",
+  "orientation": "any",
   "background_color": "#0b1322",
   "theme_color": "#0b1322",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "id": "./",
+  "lang": "en",
+  "categories": [
+    "games"
   ]
 }

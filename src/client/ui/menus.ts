@@ -4,9 +4,10 @@ import type { RoomInfo, RoomSettings, RoomSlot } from '../../shared/protocol';
 import { crestUrl, leaderUrl } from '../artwork';
 import { icon } from '../icons';
 import { isMuted, setMuted } from '../audio';
-import { btn, clear, h, put } from './dom';
+import { askConfirm, btn, clear, h, isCompact, put } from './dom';
 import { emblem } from './hud';
-import type { RemoteTransport } from '../transport';
+import { browserStore, checkServer, type RemoteTransport } from '../transport';
+import { SAVE_IDS, exportText, fileNameFor, importText, listSaves, readSave, removeSave, slotName, writeSave, type SaveId, type SaveSummary } from '../saves';
 
 export interface SoloConfig {
   name: string;
@@ -85,6 +86,9 @@ const field = (label: string, control: HTMLElement) => h('label', { class: 'fiel
 // ------------------------------------------------------------------ title
 export interface TitleHandlers {
   continueGame: boolean;
+  savedGames: boolean;
+  onSaved: () => void;
+  onQuick: () => void;
   rejoin: string | null;
   onNew: () => void;
   onHotseat: () => void;
@@ -108,7 +112,9 @@ export function titleScreen(hd: TitleHandlers): HTMLElement {
   put(list,
     hd.continueGame ? item('Continue', hd.onContinue, 'autosave', true) : null,
     hd.rejoin ? item('Rejoin online game', hd.onRejoin, hd.rejoin, true) : null,
-    item('New game', hd.onNew, 'vs computer', !hd.continueGame && !hd.rejoin),
+    item('Quick game', hd.onQuick, '60 turns', !hd.continueGame && !hd.rejoin),
+    hd.savedGames ? item('Saved games', hd.onSaved, 'slots · import') : null,
+    item('New game', hd.onNew, 'vs computer'),
     soloOnly ? null : item('Play online', hd.onOnline, 'with friends'),
     item('Hot-seat', hd.onHotseat, 'one screen'),
     item('How to play', hd.onHelp),
@@ -200,7 +206,8 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
   opp.addEventListener('input', fillRange);
   fillRange();
   const level = segmented<AiLevel>([['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']], 'normal');
-  const speed = segmented<'standard' | 'quick'>([['standard', 'Standard · 200'], ['quick', 'Quick · 120']], 'standard');
+  // three lengths: the third plays at the quick pace and stops at turn 60, for a game that fits a short sitting
+  const speed = segmented<'standard' | 'quick' | 'short'>([['standard', 'Long · 200'], ['quick', 'Quick · 120'], ['short', 'Short · 60']], isCompact() ? 'quick' : 'standard');
   const stance = segmented<'peace' | 'war'>([['peace', 'Peace'], ['war', 'War']], 'peace');
   const land = segmented<'continent' | 'islands'>([['continent', 'Continent'], ['islands', 'Islands']], 'continent');
   const aggr = segmented<'calm' | 'normal' | 'fierce'>([['calm', 'Calm'], ['normal', 'Normal'], ['fierce', 'Fierce']], 'normal');
@@ -219,7 +226,7 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
     field('Computers', aggr.el),
     field('Map', size),
     field('Land', land.el),
-    field('Speed', speed.el),
+    field('Game length', speed.el),
     field('Diplomacy', stance.el),
     field('Victory', victories.el),
     field('Seed', seed),
@@ -240,8 +247,8 @@ export function setupScreen(mode: 'solo' | 'hotseat', onStart: (c: SoloConfig) =
     const humans = 1 + (mode === 'hotseat' ? Number(friendCount.value) : 0);
     const friends = mode === 'hotseat' ? friendInputs.map((f, i) => f.value.trim() || `Player ${i + 2}`).slice(0, humans - 1) : [];
     onStart({
-      name, civ, opponents: Number(opp.value), aiLevel: level.get(), size: size.value as SoloConfig['size'], speed: speed.get(),
-      seed: seed.value.trim() ? Number(seed.value) || null : null, turnLimit: speed.get() === 'quick' ? 120 : 200,
+      name, civ, opponents: Number(opp.value), aiLevel: level.get(), size: size.value as SoloConfig['size'], speed: speed.get() === 'standard' ? 'standard' : 'quick',
+      seed: seed.value.trim() ? Number(seed.value) || null : null, turnLimit: { standard: 200, quick: 120, short: 60 }[speed.get()],
       startAtWar: stance.get() === 'war', scienceVictory: victories.get() === 'all', aggression: aggr.get(), mapStyle: land.get(), friends,
     });
   };
@@ -266,17 +273,35 @@ export function onlineEntryScreen(initialCode: string, onCreate: (name: string) 
     saveName(n);
     return n;
   };
+  const createBtn = btn('Create a room', () => onCreate(name()), 'primary');
+  const joinBtn = btn('Join', () => onJoin(codeIn.value.toUpperCase().trim(), name()), 'primary');
+  // find out now whether a game server answers, instead of letting the player fail on the first tap
+  const status = h('div', { class: 'server-status checking' }, h('span', null, 'Checking the game server…'));
+  const probe = () => {
+    status.className = 'server-status checking';
+    status.replaceChildren(h('span', null, 'Checking the game server…'));
+    createBtn.disabled = joinBtn.disabled = true;
+    void checkServer().then((up) => {
+      if (!status.isConnected) return;
+      createBtn.disabled = joinBtn.disabled = !up;
+      status.className = `server-status ${up ? 'up' : 'down'}`;
+      status.replaceChildren(h('span', null, up ? 'Game server ready' : 'Can’t reach the game server right now. Solo, quick and hot-seat games still work.'));
+      if (!up) status.append(btn('Try again', probe, 'small quiet'));
+    });
+  };
   put(content, h('div', { class: 'sheet narrow' },
     h('header', null, h('h2', null, 'Play online')),
     h('hr', { class: 'rule' }),
     h('div', { class: 'body' },
+      status,
       error ? h('div', { class: 'error-line' }, error) : null,
       field('Your name', nameIn),
-      h('div', { style: { display: 'grid', gap: '8px', paddingTop: '8px' } }, h('div', { class: 'eyebrow' }, 'Host a game'), h('p', { class: 'muted', style: { margin: '0', fontSize: '14px' } }, 'Create a room, then send the invite link or the five-letter code to your friends.'), h('div', null, btn('Create a room', () => onCreate(name()), 'primary'))),
+      h('div', { style: { display: 'grid', gap: '8px', paddingTop: '8px' } }, h('div', { class: 'eyebrow' }, 'Host a game'), h('p', { class: 'muted', style: { margin: '0', fontSize: '14px' } }, 'Create a room, then send the invite link or the five-letter code to your friends.'), h('div', null, createBtn)),
       h('hr', { class: 'rule soft' }),
-      h('div', { style: { display: 'grid', gap: '10px' } }, h('div', { class: 'eyebrow' }, 'Join a friend'), h('div', { style: { display: 'flex', gap: '14px', alignItems: 'center' } }, codeIn, btn('Join', () => onJoin(codeIn.value.toUpperCase().trim(), name()), 'primary')))),
+      h('div', { style: { display: 'grid', gap: '10px' } }, h('div', { class: 'eyebrow' }, 'Join a friend'), h('div', { style: { display: 'flex', gap: '14px', alignItems: 'center' } }, codeIn, joinBtn))),
     h('footer', null, btn('Back', onBack))));
-  codeIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') onJoin(codeIn.value.toUpperCase().trim(), name()); });
+  probe();
+  codeIn.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !joinBtn.disabled) onJoin(codeIn.value.toUpperCase().trim(), name()); });
   return el;
 }
 
@@ -326,13 +351,13 @@ export function lobbyScreen(rt: RemoteTransport, onLeave: () => void): { el: HTM
             h('p', { class: 'hint', style: { margin: '10px 0 0', color: 'var(--muted)', fontSize: '13px' } }, host ? 'Open a seat for a friend or fill it with a computer opponent. At least two seats are needed.' : 'Waiting for the host to start the game.')),
           h('div', null,
             h('div', { style: { textAlign: 'center', paddingBottom: '14px' } }, h('div', { class: 'eyebrow' }, 'Room code'), h('div', { class: 'code' }, room.code),
-              btn('Copy invite link', () => { void navigator.clipboard?.writeText(link).catch(() => undefined); }, 'small'),
+              h('div', { class: 'row', style: { justifyContent: 'center' } }, ...inviteButtons(link, room.code)),
               h('div', { class: 'muted', style: { fontSize: '11px', marginTop: '8px', wordBreak: 'break-all' } }, link)),
             h('div', { class: 'eyebrow', style: { padding: '6px 0 2px' } }, 'Settings'),
             sel('Map', 'size', Object.entries(MAP_SIZES).map(([k, v]) => [k, v.label])),
             sel('Land', 'mapStyle', [['continent', 'One continent'], ['islands', 'Islands (ships needed)']]),
             sel('Speed', 'speed', [['standard', 'Standard'], ['quick', 'Quick']]),
-            sel('Turn limit', 'turnLimit', [['100', '100'], ['120', '120'], ['150', '150'], ['200', '200'], ['300', '300']]),
+            sel('Turn limit', 'turnLimit', [['60', '60'], ['100', '100'], ['120', '120'], ['150', '150'], ['200', '200'], ['300', '300']]),
             sel('Diplomacy', 'startAtWar', [['false', 'Start at peace'], ['true', 'Start at war']]),
             sel('Computers', 'aggression', [['calm', 'Calm'], ['normal', 'Normal'], ['fierce', 'Fierce']]),
             sel('Science win', 'scienceVictory', [['true', 'Enabled'], ['false', 'Disabled']]),
@@ -373,4 +398,97 @@ function slotRow(room: RoomInfo, s: RoomSlot, host: boolean, send: (m: Parameter
     }
   }
   return h('div', { class: `slot ${s.kind === 'open' || s.kind === 'closed' ? 'empty' : ''}` }, badge, nameEl, civSelect, controls);
+}
+
+// ------------------------------------------------------------------ saved games
+/** Hand a text file to the browser's download. */
+export function downloadText(name: string, text: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = h('a', { href: url, download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/** The first empty slot, or slot 3 when all are taken (after asking). Null when the player declines. */
+async function slotForImport(): Promise<SaveId | null> {
+  const used = new Set(listSaves(browserStore()).map((x) => x.id));
+  const free = SAVE_IDS.find((id) => id !== 'auto' && !used.has(id));
+  if (free) return free;
+  return (await askConfirm('All three slots are in use. Replace slot 3 with the imported game?', 'Replace')) ? 'slot3' : null;
+}
+
+export function savedGamesScreen(onOpen: (id: SaveId) => void, onBack: () => void, message: string | null = null): HTMLElement {
+  const { el, content } = screen('archive');
+  const body = h('div', { class: 'body' });
+  let note: { text: string; bad: boolean } | null = message ? { text: message, bad: true } : null;
+  const when = (t: number) => (t ? new Date(t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '');
+  const row = (sv: SaveSummary) => {
+    const actions = h('div', { class: 'save-actions' },
+      sv.ok ? btn('Open', () => onOpen(sv.id), 'primary small') : null,
+      btn('Export', () => {
+        const text = exportText(browserStore(), sv.id);
+        if (!text) return;
+        const rec = readSave(browserStore(), sv.id);
+        downloadText(fileNameFor(sv.id, rec.ok ? rec.record : null), text);
+      }, 'small'),
+      btn('Delete', async () => {
+        if (!(await askConfirm(`Delete ${slotName(sv.id).toLowerCase()}? This cannot be undone.`, 'Delete'))) return;
+        removeSave(browserStore(), sv.id);
+        note = null;
+        draw();
+      }, 'small danger'));
+    return h('div', { class: `save-row ${sv.ok ? '' : 'broken'}` },
+      h('div', { class: 'save-info' }, h('b', null, slotName(sv.id)), h('span', null, sv.ok ? sv.label : sv.problem ?? sv.label), sv.ok ? h('small', { class: 'muted' }, when(sv.savedAt)) : h('small', { class: 'muted' }, 'Kept in storage. Export it before deleting.')),
+      actions);
+  };
+  const draw = () => {
+    clear(body);
+    const saves = listSaves(browserStore());
+    put(body,
+      note ? h('div', { class: note.bad ? 'error-line' : 'ok-line' }, note.text) : null,
+      saves.length ? h('div', { class: 'save-list' }, ...saves.map(row)) : h('p', { class: 'muted' }, 'No saved games yet. The game saves itself at the end of every turn, and Menu → Save game keeps a copy in a slot.'),
+      h('div', { class: 'eyebrow' }, 'Move a game between devices'),
+      h('p', { class: 'muted', style: { margin: '0', fontSize: '14px' } }, 'Export writes a file you can keep or send to your other device. Import reads one back into a free slot.'),
+      btn('Import a save file', () => {
+        const input = h('input', { type: 'file', accept: '.json,application/json' });
+        input.addEventListener('change', async () => {
+          const f = input.files?.[0];
+          if (!f) return;
+          try {
+            const rec = importText(await f.text());
+            const id = await slotForImport();
+            if (!id) return;
+            const res = writeSave(browserStore(), id, rec);
+            note = res.ok ? { text: `Imported into ${slotName(id).toLowerCase()}.`, bad: false } : { text: res.error, bad: true };
+          } catch (e) {
+            note = { text: (e as Error).message, bad: true };
+          }
+          draw();
+        });
+        input.click();
+      }));
+  };
+  put(content, h('div', { class: 'sheet narrow' }, h('header', null, h('h2', null, 'Saved games')), h('hr', { class: 'rule' }), body, h('footer', null, btn('Back', onBack))));
+  draw();
+  return el;
+}
+
+// ------------------------------------------------------------------ inviting friends
+/** Share (the phone's own share sheet, where there is one) and Copy for an invite link. */
+export function inviteButtons(link: string, code: string): HTMLButtonElement[] {
+  const copy = btn('Copy invite link', async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      copy.textContent = 'Link copied';
+    } catch {
+      copy.textContent = 'Could not copy: select the link';
+    }
+    setTimeout(() => { copy.textContent = 'Copy invite link'; }, 2200);
+  }, 'small');
+  const share = typeof navigator.share === 'function'
+    ? btn('Share invite', () => void navigator.share({ title: 'Join my JERICHO game', text: `Join my game of JERICHO. Room ${code}.`, url: link }).catch(() => undefined), 'small primary')
+    : null;
+  return share ? [share, copy] : [copy];
 }

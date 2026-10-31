@@ -21,7 +21,8 @@ Open <http://localhost:8080>. From the title screen:
 
 | Mode | What it is |
 | --- | --- |
-| **New game vs computer** | 1–7 AI rivals, three difficulties, how warlike they are (Calm / Normal / Fierce), map sizes, continent or islands, quick/standard speed. Autosaves every turn (**Continue game**). |
+| **Quick game** | One tap: a random civilisation against two computers on a small map, 60 turns. |
+| **New game vs computer** | 1–7 AI rivals, three difficulties, how warlike they are (Calm / Normal / Fierce), map sizes, continent or islands, quick/standard speed. Autosaves every turn, plus three save slots, export and import (**Saved games**). Setup offers three game lengths: 200, 120 and 60 turns. |
 | **Play online with friends** | Create a room, send the 5-letter code or invite link. Simultaneous turns, optional turn timer, lobby chat, reconnect after a refresh, host can hand a vanished player to the AI, and **Play again** after the game. |
 | **Hot-seat** | 2–4 humans on one device with a "pass the device" curtain between turns, plus optional AI. |
 
@@ -53,7 +54,7 @@ The 3D renderer needs WebGL 2. On a software renderer (no GPU) the game falls ba
 
 ### Phones and tablets
 
-The interface adapts to touch screens in both orientations. Held upright, the unit card sits bottom-left beside the turn button and the city panel is a bottom sheet. On its side, the order buttons float beside the unit, the city panel becomes a side panel and the menu screens use two columns. Safe areas (notches, home bar) are respected. Cities, diplomacy and the message log are reachable from **Menu** when the top bar has no room for them. `npm run e2e:flat` checks four phone sizes.
+Solo and hot-seat work offline once the page has been opened (a small service worker stores what the game needs). Display options in **Menu**: colour-blind palette, high contrast, vibration, turn alerts (a marker in the tab title, a buzz and an optional notification when a new turn is ready while the tab is in the background). The interface adapts to touch screens in both orientations. Held upright, the unit card sits bottom-left beside the turn button and the city panel is a bottom sheet. On its side, the order buttons float beside the unit, the city panel becomes a side panel and the menu screens use two columns. Safe areas (notches, home bar) are respected. Cities, diplomacy and the message log are reachable from **Menu** when the top bar has no room for them. `npm run e2e:flat` checks four phone sizes.
 
 ### Controls
 

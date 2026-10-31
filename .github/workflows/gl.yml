@@ -1,0 +1,26 @@
+name: 3D map
+
+# The main CI run checks the flat 2D map, which is quick on a machine with no graphics card. The 3D renderer is the
+# map most players see, so it gets its own daily run: a break in it is found within a day, not by a player.
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  gl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Browser end-to-end on the 3D map
+        run: |
+          npm i --no-save playwright
+          npx playwright install --with-deps chromium
+          npm run e2e:gl

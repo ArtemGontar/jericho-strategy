@@ -214,6 +214,52 @@ try {
     check('no browser errors (online)', A.errors.length + B.errors.length === 0, [...A.errors, ...B.errors].slice(0, 2).join(' | '));
   }
 
+  // ------------------------------------------------------------------ everyday flows
+  console.log('Quick game, saves, dialogs, server check, offline');
+  if (!only || only === 'solo') {
+    const { page, errors } = await newPage('flows', { viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+    await page.goto(base);
+    await page.waitForSelector('button:has-text("Quick game")');
+    // the page is installable offline: a service worker takes control
+    const sw = await page.evaluate(async () => { const r = await navigator.serviceWorker?.ready; return !!r?.active; }).catch(() => false);
+    check('a service worker is active for offline play', sw);
+    await page.tap('button:has-text("Quick game")');
+    await page.waitForFunction(() => (window as any).__jericho?.screen?.view);
+    const lim = await page.evaluate(() => (window as any).__jericho.screen.view.settings.turnLimit);
+    check('Quick game starts a 60-turn game', lim === 60, `turn limit ${lim}`);
+    // the leave confirmation is a visible dialog in the middle of the screen
+    await page.evaluate(() => (window as any).__jericho.screen.openModal('menu'));
+    await page.tap('button:has-text("Leave game")');
+    await page.waitForSelector('.modal');
+    const box = await page.evaluate(() => { const r = document.querySelector('.modal')!.getBoundingClientRect(); const b = document.querySelector('.modal-back')!; return { top: r.top, bottom: r.bottom, w: r.width, pos: getComputedStyle(b).position }; });
+    check('the leave confirmation is a visible, centred dialog', box.pos === 'fixed' && box.top > 40 && box.bottom < 780 && box.w > 250, JSON.stringify(box));
+    await page.tap('.modal button:has-text("Leave")');
+    await page.waitForSelector('button:has-text("Saved games")');
+    // saved games: the autosave is listed and can be opened
+    await page.tap('button:has-text("Saved games")');
+    await page.waitForSelector('.save-row');
+    const rows = await page.$$eval('.save-row', (r) => r.length);
+    check('the autosave is listed under Saved games', rows >= 1, `${rows} saves`);
+    await page.tap('.save-row button:has-text("Open")');
+    await page.waitForFunction(() => (window as any).__jericho?.screen?.view);
+    check('a saved game opens from the list', true);
+    // a manual slot
+    await page.evaluate(() => (window as any).__jericho.screen.openModal('save'));
+    await page.tap('.overlay .menu-list button:has-text("Slot 1")');
+    await page.waitForTimeout(300);
+    const slot = await page.evaluate(() => localStorage.getItem('jericho.save.slot1'));
+    check('Save game writes a slot', !!slot && JSON.parse(slot).format === 2);
+    // an unreadable save is reported, kept, and Continue does not fail silently
+    await page.evaluate(() => { localStorage.setItem('jericho.save.auto', '{broken'); (window as any).__jericho.screen.opts.onExit(); });
+    await page.waitForSelector('button:has-text("Continue")');
+    check('a damaged autosave is kept in storage, and the title screen still offers Continue', await page.evaluate(() => localStorage.getItem('jericho.save.auto') === '{broken'));
+    await page.tap('button:has-text("Play online")');
+    await page.waitForSelector('.server-status.up, .server-status.down');
+    const up = await page.$('.server-status.up');
+    check('Play online confirms the game server is reachable', !!up);
+    check('no browser errors (flows)', errors.length === 0, errors.slice(0, 2).join(' | '));
+  }
+
   // ------------------------------------------------------------------ phone layout
   console.log('Phone layout');
   if (!only || only === 'phone') {

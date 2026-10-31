@@ -11,7 +11,7 @@ Things that decide the design:
 ## What you need before starting
 1. A domain you control (for example `example.com`), with DNS you can edit. Two names are used: `play.example.com` (Vercel) and `api.example.com` (AWS).
 2. An AWS account and the AWS CLI logged in, region of your choice (pick one near your friends).
-3. A Vercel account connected to the GitHub repository `artemgontar/jericho-strategy`, branch `claude/determined-goodall-9vhnhg` (or `main` once merged).
+3. A Vercel account connected to the GitHub repository `artemgontar/jericho-strategy`, branch `main`.
 
 ## Step 1 — backend on AWS (one EC2 machine, Docker, Caddy for HTTPS)
 Cost is roughly 12 USD a month for a `t4g.small`.
@@ -37,6 +37,12 @@ No domain? Alternative: put a CloudFront distribution in front of the instance (
 4. Open `https://play.example.com`: **Play online → Create a room** should show a five-letter code. Send the invite link to a friend.
 
 `VITE_SERVER_URL` is read when the site is built, so changing it needs a new deployment.
+
+**Link previews.** Chat apps need an absolute address for the preview picture. On Vercel the build reads `VERCEL_PROJECT_PRODUCTION_URL` by itself; anywhere else set `SITE_URL=https://play.example.com` for the build. Without either, the page still works and only the preview picture is missing.
+
+**Offline.** The site registers a small service worker (`public/sw.js`) that stores what the game uses, so solo and hot-seat open with no network. It is named after the commit, so each deployment starts a fresh cache.
+
+**Check.** The Play online screen asks the backend's `/healthz` before offering to create or join a room, and says so plainly when it cannot be reached.
 
 ## Step 3 — check it works
 - Two different browsers (or one normal and one private window): create a room in one, join with the code in the other, start a game, found a capital in both.

@@ -7,7 +7,6 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noUnusedLocals": false,
     "noImplicitOverride": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
