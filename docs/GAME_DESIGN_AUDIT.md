@@ -6,6 +6,12 @@ This is about the game itself: pacing, decisions, mechanics, units, the AI and h
 
 ## Status
 
+**Latest: a shorter standard game, and less to look after.**
+
+- `STANDARD_SPEED` (in `src/shared/game.ts`) is the one dial for how much a standard game costs: research, production, policies and the culture goal. It is now 0.85 (it was 1; quick stays 0.67). Same 24 seeds: median end turn 175 → 157, Enlightenment reached on average at turn 147, victories science 15 / culture 8 / domination 1 (culture share is unchanged at about a third). Saved games from before are re-priced from the next turn.
+- Soldiers a person builds stand guard at once, and in a new game the starting guard is fortified and the worker improves the land by itself, so "Next turn" only ever waits for the scout.
+- Events (and only events) sound and buzz differently for good and bad news (`Note.luck`); a finished coach step chimes; a signed agreement has its own sound.
+
 **Done: item 1, policies you lose by not choosing** (owner's choice: a relaxed builder, so the contest-with-wars items wait).
 
 - Each offer is three policies; taking one **loses the other two for the rest of the game**. The player's screen says so and lists what was passed over.

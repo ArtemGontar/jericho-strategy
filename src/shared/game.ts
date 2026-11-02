@@ -84,7 +84,7 @@ export interface NewGameOptions {
 
 export const STATE_VERSION = 1;
 /** how much a standard game costs, against the base prices in the data tables (a quick game is 0.67) */
-export const STANDARD_SPEED = 1;
+export const STANDARD_SPEED = 0.85;
 
 /** What each kind of computer player reaches for first when offered a policy (earlier is better). */
 const AI_POLICY_PREF: Record<string, string[]> = {
