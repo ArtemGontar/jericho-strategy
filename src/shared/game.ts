@@ -86,7 +86,7 @@ export const STATE_VERSION = 1;
 /** how much a standard game costs, against the base prices in the data tables (a quick game is 0.67) */
 export const STANDARD_SPEED = 0.85;
 /** culture a civilisation needs for cultural hegemony in a game of base price (scaled by the game speed) */
-export const CULTURE_GOAL = 6000;
+export const CULTURE_GOAL = 7000;
 
 /** What each kind of computer player reaches for first when offered a policy (earlier is better). */
 const AI_POLICY_PREF: Record<string, string[]> = {
