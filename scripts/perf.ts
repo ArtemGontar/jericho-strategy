@@ -32,6 +32,7 @@ console.error = () => {};
 const game = Game.create({ seed: 4242, size, players: Array.from({ length: players }, (_, i) => ({ name: i === 0 ? 'You' : `AI${i}`, ai: true, aiLevel: 'normal' })), turnLimit: 400 });
 for (let t = 0; t < turns && !game.s.over; t++) game.processTurn();
 game.players[0].ai = false;
+game.players[0].endedTurn = false;
 const record = JSON.stringify({ format: 2, savedAt: Date.now(), humans: [0], state: JSON.parse(game.serialize()) });
 console.log(`save: ${size}, ${players} players, turn ${game.turn}, ${(record.length / 1024).toFixed(0)} KB, ${game.cities.length} cities, ${game.units.length} units`);
 

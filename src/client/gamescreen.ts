@@ -58,6 +58,9 @@ export class GameScreen {
   showYields = false;
   showGrid = false;
   private lastAmbient = 0;
+  /** when the player last touched, clicked or pressed something */
+  private lastInput = performance.now();
+  private uaSize = { key: '', w: 0, h: 0 };
   private lastDrawAt = 0;
   private drawFailures = 0;
   busy = false;
@@ -146,12 +149,32 @@ export class GameScreen {
     this.cleanup.push(() => this.moments.dispose());
     this.cleanup.push(() => this.renderer.dispose?.());
     this.bindInput();
+    // the tile strip sits just above the unit card, whatever height it has; watching the card avoids forcing a layout on every redraw
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => {
+        this.root.style.setProperty('--unitbar-h', this.unitbar.classList.contains('hidden') ? '0px' : `${Math.round(this.unitbar.getBoundingClientRect().height)}px`);
+      });
+      ro.observe(this.unitbar);
+      // the minimap and map buttons sit above the turn button, however tall its labels make it
+      const rt = new ResizeObserver(() => {
+        this.root.style.setProperty('--turn-h', `${Math.round(this.turncontrol.getBoundingClientRect().height)}px`);
+      });
+      rt.observe(this.turncontrol);
+      this.cleanup.push(() => { ro.disconnect(); rt.disconnect(); });
+    }
     const onResize = () => {
       this.renderer.resize();
       this.dirty = true;
     };
     window.addEventListener('resize', onResize);
     this.cleanup.push(() => window.removeEventListener('resize', onResize));
+    const onInput = () => {
+      // coming back from a long pause: draw the next frame at once, not after the slow gap
+      if (performance.now() - this.lastInput > 20000) this.lastAmbient = 0;
+      this.lastInput = performance.now();
+    };
+    for (const ev of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart'] as const) window.addEventListener(ev, onInput, { passive: true });
+    this.cleanup.push(() => { for (const ev of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart'] as const) window.removeEventListener(ev, onInput); });
     // turning the phone changes which controls float on the map and which sit in bars: rebuild them
     this.cleanup.push(watchVisibility());
     this.cleanup.push(keepAwake());
@@ -464,12 +487,18 @@ export class GameScreen {
       animating = true;
       this.dirty = true;
     }
-    const selected = this.selUnit || this.attackTargets.size > 0;
-    const ambient = (this.renderer.continuous ? now - this.lastAmbient > (this.renderer.idleMs ?? 0) : now - this.lastAmbient > 48) && !document.hidden;
-    if (!this.dirty && !animating && !selected && !ambient) return;
+    // A map that only shimmers (water, leaves, clouds) or pulses a selection ring is redrawn at 30 frames a second at most
+    // while the player is active, at half that after 20 seconds without a touch and a quarter after 90, and not at all
+    // while a dialog dims it to near black. Any input restores the full rate at once. Moving things still draw every frame.
+    const selected = !!(this.selUnit || this.attackTargets.size > 0);
+    const quiet = now - this.lastInput;
+    const slow = quiet > 90000 ? 4 : quiet > 20000 ? 2 : 1;
+    const base = this.renderer.continuous ? (this.renderer.idleMs ?? 0) : 48;
+    const ambient = now - this.lastAmbient > (selected ? Math.max(33, base) : base) * slow && !document.hidden && !this.modalKind;
+    if (!this.dirty && !animating && !ambient) return;
     if (now - this.lastDrawAt < 12) return; // a 144 Hz screen does not need 144 maps a second
     this.lastDrawAt = now;
-    if (ambient) this.lastAmbient = now;
+    this.lastAmbient = now;
     this.dirty = false;
     const city = this.openCity;
     const st: RenderState = {
@@ -511,8 +540,11 @@ export class GameScreen {
       const s = this.cam.toScreen(wp.x, wp.y);
       p = { x: s.x, y: s.y, top: s.y - HEX * 0.5 * this.cam.zoom };
     }
-    const w = el.offsetWidth;
-    const hgt = el.offsetHeight;
+    // measuring forces a layout, so only do it when the buttons or the screen changed
+    const key = `${u.id}:${u.mp}:${u.order?.kind ?? ''}:${u.auto ?? ''}:${u.fortified ? 1 : 0}:${el.childElementCount}:${this.cam.w}x${this.cam.h}`;
+    if (this.uaSize.key !== key) this.uaSize = { key, w: el.offsetWidth, h: el.offsetHeight };
+    const w = this.uaSize.w;
+    const hgt = this.uaSize.h;
     const x = Math.max(8, Math.min(this.cam.w - w - 8, p.x - w / 2));
     const short = isShort();
     let y = p.y + 14;
@@ -551,6 +583,12 @@ export class GameScreen {
   }
 
   // ------------------------------------------------------------------ minimap
+  /** The minimap's terrain, borders, cities and units, drawn once per new view; each frame only adds the viewport frame. */
+  private miniBase: HTMLCanvasElement | null = null;
+  private miniBaseKey = '';
+  private miniBaseView: object | null = null;
+  private miniFrameKey = '';
+
   private drawMinimap(): void {
     const v = this.view;
     const W = v.settings.width;
@@ -560,59 +598,77 @@ export class GameScreen {
     const unit = cw / (W + 0.5);
     const ch = Math.ceil(unit * (H * 0.866 + 0.2887));
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (target.width !== Math.round(cw * dpr) || target.height !== Math.round(ch * dpr)) {
+    const cam = this.cam;
+    // nothing to do when neither the world nor the camera has moved since the last time
+    const frameKey = `${cw}:${ch}:${dpr}:${Math.round(cam.x)}:${Math.round(cam.y)}:${cam.zoom.toFixed(3)}:${cam.w}:${cam.h}`;
+    if (this.miniBaseView === v && this.miniFrameKey === frameKey) return;
+    this.miniFrameKey = frameKey;
+    const resized = target.width !== Math.round(cw * dpr) || target.height !== Math.round(ch * dpr);
+    if (resized) {
       target.width = Math.round(cw * dpr);
       target.height = Math.round(ch * dpr);
       target.style.height = ch + 'px';
     }
-    const ctx = target.getContext('2d')!;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#05080f';
-    ctx.fillRect(0, 0, cw, ch);
     const sx = unit;
     const sy = unit / 0.866;
-    const colors: Record<string, string> = {
-      ocean: '#1b3f68', coast: '#2f7ba0', grass: '#5c9c48', plains: '#b0ab58', desert: '#d9c07d', tundra: '#c4cdcd', forest: '#3f7a3c', hills: '#8d9650', mountain: '#85827f',
-    };
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const i = y * W + x;
-        const s = v.state[i];
-        if (s === 0) continue;
-        const terr = TERRAIN_LIST[v.terrain[i]];
-        let col = colors[terr];
-        const owner = v.owner[i] - 1;
-        const px = (x + 0.5 * (y & 1)) * sx;
-        const py = y * unit * 0.866;
-        ctx.fillStyle = col;
-        ctx.fillRect(px, py, sx + 0.5, sy + 0.5);
-        if (owner >= 0) {
-          ctx.fillStyle = civColor(v, owner) + '99';
-          ctx.fillRect(px, py, sx + 0.5, sy + 0.5);
-        }
-        if (s === 1) {
-          ctx.fillStyle = 'rgba(0,0,0,0.45)';
-          ctx.fillRect(px, py, sx + 0.5, sy + 0.5);
+    const baseKey = `${cw}:${ch}:${dpr}`;
+    if (!this.miniBase || this.miniBaseKey !== baseKey || this.miniBaseView !== v) {
+      const base = this.miniBase ?? (this.miniBase = document.createElement('canvas'));
+      if (this.miniBaseKey !== baseKey) {
+        base.width = Math.round(cw * dpr);
+        base.height = Math.round(ch * dpr);
+      }
+      this.miniBaseKey = baseKey;
+      this.miniBaseView = v;
+      const bctx = base.getContext('2d')!;
+      bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      bctx.fillStyle = '#05080f';
+      bctx.fillRect(0, 0, cw, ch);
+      const colors: Record<string, string> = {
+        ocean: '#1b3f68', coast: '#2f7ba0', grass: '#5c9c48', plains: '#b0ab58', desert: '#d9c07d', tundra: '#c4cdcd', forest: '#3f7a3c', hills: '#8d9650', mountain: '#85827f',
+      };
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const i = y * W + x;
+          const s = v.state[i];
+          if (s === 0) continue;
+          const col = colors[TERRAIN_LIST[v.terrain[i]]];
+          const owner = v.owner[i] - 1;
+          const px = (x + 0.5 * (y & 1)) * sx;
+          const py = y * unit * 0.866;
+          bctx.fillStyle = col;
+          bctx.fillRect(px, py, sx + 0.5, sy + 0.5);
+          if (owner >= 0) {
+            bctx.fillStyle = civColor(v, owner) + '99';
+            bctx.fillRect(px, py, sx + 0.5, sy + 0.5);
+          }
+          if (s === 1) {
+            bctx.fillStyle = 'rgba(0,0,0,0.45)';
+            bctx.fillRect(px, py, sx + 0.5, sy + 0.5);
+          }
         }
       }
+      for (const c of v.cities) {
+        const px = (c.x + 0.5 * (c.y & 1) + 0.5) * sx;
+        const py = (c.y * 0.866 + 0.5) * unit;
+        bctx.fillStyle = '#fff';
+        bctx.fillRect(px - 2.5, py - 2.5, 5, 5);
+        bctx.fillStyle = civColor(v, c.owner);
+        bctx.fillRect(px - 1.5, py - 1.5, 3, 3);
+      }
+      for (const u of v.units) {
+        if (u.owner !== this.me && UNITS[u.type].civilian) continue;
+        const px = (u.x + 0.5 * (u.y & 1) + 0.5) * sx;
+        const py = (u.y * 0.866 + 0.5) * unit;
+        bctx.fillStyle = civColor(v, u.owner);
+        bctx.fillRect(px - 1, py - 1, 2, 2);
+      }
     }
-    for (const c of v.cities) {
-      const px = (c.x + 0.5 * (c.y & 1) + 0.5) * sx;
-      const py = (c.y * 0.866 + 0.5) * unit;
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(px - 2.5, py - 2.5, 5, 5);
-      ctx.fillStyle = civColor(v, c.owner);
-      ctx.fillRect(px - 1.5, py - 1.5, 3, 3);
-    }
-    for (const u of v.units) {
-      if (u.owner !== this.me && UNITS[u.type].civilian) continue;
-      const px = (u.x + 0.5 * (u.y & 1) + 0.5) * sx;
-      const py = (u.y * 0.866 + 0.5) * unit;
-      ctx.fillStyle = civColor(v, u.owner);
-      ctx.fillRect(px - 1, py - 1, 2, 2);
-    }
+    const ctx = target.getContext('2d')!;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(this.miniBase, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // viewport
-    const cam = this.cam;
     const tl = cam.toWorld(0, 0);
     const br = cam.toWorld(cam.w, cam.h);
     const ww = HEX_W * (W + 0.5);
@@ -1110,8 +1166,6 @@ export class GameScreen {
     renderTopbar(this, this.topbar);
     renderMedallions(this, this.medallions);
     renderUnitBar(this, this.unitbar);
-    // the tile strip sits just above the unit card, whatever height it has
-    this.root.style.setProperty('--unitbar-h', this.unitbar.classList.contains('hidden') ? '0px' : `${this.unitbar.offsetHeight}px`);
     renderTurnControl(this, this.turncontrol);
     renderLenses(this, this.lenses);
     renderGuide(this, this.guide);
@@ -1286,6 +1340,7 @@ export class GameScreen {
     this.modal.remove();
     this.modal = null;
     this.modalKind = '';
+    this.dirty = true; // the map was not redrawn while the dialog covered it
     const back = this.returnFocus;
     this.returnFocus = null;
     // focus goes back to what opened the dialog, if that is still on the page

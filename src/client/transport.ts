@@ -44,6 +44,27 @@ export class LocalTransport implements GameTransport {
 
   constructor(public game: Game, private humans: number[], private autosave = true) {
     this.current = humans[0] ?? 0;
+    // a save that is waiting for a quiet moment is written at once if the page is being hidden or closed
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.onHide);
+      window.addEventListener('pagehide', this.onHide);
+    }
+  }
+
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private onHide = (): void => { this.flushSave(); };
+
+  /** Writing the save serialises the whole game (a few hundred KB), which is better done after the new turn is on screen. */
+  private scheduleSave(): void {
+    if (this.saveTimer !== null) return;
+    this.saveTimer = setTimeout(() => { this.saveTimer = null; this.save(); }, 300);
+  }
+  /** Write a waiting autosave now. */
+  flushSave(): void {
+    if (this.saveTimer === null) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    this.save();
   }
 
   get me(): number {
@@ -69,8 +90,9 @@ export class LocalTransport implements GameTransport {
         await new Promise((r) => setTimeout(r, 40));
         g.maybeProcessTurn();
         const events = g.events.splice(0);
-        if (g.turn !== before && this.autosave) this.save();
         const next = this.humans.find((h) => g.players[h].alive) ?? this.humans[0];
+        // the save is written a moment later, once the new turn is on screen (and even if a hot-seat curtain waits for a hand-over)
+        if (g.turn !== before && this.autosave) this.scheduleSave();
         await this.passTo(next, g.turn !== before);
         this.busy = false;
         this.onView(buildView(g, this.current), filterEvents(events, this.current));
@@ -85,7 +107,10 @@ export class LocalTransport implements GameTransport {
     const events = g.events.splice(0);
     if (cmd.t === 'unend') g.players[mover].endedTurn = false;
     this.onView(buildView(g, this.current), filterEvents(events, this.current));
-    if (g.s.over && this.autosave) this.clearSave();
+    if (g.s.over && this.autosave) {
+      if (this.saveTimer !== null) { clearTimeout(this.saveTimer); this.saveTimer = null; }
+      this.clearSave();
+    }
     return res;
   }
 
@@ -133,7 +158,13 @@ export class LocalTransport implements GameTransport {
   clearSave(): void {
     removeSave(browserStore(), 'auto');
   }
-  close(): void {}
+  close(): void {
+    this.flushSave();
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onHide);
+      window.removeEventListener('pagehide', this.onHide);
+    }
+  }
 }
 
 /** Open a saved game. A save that cannot be opened is reported and left in storage untouched. */

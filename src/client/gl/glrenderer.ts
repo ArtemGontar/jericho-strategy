@@ -124,7 +124,9 @@ export class GLRenderer implements MapDrawer {
     this.scene.add(new AmbientLight(0xffffff, 0.12));
     this.sun = new DirectionalLight(0xfff0d6, 2.9);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    // a phone shows a small patch of ground, so a quarter of the shadow texels cover it about as well (and use a quarter of the memory and fill)
+    const phone = Math.min(window.innerWidth, window.innerHeight) <= 520;
+    this.sun.shadow.mapSize.set(phone ? 1024 : 2048, phone ? 1024 : 2048);
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.03;
     this.scene.add(this.sun, this.sun.target);

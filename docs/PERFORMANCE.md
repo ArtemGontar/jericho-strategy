@@ -11,6 +11,30 @@ All numbers come from the sandbox these were built in: a software-rendered brows
 | "Did a refactor change the game?" (state hash after 70 turns, five seeded games) | `npm run fingerprint` before and after, compare the output |
 | Invariants over many AI games | `npx tsx scripts/audit.ts 4 60` |
 
+| What | Command |
+|---|---|
+| Browser: idle and pan CPU, end-turn time, heap and DOM on a large mid-game save | `npm run build && npx tsx scripts/perf.ts` (`PERF_ONLY=flat\|gl`, `PERF_IDLE=40`) |
+| Browser: which functions the page spends its time in | `npx vite build --minify false --outDir /tmp/dist-dev --emptyOutDir && DIST=/tmp/dist-dev npx tsx scripts/perf-profile.ts idle\|turns flat` |
+
+## Second pass (November): engine and idle cost
+
+Measured on the same machine before and after; the browser has no GPU here, so 3D frame costs are reasoned, not measured.
+
+| Change | Why | Effect |
+|---|---|---|
+| Luxury tiles are a short index (`Game.luxuryTiles()`), not a scan of the whole map | Contentment is recomputed after every command, and each call scanned every tile once for the player and once per trading partner. It had grown to about 10 % of an AI turn | Large map, 8 players, 80 turns: end-of-turn **49 ms → about 32 ms** on average, p95 98 → about 78 ms |
+| Path search: allocation-free neighbour loop, a reused best-cost table, and an immediate "no route" for a walker whose target is on another landmass | 15 % of searches fail and each failure used to flood the whole explored map | Paths and games are unchanged: the state hash after 70 turns matches on all five seeded games |
+| Minimap is drawn once per new view into a hidden canvas; each frame only copies it and draws the viewport frame, and does nothing when neither world nor camera moved | It redrew every tile up to 3 times, about 20 times a second | Flat map idle script time 6.7 % → 4.3 % of one core |
+| A map that only shimmers or pulses a selection ring is redrawn at 30 frames a second at most (it was every screen refresh while a unit was selected, which is most of the time), at half after 20 s without input, at a quarter after 90 s, and not at all behind a dialog | An idle phone was rendering the 3D scene at 60 frames a second | 3D: half the frames while a unit is selected, a quarter to an eighth when left alone. Any touch restores the full rate at once. Moving units, paths and camera moves still draw every frame |
+| Shadow map 1024² instead of 2048² on phones (shorter screen side 520 px or less) | A phone shows a small patch of ground | A quarter of the shadow memory and fill. Screenshots at 390×844 differ from the old ones by less than two captures of the same build differ from each other |
+| The autosave is written 300 ms after the new turn is on screen (and at once when the page is hidden, closed or left), not before | Serialising a 350 KB state took tens of milliseconds on this machine, several times that on a phone, in the middle of the end-of-turn wait | The new turn appears sooner. Nothing is lost: a pending save is flushed on `visibilitychange`, `pagehide` and when the game screen closes |
+| Unit-bar height and the unit action buttons' size are no longer measured on every redraw (a `ResizeObserver` and a cache keyed by unit state) | Reading `offsetHeight` right after rebuilding the bar forced a layout; it was the largest single item in an end-of-turn profile | Removed from the profile |
+| The minimap and map buttons now sit above the turn button however tall its labels are (`--turn-h`) | On a 390 px phone "Choose production" wrapped to two lines and the button overlapped the map buttons | Fixed layout bug |
+
+Not changed, on purpose: the 30-frame idle cap itself (water and leaves still move smoothly while you play), the 2048 shadow map on larger screens, pixel ratio, and any rule or AI decision.
+
+What is still large: every command rebuilds the whole HUD (`refreshUI`), the AI and the engine run on the main thread (a worker would remove the end-of-turn pause on slow phones, and is the next big step), updateVisibility runs after every move (about 16 % of an AI turn), and path searches still scan their open list linearly (a heap was tried: it gave the same routes but no speed-up, because the cost is in the neighbour checks).
+
 ## Engine
 
 Hot spot: visibility recomputation and hex-range queries. Every unit step recomputed who can see what, and each range query rebuilt and sorted a list of positions. Range offsets are now computed once per row parity and radius, and the distance function no longer allocates.

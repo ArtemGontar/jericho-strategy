@@ -711,7 +711,7 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; padding: 0 6px; f
   .nextturn { width: 86px; height: 86px; }
   .nextturn .face { inset: 8px; }
   .turnlabel { font-size: 11px; }
-  .mapdock { display: flex; left: auto; right: calc(10px + var(--sar)); bottom: calc(176px + var(--sab)); }
+  .mapdock { display: flex; left: auto; right: calc(10px + var(--sar)); bottom: calc(var(--turn-h, 164px) + 12px + var(--sab)); }
   .minimap-wrap { display: none; }
   .lenses { gap: 8px; }
   /* the tapped tile's strip sits just above the unit card, clear of the toasts at the top */
