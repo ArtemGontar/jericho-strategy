@@ -382,7 +382,6 @@ export interface VoiceApi {
 ```
 cue(id):
   if level == off or document.hidden: return false
-  if level == captions or isMuted(): showCaption(text); return true      // text only
   def = CUES[id]; if !def: return false
   if def.once and playedOnce(id, gameKey): return false
   if turn < lastPlayedTurn[id] + def.cooldownTurns: return false
@@ -392,6 +391,7 @@ cue(id):
       else if def.canWait: park(def, 3000 ms); return true
       else: return false
   v = draw(def.variants)                       // shuffled bag, never the same one twice
+  if level == captions or isMuted(): showCaption(v.text, estimate(v.text)); return true   // text only, no clip needed
   clip = loader.getDecoded(v.id)               // from memory if decoded
   if !clip:
       loader.fetch(v.id)                       // from the SW cache or network
