@@ -85,6 +85,8 @@ export interface NewGameOptions {
 export const STATE_VERSION = 1;
 /** how much a standard game costs, against the base prices in the data tables (a quick game is 0.67) */
 export const STANDARD_SPEED = 0.85;
+/** culture a civilisation needs for cultural hegemony in a game of base price (scaled by the game speed) */
+export const CULTURE_GOAL = 6000;
 
 /** What each kind of computer player reaches for first when offered a policy (earlier is better). */
 const AI_POLICY_PREF: Record<string, string[]> = {
@@ -290,7 +292,7 @@ export class Game {
   get speedMult(): number { return this.s.settings.speed === 'quick' ? 0.67 : STANDARD_SPEED; }
 
   /** Culture a civilisation needs before it can claim cultural hegemony. */
-  get cultureGoal(): number { return Math.round(6000 * this.speedMult); }
+  get cultureGoal(): number { return Math.round(CULTURE_GOAL * this.speedMult); }
 
   tile(x: number, y: number): Tile { return this.s.tiles[y * this.s.settings.width + x]; }
   inBounds(x: number, y: number): boolean { return x >= 0 && y >= 0 && x < this.width && y < this.height; }
@@ -1494,8 +1496,10 @@ export class Game {
       c.queue.shift();
       const level = (hasBuilding(c, 'barracks') || p.policies.includes('veterans')) && !UNITS[head.id as UnitTypeId].civilian ? 1 : 0;
       const born = this.addUnit(p.id, head.id as UnitTypeId, c.x, c.y, level);
-      // a new soldier of a human player stands guard where it was built, so it never holds up the "next turn" button
-      if (!p.ai && !UNITS[born.type].civilian) { born.order = { kind: 'fortify' }; born.fortified = true; }
+      // a new soldier of a human player stands guard where it was built, and a new scout sets off to explore,
+      // so neither holds up the "next turn" button (one tap on the unit takes them back)
+      if (!p.ai && UNITS[born.type].scout) born.auto = 'explore';
+      else if (!p.ai && !UNITS[born.type].civilian) { born.order = { kind: 'fortify' }; born.fortified = true; }
       if (head.id === 'settler') c.pop = Math.max(1, c.pop - 1);
       this.note([p.id], `${c.name} built ${UNITS[head.id as UnitTypeId].name}.`, 'good', { x: c.x, y: c.y });
     } else {

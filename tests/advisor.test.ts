@@ -131,6 +131,17 @@ describe('a first turn that starts with the capital', () => {
     const worker = fresh.find((u) => u.type === 'worker');
     if (worker) expect(worker.fortified).toBe(false);
   });
+  it('sends a scout a person builds off to explore, not to stand guard', () => {
+    const g = Game.create({ seed: 8, size: 'small', autoFound: true, players: [{ name: 'A', ai: false }, { name: 'B', ai: true }] });
+    const city = g.playerCities(0)[0];
+    const before = new Set(g.units.map((u) => u.id));
+    city.queue = [{ kind: 'unit', id: 'scout' }];
+    city.prod = 500;
+    g.processTurn();
+    const scout = g.units.find((u) => !before.has(u.id) && u.owner === 0 && u.type === 'scout');
+    expect(scout?.fortified).toBe(false);
+    expect(scout?.auto).toBe('explore');
+  });
   it('is a good place: food and room, as every start is', () => {
     for (const seed of [1, 2, 3, 4, 5, 6]) {
       const g = Game.create({ seed, size: 'small', autoFound: true, players: [{ name: 'A', ai: false }, { name: 'B', ai: false }] });

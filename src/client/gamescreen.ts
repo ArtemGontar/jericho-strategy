@@ -18,7 +18,7 @@ import { keepAwake } from './wakelock';
 import { askConfirm, btn, clear, COMPACT_QUERY, h, isCompact, isShort, put, SHORT_QUERY } from './ui/dom';
 import type { GameTransport } from './transport';
 import { renderCityPanel } from './ui/citypanel';
-import { currentEra, renderLenses, renderMedallions, renderTileInfo, renderTopbar, renderTurnControl, renderUnitBar, pushNote } from './ui/hud';
+import { currentEra, renderLenses, renderMedallions, renderTileInfo, renderTopbar, renderTurnControl, renderUnitBar, pushNote, pushRecap } from './ui/hud';
 import { ERA_NAMES } from '../shared/data';
 import { showCities, showDiplomacy, showHelp, showLog, showMenu, showSave, showContent, showEvent, showPolicies, showTechTree, showVictory } from './ui/screens';
 
@@ -270,10 +270,13 @@ export class GameScreen {
       this.lastNoteId = maxId - 2;
     }
     const fresh: typeof v.notes = [];
+    const routine: typeof v.notes = [];
     for (const n of v.notes) {
       if (n.id <= this.lastNoteId) continue;
       fresh.push(n);
-      this.toast(n.text, n.kind, n.at);
+      // routine good news ("built", "grew") is folded into one recap line below; everything else is shown as it comes
+      if (n.kind === 'good' && !n.luck && !this.firstView) routine.push(n);
+      else this.toast(n.text, n.kind, n.at);
       this.noteHistory.push({ id: n.id, turn: n.turn, text: n.text, kind: n.kind, at: n.at });
       if (n.kind === 'tech') sfx('tech');
       else if (n.kind === 'wonder') sfx('wonder');
@@ -281,6 +284,17 @@ export class GameScreen {
       else if (n.luck && (n.kind === 'good' || n.kind === 'bad')) sfx(n.kind);
     }
     this.lastNoteId = Math.max(this.lastNoteId, maxId);
+    if (routine.length === 1) this.toast(routine[0].text, 'good', routine[0].at);
+    else if (routine.length > 1) {
+      const count = (re: RegExp) => routine.filter((r) => re.test(r.text)).length;
+      const built = count(/ built /), grew = count(/ grew to /);
+      const parts = [
+        { art: 'production', count: built, label: 'built' },
+        { art: 'population', count: grew, label: 'grew' },
+        { art: 'star', count: routine.length - built - grew, label: 'other news' },
+      ].filter((x) => x.count > 0);
+      pushRecap(this, this.notes, parts, routine.find((r) => r.at)?.at);
+    }
     this.moments.onView(v, events, fresh, this.firstView);
 
     // a new era dawns

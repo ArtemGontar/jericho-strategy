@@ -226,6 +226,25 @@ export function renderMedallions(gs: GameScreen, el: HTMLElement): void {
 // ------------------------------------------------------------------ notifications
 const NOTE_ICON: Record<string, string> = { info: 'log', good: 'star', bad: 'shield', war: 'swords', tech: 'science', wonder: 'wonder' };
 
+/** One quiet line for the routine news of a turn: an icon and a count for each kind (built, grown, other good news). Tap for the log. */
+export function pushRecap(gs: GameScreen, host: HTMLElement, parts: Array<{ art: string; count: number; label: string }>, at?: { x: number; y: number }): void {
+  const n = h('div', { class: 'note recap', role: 'button', 'aria-label': parts.map((p) => `${p.count} ${p.label}`).join(', ') + '. Open the log.' },
+    ...parts.map((p) => h('span', { class: 'chip', title: p.label }, icon(p.art, 18), h('b', null, String(p.count)))));
+  n.addEventListener('click', () => {
+    if (at) gs.focus(at.x, at.y);
+    gs.openModal('log');
+    n.classList.add('out');
+    setTimeout(() => n.remove(), 240);
+  });
+  host.append(n);
+  const phone = isCompact();
+  while (host.children.length > (phone ? 3 : 7)) host.firstChild?.remove();
+  setTimeout(() => {
+    n.classList.add('out');
+    setTimeout(() => n.remove(), 240);
+  }, phone ? 4500 : 7000);
+}
+
 export function pushNote(gs: GameScreen, host: HTMLElement, text: string, kind: string, at?: { x: number; y: number }, action?: () => void): void {
   const n = h('div', { class: `note ${kind}` }, icon(NOTE_ICON[kind] ?? 'log', 20), h('div', null, text));
   n.addEventListener('click', () => {

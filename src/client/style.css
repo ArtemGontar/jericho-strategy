@@ -372,6 +372,11 @@ button.stat { background: none; border: 0; color: inherit; font: inherit; font-w
 .note { box-shadow: inset 2px 0 0 transparent; }
 .note:hover { filter: brightness(1.25); }
 .note.war, .note.bad { box-shadow: inset 2px 0 0 var(--bad); } .note.good { box-shadow: inset 2px 0 0 var(--good); } .note.tech { box-shadow: inset 2px 0 0 var(--sci); } .note.wonder { box-shadow: inset 2px 0 0 var(--gold-hi); }
+.note.recap { display: flex; gap: 14px; align-items: center; justify-content: center; padding: 7px 14px; }
+.note.recap .chip { display: inline-flex; align-items: center; gap: 5px; color: var(--good); }
+.note.recap .chip b { color: var(--text); font-size: 15px; font-variant-numeric: tabular-nums; }
+.note.recap .chip:nth-child(2) { color: var(--food, var(--good)); }
+.note.recap .chip:nth-child(3) { color: var(--gold-hi); }
 .note.out { animation: noteOut 0.22s var(--ease-io) forwards; pointer-events: none; }
 @keyframes noteOut { to { transform: translate3d(28px, 0, 0); opacity: 0; } }
 
