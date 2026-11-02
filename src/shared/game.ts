@@ -1,4 +1,4 @@
-import { rangeOffsets, hexDistance, neighborsOf, tilesWithin, type Pos } from './hex';
+import { rangeOffsets, hexDistance, neighborCoords, neighborsOf, tilesWithin, type Pos } from './hex';
 import { Rng } from './rng';
 import { generateMap } from './mapgen';
 import {
@@ -104,6 +104,8 @@ export class Game {
   private unitIdx = new Map<number, Unit[]>();
   private unitById = new Map<number, Unit>();
   private cityById = new Map<number, City>();
+  /** tiles that carry a luxury resource: rare, so the contentment sums read this short list instead of the whole map */
+  private luxIndex: Tile[] | null = null;
 
   constructor(state: GameState) {
     this.s = state;
@@ -300,6 +302,45 @@ export class Game {
   nb(x: number, y: number): Pos[] { return neighborsOf(x, y, this.width, this.height); }
   unit(id: number): Unit | undefined { return this.unitById.get(id); }
   city(id: number): City | undefined { return this.cityById.get(id); }
+  /** Tiles with a luxury resource. Code that places a resource after the game exists must call `resourcesChanged()`. */
+  luxuryTiles(): Tile[] {
+    const idx = this.luxIndex;
+    // an entry that lost its resource means someone changed the map without saying so: start again
+    if (idx && idx.every((t) => !!t.resource && RESOURCES[t.resource].luxury)) return idx;
+    return (this.luxIndex = this.s.tiles.filter((t) => !!t.resource && !!RESOURCES[t.resource].luxury));
+  }
+  resourcesChanged(): void { this.luxIndex = null; }
+  private walkComp: Int32Array | null = null;
+  /** For every tile, which connected stretch of passable land it belongs to (-1 for water and mountains). Terrain never changes between passable and impassable, so it is built once. */
+  landComponents(): Int32Array {
+    if (this.walkComp) return this.walkComp;
+    const w = this.width;
+    const h = this.height;
+    const tiles = this.s.tiles;
+    const comp = new Int32Array(w * h).fill(-1);
+    const nb = new Int16Array(12);
+    const stack: number[] = [];
+    let id = 0;
+    for (let i = 0; i < w * h; i++) {
+      if (comp[i] !== -1 || !TERRAIN[tiles[i].terrain].passable) continue;
+      comp[i] = id;
+      stack.push(i);
+      while (stack.length) {
+        const c = stack.pop()!;
+        const cx = c % w;
+        const n = neighborCoords(cx, (c - cx) / w, w, h, nb);
+        for (let k = 0; k < n; k++) {
+          const j = nb[k * 2 + 1] * w + nb[k * 2];
+          if (comp[j] === -1 && TERRAIN[tiles[j].terrain].passable) {
+            comp[j] = id;
+            stack.push(j);
+          }
+        }
+      }
+      id++;
+    }
+    return (this.walkComp = comp);
+  }
   cityAt(x: number, y: number): City | undefined {
     const c = this.tile(x, y).city;
     return c >= 0 ? this.cityById.get(c) : undefined;

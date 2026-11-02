@@ -22,6 +22,22 @@ export function neighborsOf(x: number, y: number, w: number, h: number): Pos[] {
   return out;
 }
 
+/** The neighbours of a tile written as x, y pairs into `out` (same order as `neighborsOf`); returns how many. Allocation-free for hot loops. */
+export function neighborCoords(x: number, y: number, w: number, h: number, out: Int16Array): number {
+  const dirs = (y & 1) === 1 ? ODD_DIRS : EVEN_DIRS;
+  let n = 0;
+  for (let i = 0; i < 6; i++) {
+    const nx = x + dirs[i][0];
+    const ny = y + dirs[i][1];
+    if (nx >= 0 && ny >= 0 && nx < w && ny < h) {
+      out[n * 2] = nx;
+      out[n * 2 + 1] = ny;
+      n++;
+    }
+  }
+  return n;
+}
+
 export function hexDistance(ax: number, ay: number, bx: number, by: number): number {
   // cube coordinates: q = x - (y - (y&1)) / 2, r = y, s = -q - r
   const dq = ax - (ay - (ay & 1)) / 2 - (bx - (by - (by & 1)) / 2);

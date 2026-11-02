@@ -10,7 +10,7 @@
  * Trade agreements pay both sides gold every turn and let each use the other's luxuries and strategic resources.
  * Sanctions cancel the agreement, forbid a new one, and cost the target gold and contentment.
  */
-import { BUILDINGS, LUXURIES, RESOURCES } from './data';
+import { BUILDINGS, LUXURIES } from './data';
 import type { ResourceId } from './types';
 import type { Game } from './game';
 
@@ -55,7 +55,7 @@ export function sanctionersOf(game: Game, pid: number): number[] {
 /** Luxury kinds on tiles inside this civilisation's borders. */
 export function ownLuxuries(game: Game, pid: number): ResourceId[] {
   const seen = new Set<ResourceId>();
-  for (const t of game.s.tiles) if (t.owner === pid && t.resource && RESOURCES[t.resource].luxury) seen.add(t.resource);
+  for (const t of game.luxuryTiles()) if (t.owner === pid && t.resource) seen.add(t.resource);
   return LUXURIES.filter((r) => seen.has(r));
 }
 

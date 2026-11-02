@@ -1,4 +1,4 @@
-import { neighborsOf, type Pos } from './hex';
+import { neighborCoords, neighborsOf, type Pos } from './hex';
 import { TERRAIN, UNITS } from './data';
 import { canStandOn, navalStepCost } from './naval';
 import type { Unit } from './types';
@@ -10,7 +10,7 @@ function standable(game: Game, unit: Unit, x: number, y: number): boolean {
   const t = game.tile(x, y);
   let port = false;
   if (t.city >= 0 && UNITS[unit.type].naval) {
-    const c = game.cities.find((cc) => cc.id === t.city);
+    const c = game.city(t.city);
     port = !!c && c.owner === unit.owner && game.isCoastal(x, y);
   }
   return canStandOn(unit.type, t.terrain, port);
@@ -62,7 +62,7 @@ export function tileBlockedFor(game: Game, unit: Unit, x: number, y: number, fin
     if (finalStep && t.city < 0 && sameStackClass(o, unit)) return true;
   }
   if (t.city >= 0) {
-    const c = game.cities.find((cc) => cc.id === t.city)!;
+    const c = game.city(t.city)!;
     if (c.owner !== unit.owner) return true;
   }
   return false;
@@ -86,19 +86,33 @@ export function findPath(game: Game, unit: Unit, to: Pos, opts: { maxCost?: numb
   const h = game.height;
   if (unit.x === to.x && unit.y === to.y) return [];
   if (!standable(game, unit, to.x, to.y)) return null;
+  // a walker cannot cross water or mountains, so a target on another landmass is unreachable: no need to search the whole map for it
+  if (!UNITS[unit.type].naval) {
+    const comp = game.landComponents();
+    const here = comp[unit.y * w + unit.x]; // -1 when the unit is at sea (a passenger), which can land anywhere
+    if (here >= 0 && here !== comp[to.y * w + to.x]) return null;
+  }
   const bit = 1 << unit.owner;
-  const open: Node[] = [{ x: unit.x, y: unit.y, g: 0, f: 0, parent: null }];
-  const best = new Map<number, number>();
-  best.set(unit.y * w + unit.x, 0);
+  const start: Node = { x: unit.x, y: unit.y, g: 0, f: 0, parent: null };
+  // the open list is two parallel arrays, so the search for the cheapest entry reads plain numbers
+  const openN: Node[] = [start];
+  const openF: number[] = [0];
+  // best cost found so far per tile; a generation stamp avoids clearing the table between searches
+  const gen = nextGeneration(w * h);
+  const startKey = unit.y * w + unit.x;
+  bestVal[startKey] = 0;
+  bestGen[startKey] = gen;
   const maxCost = opts.maxCost ?? 600;
-  const heur = (x: number, y: number) => game.dist(x, y, to.x, to.y) * 1;
   let guard = 0;
-  while (open.length && guard++ < 12000) {
+  while (openN.length && guard++ < 12000) {
     let bi = 0;
-    for (let i = 1; i < open.length; i++) if (open[i].f < open[bi].f) bi = i;
-    const cur = open[bi];
-    open[bi] = open[open.length - 1];
-    open.pop();
+    for (let i = 1; i < openF.length; i++) if (openF[i] < openF[bi]) bi = i;
+    const cur = openN[bi];
+    const last = openN.length - 1;
+    openN[bi] = openN[last];
+    openF[bi] = openF[last];
+    openN.pop();
+    openF.pop();
     if (cur.x === to.x && cur.y === to.y) {
       const out: Pos[] = [];
       let n: Node | null = cur;
@@ -108,27 +122,52 @@ export function findPath(game: Game, unit: Unit, to: Pos, opts: { maxCost?: numb
       }
       return out.reverse();
     }
-    if ((best.get(cur.y * w + cur.x) ?? Infinity) < cur.g) continue;
-    for (const nb of neighborsOf(cur.x, cur.y, w, h)) {
-      const t = game.tile(nb.x, nb.y);
+    const ck = cur.y * w + cur.x;
+    if ((bestGen[ck] === gen ? bestVal[ck] : Infinity) < cur.g) continue;
+    const count = neighborCoords(cur.x, cur.y, w, h, NB);
+    for (let k = 0; k < count; k++) {
+      const nx = NB[k * 2];
+      const ny = NB[k * 2 + 1];
+      const t = game.tile(nx, ny);
       if (!(t.explored & bit)) continue;
-      const isGoal = nb.x === to.x && nb.y === to.y;
-      if (opts.avoid?.has(nb.y * w + nb.x) && !isGoal) continue;
-      if (tileBlockedFor(game, unit, nb.x, nb.y, isGoal)) continue;
+      const isGoal = nx === to.x && ny === to.y;
+      if (opts.avoid?.has(ny * w + nx) && !isGoal) continue;
+      if (tileBlockedFor(game, unit, nx, ny, isGoal)) continue;
       // cost: use real movement cost, but add a small constant so shorter step counts win ties
-      let c = stepCost(game, unit, cur.x, cur.y, nb.x, nb.y);
+      let c = stepCost(game, unit, cur.x, cur.y, nx, ny);
       if (!isFinite(c)) continue;
       c += 0.01;
       const g = cur.g + c;
       if (g > maxCost) continue;
-      const key = nb.y * w + nb.x;
-      if (g < (best.get(key) ?? Infinity)) {
-        best.set(key, g);
-        open.push({ x: nb.x, y: nb.y, g, f: g + heur(nb.x, nb.y) * 1, parent: cur });
+      const key = ny * w + nx;
+      if (g < (bestGen[key] === gen ? bestVal[key] : Infinity)) {
+        bestVal[key] = g;
+        bestGen[key] = gen;
+        const f = g + game.dist(nx, ny, to.x, to.y);
+        openN.push({ x: nx, y: ny, g, f, parent: cur });
+        openF.push(f);
       }
     }
   }
   return null;
+}
+
+// scratch space shared by every search (the engine is single-threaded): neighbour buffer and the best-cost table
+const NB = new Int16Array(12);
+let bestVal = new Float64Array(0);
+let bestGen = new Uint32Array(0);
+let generation = 0;
+function nextGeneration(tiles: number): number {
+  if (bestVal.length < tiles) {
+    bestVal = new Float64Array(tiles);
+    bestGen = new Uint32Array(tiles);
+    generation = 0;
+  }
+  if (++generation >= 0xfffffff0) {
+    bestGen.fill(0);
+    generation = 1;
+  }
+  return generation;
 }
 
 /** Dijkstra flood: reachable tiles within this turn's remaining movement (for UI highlights). */

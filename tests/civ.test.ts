@@ -17,6 +17,7 @@ function world(n = 3, seed = 21) {
 function giveLuxury(g: Game, pid: number, res: 'wine' | 'spices' | 'gems' | 'pearls') {
   const t = g.tiles.find((x) => x.owner === pid && !x.resource && TERRAIN[x.terrain].land && x.city < 0)!;
   t.resource = res;
+  g.resourcesChanged();
 }
 const stripLuxuries = (g: Game) => { for (const t of g.tiles) if (t.resource && ['wine', 'spices', 'gems', 'pearls'].includes(t.resource)) t.resource = null; };
 

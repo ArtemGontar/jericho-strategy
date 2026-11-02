@@ -70,6 +70,7 @@ function discovery(c: Ctx, res: ResourceId, terrains: string[], limit: number): 
     weight: 8,
     run: () => {
       spot.resource = res;
+      game.resourcesChanged();
       return { text: `${RESOURCES[res].name} found near ${city?.name ?? 'your cities'}! ${res === 'coal' ? 'Mines there will feed your industry.' : 'Pumps there will pay for themselves.'}`, at: { x: spot.x, y: spot.y }, kind: 'good' };
     },
   };
@@ -137,6 +138,7 @@ export const EVENTS: EventDef[] = [
       const city = nearestCity(c, spot);
       return { weight: 6, run: () => {
         spot.resource = res;
+        game.resourcesChanged();
         return { text: `Prospectors find ${RESOURCES[res].name.toLowerCase()} near ${city?.name ?? 'your cities'}: a new luxury for your people (+3 contentment).`, at: { x: spot.x, y: spot.y }, kind: 'good' };
       } };
     },
