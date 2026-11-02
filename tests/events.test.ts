@@ -145,6 +145,15 @@ describe('random events', () => {
     expect(Math.max(...lostFood)).toBeLessThan(40 - 0); // smaller than the unprotected loss
   });
 
+  it('marks the news of an event as luck, so the screen can sound it and routine news stays quiet', () => {
+    const g = world(12);
+    g.s.turn = 40;
+    triggerEvent(g, g.players[0], 'merchants');
+    const last = g.s.notes[g.s.notes.length - 1];
+    expect(last.luck).toBe(true);
+    g.note([0], 'Ordinary news.', 'good');
+    expect(g.s.notes[g.s.notes.length - 1].luck).toBeUndefined();
+  });
   it('good luck pays: harvest, merchants, scholars, ruins and a new luxury', () => {
     const g = world(12);
     g.s.turn = 40;

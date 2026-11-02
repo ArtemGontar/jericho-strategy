@@ -178,6 +178,8 @@ export interface Note {
   text: string;
   kind: 'info' | 'war' | 'good' | 'bad' | 'wonder' | 'tech';
   at?: Pos;
+  /** a stroke of fortune or misfortune (an event), as opposed to routine news */
+  luck?: boolean;
 }
 
 export interface GameSettings {

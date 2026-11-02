@@ -1,4 +1,5 @@
 import type { GameScreen } from '../gamescreen';
+import { sfx } from '../audio';
 import { icon } from '../icons';
 import { clear, h } from './dom';
 
@@ -127,6 +128,7 @@ export function renderGuide(gs: GameScreen, el: HTMLElement): void {
     s.begin?.(gs);
   }
   const advanced = lastIndex >= 0 && i > lastIndex;
+  if (advanced) sfx('step');
   lastIndex = i;
   const skip = h('button', { class: 'coach-x', type: 'button', title: 'Skip the tips', 'aria-label': 'Skip the tips' }, icon('close', 14));
   skip.addEventListener('click', (e) => { e.stopPropagation(); set('off'); el.classList.add('hidden'); });

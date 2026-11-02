@@ -2,7 +2,7 @@
 const KEY = 'jericho.haptics';
 const PATTERNS: Record<string, number | number[]> = {
   found: [30, 40, 60], capture: [60, 50, 90], hit: 25, clash: 25, death: 45, error: [20, 40, 20],
-  tech: [25, 30, 25], wonder: [40, 40, 70], victory: [60, 60, 60, 60, 120], turn: 18, promote: [20, 30, 20], grow: 15,
+  tech: [25, 30, 25], wonder: [40, 40, 70], victory: [60, 60, 60, 60, 120], turn: 18, promote: [20, 30, 20], grow: 15, good: [20, 40, 40], bad: [70, 50, 40], step: 20, deal: [25, 30, 25],
 };
 
 export const hapticsAvailable = (): boolean => typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';

@@ -278,6 +278,7 @@ export class GameScreen {
       if (n.kind === 'tech') sfx('tech');
       else if (n.kind === 'wonder') sfx('wonder');
       else if (n.kind === 'war') sfx('notify');
+      else if (n.luck && (n.kind === 'good' || n.kind === 'bad')) sfx(n.kind);
     }
     this.lastNoteId = Math.max(this.lastNoteId, maxId);
     this.moments.onView(v, events, fresh, this.firstView);
@@ -311,7 +312,10 @@ export class GameScreen {
       this.toast(`Turn ${v.turn}`, 'info');
       this.autoSelect();
     }
-    void prev;
+    // a new trade agreement is signed
+    const dealsNow = v.players.filter((p) => p.deal).length;
+    const dealsBefore = prev ? prev.players.filter((p) => p.deal).length : dealsNow;
+    if (dealsNow > dealsBefore) sfx('deal');
     if (this.pendingCityOpen) {
       const p = this.pendingCityOpen;
       const c = v.cities.find((cc) => cc.mine && cc.x === p.x && cc.y === p.y);

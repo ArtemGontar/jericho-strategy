@@ -111,6 +111,26 @@ describe('a first turn that starts with the capital', () => {
     const plain = Game.create({ seed: 8, size: 'small', players: [{ name: 'A', ai: false }, { name: 'B', ai: true }] });
     expect(plain.playerCities(0)).toHaveLength(0);
   });
+  it('leaves the guard fortified and the worker busy, so only the scout waits for orders', () => {
+    const g = Game.create({ seed: 8, size: 'small', autoFound: true, players: [{ name: 'A', ai: false }, { name: 'B', ai: true }] });
+    const mine = g.units.filter((u) => u.owner === 0);
+    expect(mine.find((u) => u.type === 'warrior')!.fortified).toBe(true);
+    expect(mine.find((u) => u.type === 'worker')!.auto).toBe('work');
+    expect(mine.find((u) => u.type === 'scout')!.auto).toBeNull();
+  });
+  it('fortifies a soldier a person builds, and never a worker', () => {
+    const g = Game.create({ seed: 8, size: 'small', autoFound: true, players: [{ name: 'A', ai: false }, { name: 'B', ai: true }] });
+    const city = g.playerCities(0)[0];
+    const before = new Set(g.units.map((u) => u.id));
+    city.queue = [{ kind: 'unit', id: 'warrior' }, { kind: 'unit', id: 'worker' }];
+    city.prod = 500;
+    g.processTurn();
+    const fresh = g.units.filter((u) => !before.has(u.id) && u.owner === 0);
+    const archer = fresh.find((u) => u.type === 'warrior');
+    expect(archer?.fortified).toBe(true);
+    const worker = fresh.find((u) => u.type === 'worker');
+    if (worker) expect(worker.fortified).toBe(false);
+  });
   it('is a good place: food and room, as every start is', () => {
     for (const seed of [1, 2, 3, 4, 5, 6]) {
       const g = Game.create({ seed, size: 'small', autoFound: true, players: [{ name: 'A', ai: false }, { name: 'B', ai: false }] });

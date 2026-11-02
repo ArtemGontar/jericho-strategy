@@ -83,6 +83,8 @@ export interface NewGameOptions {
 }
 
 export const STATE_VERSION = 1;
+/** how much a standard game costs, against the base prices in the data tables (a quick game is 0.67) */
+export const STANDARD_SPEED = 1;
 
 /** What each kind of computer player reaches for first when offered a policy (earlier is better). */
 const AI_POLICY_PREF: Record<string, string[]> = {
@@ -214,6 +216,11 @@ export class Game {
       for (const p of game.players) {
         const settler = !p.ai ? game.units.find((u) => u.owner === p.id && u.type === 'settler') : undefined;
         if (settler) game.exec(p.id, { t: 'found', unit: settler.id });
+        // the guard stands watch and the worker improves the land by itself; only the scout waits for a word
+        for (const u of game.units.filter((q) => q.owner === p.id && !p.ai)) {
+          if (u.type === 'warrior') game.exec(p.id, { t: 'order', unit: u.id, order: 'fortify' });
+          else if (u.type === 'worker') game.exec(p.id, { t: 'order', unit: u.id, order: 'auto' });
+        }
       }
       game.note([], 'The age of cities begins. Your capital is founded: choose what it builds, then explore!', 'info');
     } else game.note([], 'The age of cities begins. Found your capital and explore!', 'info');
@@ -280,7 +287,7 @@ export class Game {
   get players(): Player[] { return this.s.players; }
   get cities(): City[] { return this.s.cities; }
   get units(): Unit[] { return this.s.units; }
-  get speedMult(): number { return this.s.settings.speed === 'quick' ? 0.67 : 1; }
+  get speedMult(): number { return this.s.settings.speed === 'quick' ? 0.67 : STANDARD_SPEED; }
 
   /** Culture a civilisation needs before it can claim cultural hegemony. */
   get cultureGoal(): number { return Math.round(6000 * this.speedMult); }
@@ -372,8 +379,8 @@ export class Game {
   playerUnits(pid: number): Unit[] { return this.s.units.filter((u) => u.owner === pid); }
   humans(): Player[] { return this.s.players.filter((p) => !p.ai && p.alive); }
 
-  note(players: number[], text: string, kind: Note['kind'] = 'info', at?: Pos): void {
-    this.s.notes.push({ id: this.s.nextId++, turn: this.s.turn, players, text, kind, at });
+  note(players: number[], text: string, kind: Note['kind'] = 'info', at?: Pos, luck = false): void {
+    this.s.notes.push({ id: this.s.nextId++, turn: this.s.turn, players, text, kind, at, ...(luck ? { luck } : {}) });
     if (this.s.notes.length > 300) this.s.notes.splice(0, this.s.notes.length - 300);
   }
 
@@ -1486,7 +1493,9 @@ export class Game {
       c.prod -= cost;
       c.queue.shift();
       const level = (hasBuilding(c, 'barracks') || p.policies.includes('veterans')) && !UNITS[head.id as UnitTypeId].civilian ? 1 : 0;
-      this.addUnit(p.id, head.id as UnitTypeId, c.x, c.y, level);
+      const born = this.addUnit(p.id, head.id as UnitTypeId, c.x, c.y, level);
+      // a new soldier of a human player stands guard where it was built, so it never holds up the "next turn" button
+      if (!p.ai && !UNITS[born.type].civilian) { born.order = { kind: 'fortify' }; born.fortified = true; }
       if (head.id === 'settler') c.pop = Math.max(1, c.pop - 1);
       this.note([p.id], `${c.name} built ${UNITS[head.id as UnitTypeId].name}.`, 'good', { x: c.x, y: c.y });
     } else {

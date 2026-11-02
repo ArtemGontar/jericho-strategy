@@ -319,7 +319,7 @@ export function chooseEvent(game: Game, p: Player, option: number): CmdResult {
   if (!def) return { ok: true };
   const city = game.s.cities.find((c) => c.id === pending.city && c.owner === p.id) ?? null;
   const r = def.resolve(ctxOf(game, p), option, city);
-  if (!p.ai) game.note([p.id], r.text, r.kind, pending.at);
+  if (!p.ai) game.note([p.id], r.text, r.kind, pending.at, true);
   return { ok: true };
 }
 
@@ -342,7 +342,7 @@ function badLuck(game: Game): number {
 
 function announce(game: Game, p: Player, r: ReturnType<Plan['run']>): void {
   // the computers take what comes silently; the player is told, and the world hears of the big ones
-  if (!p.ai) game.note([p.id], r.text, r.kind ?? 'info', r.at);
+  if (!p.ai) game.note([p.id], r.text, r.kind ?? 'info', r.at, true);
 }
 
 export interface EventResult {
